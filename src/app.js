@@ -87,7 +87,7 @@ app.use(
 // The /webhook/github prefix covers both GitHub and Flutterwave webhooks,
 app.use("/webhook/github", express.raw({ type: "*/*", limit: "10mb" }));
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "20mb" }));
 app.use(cookieParser());
 app.use(morgan("dev"));
 

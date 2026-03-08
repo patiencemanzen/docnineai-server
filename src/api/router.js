@@ -19,6 +19,7 @@ import projectRoutes from "./projects/project.routes.js";
 import portalRoutes from "./portal/portal.routes.js";
 import billingRoutes from "./billing/billing.routes.js";
 import adminRoutes from "./admin/admin.routes.js";
+import cliRoutes from "./cli/cli.routes.js";
 import {
   handleWebhook,
   handleFlutterwaveWebhook,
@@ -30,6 +31,8 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/github", githubRoutes);
 router.use("/projects", projectRoutes);
+router.use("/cli", cliRoutes);
+router.use("/api/cli", cliRoutes);
 router.use("/portal", portalRoutes); // public — no auth
 router.use("/billing", billingRoutes);
 router.use("/admin", adminRoutes);
