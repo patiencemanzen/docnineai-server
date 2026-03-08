@@ -49,6 +49,12 @@ router.post(
 // Uses httpOnly refresh token cookie — no Bearer token needed
 router.post("/refresh", wrap(ctrl.refresh));
 
+// CLI login flow (browser-assisted, cookie-based approval)
+router.post("/cli/init", wrap(ctrl.cliInit));
+router.get("/cli/poll/:sessionId", wrap(ctrl.cliPoll));
+router.post("/cli/approve", wrap(ctrl.cliApprove));
+router.post("/cli/cancel", wrap(ctrl.cliCancel));
+
 // ── OAuth — Social Login (GitHub) ─────────────────────────────
 // The callbacks use redirect so they must NOT be JSON-wrapped.
 router.get("/github/start", ctrl.githubLoginStart);

@@ -4,6 +4,7 @@
 // ===================================================================
 
 import * as authService from "./auth.service.js";
+import * as cliAuthService from "./cli-auth.service.js";
 import { ok, fail, serverError } from "../../utils/response.util.js";
 import { getRefreshCookieOpts } from "../../utils/jwt.util.js";
 
@@ -418,5 +419,61 @@ export async function updateWebhookSettings(req, res) {
     return ok(res, settings, "Webhook settings updated.");
   } catch (err) {
     return serverError(res, err, "updateWebhookSettings");
+  }
+}
+
+// CLI auth flow
+// POST /auth/cli/init
+export async function cliInit(req, res) {
+  try {
+    const out = await cliAuthService.initCliSession({
+      userAgent: req.get("user-agent"),
+      ipAddress: req.ip,
+      frontendBaseUrl: process.env.FRONTEND_URL || "https://docnineai.com",
+    });
+    return res.status(201).json(out);
+  } catch (err) {
+    return serverError(res, err, "cliInit");
+  }
+}
+
+// GET /auth/cli/poll/:sessionId
+export async function cliPoll(req, res) {
+  try {
+    const result = await cliAuthService.pollCliSession(req.params.sessionId);
+    return res.json(result);
+  } catch (err) {
+    return serverError(res, err, "cliPoll");
+  }
+}
+
+// POST /auth/cli/approve
+export async function cliApprove(req, res) {
+  const { sessionId } = req.body || {};
+  const refreshToken = req.cookies?.refreshToken;
+
+  try {
+    const user = await cliAuthService.authenticateCliApprover(refreshToken);
+    await cliAuthService.approveCliSession({
+      sessionId,
+      userId: user._id,
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    if (err.code && err.status) {
+      return fail(res, err.code, err.message, err.status);
+    }
+    return serverError(res, err, "cliApprove");
+  }
+}
+
+// POST /auth/cli/cancel
+export async function cliCancel(req, res) {
+  const { sessionId } = req.body || {};
+  try {
+    await cliAuthService.cancelCliSession(sessionId);
+    return res.json({ success: true });
+  } catch (err) {
+    return serverError(res, err, "cliCancel");
   }
 }

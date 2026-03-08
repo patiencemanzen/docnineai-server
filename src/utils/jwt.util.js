@@ -45,14 +45,16 @@ function getSecrets() {
 /**
  * Sign an access token.
  * @param {{ userId: string, email: string }} payload
+ * @param {{ expiresIn?: string }} [options]
  * @returns {string} signed JWT
  */
-export function signAccessToken(payload) {
+export function signAccessToken(payload, options = {}) {
   const { ACCESS_SECRET } = getSecrets();
+  const expiresIn = options.expiresIn || ACCESS_TTL;
   return jwt.sign(
     { sub: payload.userId, email: payload.email, role: payload.role ?? "user" },
     ACCESS_SECRET,
-    { expiresIn: ACCESS_TTL },
+    { expiresIn },
   );
 }
 
