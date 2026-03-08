@@ -429,7 +429,7 @@ export async function cliInit(req, res) {
     const out = await cliAuthService.initCliSession({
       userAgent: req.get("user-agent"),
       ipAddress: req.ip,
-      frontendBaseUrl: process.env.FRONTEND_URL || "https://docnineai.com",
+      frontendBaseUrl: process.env.CLI_AUTH_FRONTEND_URL || "https://docnineai.com",
     });
     return res.status(201).json(out);
   } catch (err) {

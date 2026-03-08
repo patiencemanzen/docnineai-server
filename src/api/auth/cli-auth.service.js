@@ -43,7 +43,7 @@ export async function initCliSession({ userAgent, ipAddress, frontendBaseUrl }) 
     ipAddress: ipAddress || null,
   });
 
-  const baseUrl = (frontendBaseUrl || process.env.FRONTEND_URL || "https://docnineai.com")
+  const baseUrl = (frontendBaseUrl || process.env.CLI_AUTH_FRONTEND_URL || "https://docnineai.com")
     .replace(/\/$/, "");
 
   return {
