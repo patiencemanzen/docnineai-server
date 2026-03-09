@@ -78,17 +78,24 @@ export async function initializePayment({
 }) {
   const client = flwClient();
   try {
+    const isRWF = currency === "RWF";
+
+    // USD → card only
+    // RWF → card + MTN/Airtel mobile money (USSD not supported for RWF)
+    const payment_options = isRWF ? "card, mobilemoneyrwanda" : "card";
+
     const { data } = await client.post("/payments", {
       tx_ref: txRef,
       amount,
       currency,
       redirect_url:
         redirectUrl || `${process.env.FRONTEND_URL}/billing?status=paid`,
+      payment_options,
       customer: { email, name, phonenumber: phone || undefined },
       customizations: {
         title: "Docnine",
         description: `Subscribe to ${planId} plan`,
-        logo: `${process.env.FRONTEND_URL}/logo.png`,
+        logo: `${process.env.FRONTEND_URL}/logo-light.png`,
       },
       meta: { plan: planId },
     });
