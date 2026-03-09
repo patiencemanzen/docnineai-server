@@ -20,7 +20,7 @@ export function protect(req, res, next) {
     return fail(
       res,
       "NO_TOKEN",
-      "Authentication required. Provide a Bearer token.",
+      "Failed to authenticate. Session must be expired or missing.",
       401,
     );
   }
