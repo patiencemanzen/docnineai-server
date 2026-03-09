@@ -1,6 +1,6 @@
-# Docnine
+# Docnine API
 
-> **AI-powered GitHub documentation generator** — SaaS platform with authentication, persistent projects, and live pipeline streaming.
+> **An AI-powered documentation tool for developers and Project Manager.** — SaaS platform with authentication, persistent projects, and live pipeline streaming.
 
 ![Node.js](https://img.shields.io/badge/Node.js-20+-green)
 ![MongoDB](https://img.shields.io/badge/MongoDB-8+-green)

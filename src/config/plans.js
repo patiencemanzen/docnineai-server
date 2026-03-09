@@ -42,7 +42,12 @@ export const PLAN_IDS = ["free", "starter", "pro", "team"];
 
 // Hierarchy level — higher = more powerful
 export const PLAN_LEVEL = { free: 0, starter: 1, pro: 2, team: 3 };
+export const TRIAL_DAYS = 7; // trial length for new users (who have never had a subscription before)
+export const DUNNING_MAX_DAYS = 10; // after this, consider subscription lost and stop retrying
+export const DUNNING_RETRY_DAYS = [0, 3, 7]; // retry on day 0, 3, 7
+export const DUNNING_EMAIL_DAYS = [1, 5, 10]; // email on day 1, 5, 10
 
+// ── Billing plans ───────────────────────────────────
 export const PLANS = {
   // ── Free ──────────────────────────────────────────────────────
   free: {
@@ -50,9 +55,10 @@ export const PLANS = {
     name: "Free",
     tagline: "Solo devs exploring the platform",
     prices: {
-      monthly: 0, // cents
-      annual: 0, // cents (per month, billed annually)
-      annualTotal: 0,
+      monthly: 0, // $0.00
+      annual: 0, // $0.00/mo billed annually
+      annualTotal: 0, // $0.00/yr
+      annualSavingsPct: 0,
     },
     limits: {
       projects: 2,
@@ -80,14 +86,17 @@ export const PLANS = {
   },
 
   // ── Starter ───────────────────────────────────────────────────
+  // Monthly:  $10.89/mo
+  // Annual:   $8.82/mo → $105.84/yr  (Save 19%)
   starter: {
     id: "starter",
     name: "Starter",
     tagline: "Freelancers & solo developers",
     prices: {
-      monthly: 1500, // $15.00
-      annual: 1200, // $12.00/mo (billed $144/yr)
-      annualTotal: 14400,
+      monthly: 1089, // $10.89/mo
+      annual: 882, // $8.82/mo billed annually
+      annualTotal: 10584, // $105.84/yr
+      annualSavingsPct: 19,
     },
     limits: {
       projects: null, // unlimited
@@ -115,14 +124,17 @@ export const PLANS = {
   },
 
   // ── Pro ───────────────────────────────────────────────────────
+  // Monthly:  $32.00/mo
+  // Annual:   $24.32/mo → $291.84/yr  (Save 24%)
   pro: {
     id: "pro",
     name: "Pro",
     tagline: "Small teams up to 5 seats",
     prices: {
-      monthly: 3800, // $38.00
-      annual: 2900, // $29.00/mo (billed $348/yr)
-      annualTotal: 34800,
+      monthly: 3200, // $32.00/mo
+      annual: 2432, // $24.32/mo billed annually
+      annualTotal: 29184, // $291.84/yr
+      annualSavingsPct: 24,
     },
     limits: {
       projects: null,
@@ -150,19 +162,23 @@ export const PLANS = {
   },
 
   // ── Team ──────────────────────────────────────────────────────
+  // Monthly:  $20.00/user/mo
+  // Annual:   $17.00/user/mo → $204.00/user/yr  (Save 15%)
+  // annualTotal is computed at runtime: 1700 * 12 * seats
   team: {
     id: "team",
     name: "Team",
     tagline: "Mid-size companies (6+ users)",
     prices: {
-      monthly: 2400, // $24.00/user/mo
-      annual: 1900, // $19.00/user/mo (billed annually)
-      annualTotal: null, // computed: 1900 * 12 * seats
+      monthly: 2000, // $20.00/user/mo
+      annual: 1700, // $17.00/user/mo billed annually
+      annualTotal: null, // computed: 1700 * 12 * seats = $204.00/user/yr
+      annualSavingsPct: 15,
     },
     limits: {
       projects: null,
       seats: null, // unlimited
-      extraSeatPriceMonthly: 2400, // each extra seat = $24/mo (monthly plan)
+      extraSeatPriceMonthly: 2000, // $20.00/mo per extra seat (monthly plan)
       attachmentsPerProject: null,
       maxFileSizeMb: 100,
       aiChatsPerMonth: null, // unlimited
@@ -235,8 +251,3 @@ export function isUpgrade(currentPlanId, targetPlanId) {
 export function isDowngrade(currentPlanId, targetPlanId) {
   return (PLAN_LEVEL[targetPlanId] ?? 0) < (PLAN_LEVEL[currentPlanId] ?? 0);
 }
-
-export const TRIAL_DAYS = 14;
-export const DUNNING_MAX_DAYS = 14;
-export const DUNNING_RETRY_DAYS = [0, 3, 7]; // retry on day 0, 3, 7
-export const DUNNING_EMAIL_DAYS = [1, 5, 10]; // email on day 1, 5, 10
