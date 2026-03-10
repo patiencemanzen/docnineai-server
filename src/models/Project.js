@@ -233,6 +233,34 @@ const ProjectSchema = new Schema(
       default: [],
       select: false,
     },
+    provider: {
+      type: String,
+      enum: ["github", "gitlab", "bitbucket", "azure"],
+      default: "github",
+    },
+
+    // Encrypted OAuth access token for providers that need per-user auth (GitLab, Bitbucket, Azure).
+    // null for GitHub (uses server-level GITHUB_TOKEN env var).
+    providerToken: {
+      type: String,
+      select: false, // never returned in queries unless explicitly selected
+    },
+
+    // ── Source type tracking ─────────────────────────────────
+    // Differentiates between git providers and ZIP uploads
+    sourceType: {
+      type: String,
+      enum: ["github", "gitlab", "bitbucket", "azure", "zip", "manual"],
+      default: "github",
+    },
+
+    // ── ZIP-specific metadata ────────────────────────────────
+    // Only populated for sourceType === "zip"
+    zipMetadata: {
+      type: Schema.Types.Mixed,
+      default: () => ({}),
+      select: false, // only fetched when needed
+    },
   },
   {
     timestamps: true,

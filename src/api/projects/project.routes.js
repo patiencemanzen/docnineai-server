@@ -10,6 +10,10 @@
 //   POST   /projects/:id/sync                 incremental sync (?force=true for full)
 //   GET    /projects/:id/stream               SSE live events
 //
+//   ── ZIP Upload ──────────────────────────────────────────────
+//   POST   /projects/zip/validate             validate ZIP without creating project
+//   POST   /projects/zip/upload               create project from ZIP
+//
 //   ── Document editing ────────────────────────────────────────
 //   PATCH  /projects/:id/docs/:section        save user edit
 //   DELETE /projects/:id/docs/:section/edit   revert to AI version
@@ -50,6 +54,7 @@ import * as ctrl from "./project.controller.js";
 import * as attachmentCtrl from "./attachment.controller.js";
 import * as shareCtrl from "./share.controller.js";
 import * as portalCtrl from "../portal/portal.controller.js";
+import zipRoutes from "./zip-upload.routes.js";
 import apispecRoutes from "../apispec/apispec.routes.js";
 import { protect } from "../../middleware/auth.middleware.js";
 import { rules, validate } from "../../middleware/validate.middleware.js";
@@ -60,6 +65,9 @@ import { SECTIONS } from "../../models/DocumentVersion.js";
 
 const router = Router();
 router.use(protect, apiLimiter);
+
+// ── ZIP Upload routes (must come before /:id param matching) ────
+router.use("/zip", zipRoutes);
 
 // ── Multer — in-memory storage for file uploads ───────────────
 // 10 MB limit; all file types accepted (content-type checked in controller).

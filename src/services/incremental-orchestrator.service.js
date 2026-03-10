@@ -46,13 +46,8 @@
 //    agent execution instead of after, hiding its latency
 // ===================================================================
 
-import {
-  getCommitSha,
-  getFileTreeWithSha,
-  fetchFileContents,
-  computeFileDiff,
-  getRepoMeta,
-} from "./github.service.js";
+import { getAdapter } from "./provider.adapter.js";
+import { decrypt } from "../utils/crypto.util.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
 import { apiExtractorAgent } from "../agents/api-extractor.agent.js";
@@ -108,6 +103,20 @@ async function getDocWriter() {
   const m = await import("../agents/doc-writer.agent.js");
   _docWriterAgent = m.docWriterAgent;
   return _docWriterAgent;
+}
+
+/**
+ * Resolve the correct git service and decrypted access token for a project.
+ * GitHub uses the server-level GITHUB_TOKEN env var (accessToken = null).
+ * GitLab uses the per-user token stored encrypted on the project document.
+ */
+function resolveGit(project) {
+  const provider = project.provider || "github";
+  const git = getAdapter(provider);
+  const accessToken = project.providerToken
+    ? decrypt(project.providerToken)
+    : null; // GitHub: null — github.service.js reads GITHUB_TOKEN internally
+  return { git, accessToken };
 }
 
 // ─── Timeout + cancellation ───────────────────────────────────────
@@ -167,9 +176,10 @@ async function runAgent({ label, step, fn, timeout, fallback, emit }) {
 // ─── Pure helpers ─────────────────────────────────────────────────
 
 function parseOwnerRepo(project) {
-  const match = project.repoUrl?.match(/github\.com\/([^/]+)\/([^/?.#]+)/);
-  if (!match) throw new Error(`Cannot parse repoUrl: ${project.repoUrl}`);
-  return { owner: match[1], repoName: match[2].replace(/\.git$/, "") };
+  const provider = project.provider || "github";
+  const git = getAdapter(provider);
+  const { owner, repo } = git.parseRepoUrl(project.repoUrl);
+  return { owner, repoName: repo };
 }
 
 function categoriseWebhookFiles(webhookFiles) {
@@ -655,6 +665,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
   };
 
   const { owner, repoName: repo } = parseOwnerRepo(project);
+  const { git, accessToken } = resolveGit(project);
 
   try {
     emit("sync", "running", "Starting incremental sync…", `${owner}/${repo}`);
@@ -669,8 +680,13 @@ export async function incrementalSync(project, onProgress, options = {}) {
     let meta, currentSha;
     try {
       [meta, currentSha] = await Promise.all([
-        getRepoMeta(owner, repo),
-        getCommitSha(owner, repo, project.meta?.defaultBranch || "main"),
+        git.getRepoMeta(owner, repo, accessToken),
+        git.getCommitSha(
+          owner,
+          repo,
+          project.meta?.defaultBranch || "main",
+          accessToken,
+        ),
       ]);
     } catch (err) {
       emit("sync:fetch", "error", "Failed to fetch repo metadata", err.message);
@@ -717,18 +733,17 @@ export async function incrementalSync(project, onProgress, options = {}) {
       changedFileEntries = [...added, ...modified, ...removed];
       // Fetch tree in background — needed for manifest update in Phase 8
       // We don't await here; it runs concurrently with the agent phase
-      currentTree = await getFileTreeWithSha(
-        owner,
-        repo,
-        meta.defaultBranch,
-      ).catch(() => []);
+      currentTree = await git
+        .getFileTreeWithSha(owner, repo, meta.defaultBranch, accessToken)
+        .catch(() => []);
     } else {
       try {
-        const diffResult = await computeFileDiff(
+        const diffResult = await git.computeFileDiff(
           owner,
           repo,
           meta.defaultBranch,
           project.fileManifest,
+          accessToken,
         );
         added = diffResult.added ?? [];
         modified = diffResult.modified ?? [];
@@ -832,8 +847,12 @@ export async function incrementalSync(project, onProgress, options = {}) {
 
     const { result: fetchResult, error: fetchErr } = await withTimeout(
       () =>
-        fetchFileContents(owner, repo, changedPathsToFetch, (msg) =>
-          emit("sync:fetch", "running", msg),
+        git.fetchFileContents(
+          owner,
+          repo,
+          changedPathsToFetch,
+          accessToken,
+          (msg) => emit("sync:fetch", "running", msg),
         ),
       TIMEOUTS.fetch,
       "File fetch",
@@ -884,7 +903,9 @@ export async function incrementalSync(project, onProgress, options = {}) {
     // so its latency is hidden behind the agent run time
     const treePromise =
       currentTree.length === 0
-        ? getFileTreeWithSha(owner, repo, meta.defaultBranch).catch(() => [])
+        ? git
+            .getFileTreeWithSha(owner, repo, meta.defaultBranch, accessToken)
+            .catch(() => [])
         : Promise.resolve(currentTree);
 
     const [

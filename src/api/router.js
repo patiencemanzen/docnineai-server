@@ -4,6 +4,9 @@
 // Route map:
 //   /auth          — authentication & session management
 //   /github        — GitHub OAuth + repository access
+//   /gitlab        — GitLab OAuth + repository access
+//   /bitbucket     — Bitbucket OAuth + repository access
+//   /azure         — Azure DevOps OAuth + repository access
 //   /projects      — project CRUD + pipeline + SSE stream + exports
 //   /webhook       — user-level GitHub webhooks + billing webhooks
 //   /document      — legacy document processing (backward compatibility)
@@ -15,6 +18,9 @@
 import { Router } from "express";
 import authRoutes from "./auth/auth.routes.js";
 import githubRoutes from "./github/github.routes.js";
+import gitlabRoutes from "./gitlab/gitlab.routes.js";
+import bitbucketRoutes from "./bitbucket/bitbucket.routes.js";
+import azureRoutes from "./azure/azure.routes.js";
 import projectRoutes from "./projects/project.routes.js";
 import portalRoutes from "./portal/portal.routes.js";
 import billingRoutes from "./billing/billing.routes.js";
@@ -30,6 +36,9 @@ const router = Router();
 
 router.use("/auth", authRoutes);
 router.use("/github", githubRoutes);
+router.use("/gitlab", gitlabRoutes);
+router.use("/bitbucket", bitbucketRoutes);
+router.use("/azure", azureRoutes);
 router.use("/projects", projectRoutes);
 router.use("/cli", cliRoutes);
 router.use("/api/cli", cliRoutes);

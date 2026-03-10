@@ -90,35 +90,26 @@ async function getIncrementalSync() {
 // ─── Helpers ──────────────────────────────────────────────────────
 
 /**
- * Parse and normalise a GitHub repository URL.
- * Accepts: full HTTPS URL, SSH URL, or "owner/repo" shorthand.
+ * Parse any supported git provider URL.
+ * Auto-detects provider from the URL host.
+ * Returns { owner, repoName, normalised, provider }.
  */
-function parseGitHubUrl(raw) {
-  const cleaned = raw
-    .trim()
-    .replace(/\.git$/, "")
-    .replace(/\/$/, "");
-
-  const https = cleaned.match(/github\.com[:/]([^/\s]+)\/([^/\s#?]+)/);
-  if (https)
+function parseRepoUrl(raw) {
+  const provider = detectProvider(raw);
+  try {
+    const { owner, repo } = adapterParseRepoUrl(provider, raw);
     return {
-      owner: https[1],
-      repoName: https[2],
-      normalised: `https://github.com/${https[1]}/${https[2]}`,
+      owner,
+      repoName:  repo,
+      normalised: normaliseRepoUrl(provider, raw),
+      provider,
     };
-
-  const short = cleaned.match(/^([^/\s]+)\/([^/\s]+)$/);
-  if (short)
-    return {
-      owner: short[1],
-      repoName: short[2],
-      normalised: `https://github.com/${short[1]}/${short[2]}`,
-    };
-
-  const err = new Error(`Cannot parse GitHub URL: "${raw}"`);
-  err.code = "INVALID_REPO_URL";
-  err.status = 400;
-  throw err;
+  } catch {
+    const err = new Error(`Cannot parse repository URL: "${raw}"`);
+    err.code   = "INVALID_REPO_URL";
+    err.status = 400;
+    throw err;
+  }
 }
 
 /**
@@ -401,7 +392,8 @@ export async function recoverOrphanedJobs() {
  * Returns immediately with the project document — pipeline runs async.
  */
 export async function createProject({ userId, repoUrl }) {
-  const { owner, repoName, normalised } = parseGitHubUrl(repoUrl);
+  // provider is auto-detected from the URL (github.com vs gitlab.com)
+  const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
 
   // Prevent duplicate pipelines for the same repo
   const active = await Project.findOne({
@@ -417,17 +409,36 @@ export async function createProject({ userId, repoUrl }) {
       409,
     );
 
-  const jobId = randomUUID();
-  // Generate a unique 32-byte hex secret for this project's webhook
+  // For GitLab: look up the user's stored access token so the pipeline
+  // can authenticate against the GitLab API.
+  let providerToken = null;
+  if (provider === "gitlab") {
+    const user = await User.findById(userId).select("+gitlab.accessToken");
+    if (!user?.gitlab?.accessToken) {
+      throw domainError(
+        "GitLab account not connected. Connect via Settings → GitLab.",
+        "GITLAB_NOT_CONNECTED",
+        400,
+      );
+    }
+    // Decrypt once here; re-encrypt and store on the project so the
+    // pipeline can use it without another DB round-trip.
+    const { encrypt } = await import("../../utils/crypto.util.js");
+    providerToken = encrypt(decrypt(user.gitlab.accessToken));
+  }
+
+  const jobId         = randomUUID();
   const webhookSecret = randomBytes(32).toString("hex");
 
   const project = await Project.create({
     userId,
-    repoUrl: normalised,
-    repoOwner: owner,
+    repoUrl:        normalised,
+    repoOwner:      owner,
     repoName,
+    provider,                  // ← new field
+    providerToken,             // ← new field (encrypted, null for GitHub)
     jobId,
-    status: "running",
+    status:         "running",
     search_language: "english",
     webhookSecret,
     webhookEnabled: true,
@@ -435,7 +446,6 @@ export async function createProject({ userId, repoUrl }) {
 
   registerJob(jobId);
 
-  // Fire-and-forget — caller streams progress via SSE
   runPipeline({ project, normalised, jobId }).catch((err) =>
     console.error(`❌ Pipeline crash [${jobId}]:`, err.message),
   );
