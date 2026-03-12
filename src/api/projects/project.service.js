@@ -1229,12 +1229,14 @@ export async function runZipPipeline({ project, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
 
-  console.log(`[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`);
+  console.log(
+    `[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`,
+  );
 
   try {
     // Extract files from project zipMetadata
     const { extractedFiles = [] } = project.zipMetadata || {};
-    
+
     if (!extractedFiles.length) {
       throw new Error("No extracted files found in ZIP metadata");
     }
@@ -1260,9 +1262,7 @@ export async function runZipPipeline({ project, jobId }) {
           path: f.path,
           size: f.content.length,
           modified: project.zipMetadata.uploadedAt,
-          hash: createHash("sha256")
-            .update(f.content)
-            .digest("hex"),
+          hash: createHash("sha256").update(f.content).digest("hex"),
         };
         return acc;
       }, {}),
@@ -1274,7 +1274,8 @@ export async function runZipPipeline({ project, jobId }) {
       topics: project.meta?.topics || [],
       isArchived: false,
       isFork: false,
-      README: extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
+      README:
+        extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
     };
 
     console.log(
@@ -1296,11 +1297,7 @@ export async function runZipPipeline({ project, jobId }) {
     console.log(`[zip-pipeline:${jobId}] Pipeline completed successfully`);
 
     // Build and persist the full update
-    const update = buildFullRunUpdate(
-      result,
-      normalised.lastCommitSha,
-      null,
-    );
+    const update = buildFullRunUpdate(result, normalised.lastCommitSha, null);
     await Project.findByIdAndUpdate(project._id, { $set: update });
 
     // Create version history for all generated sections (parallel)
@@ -1326,7 +1323,9 @@ export async function runZipPipeline({ project, jobId }) {
       routing: result.routing,
     });
 
-    console.log(`[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`);
+    console.log(
+      `[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`,
+    );
   } catch (err) {
     console.error(`[zip-pipeline:${jobId}] Fatal error:`, err.message);
     await Project.findByIdAndUpdate(project._id, {
@@ -1356,4 +1355,260 @@ function buildFileTree(files) {
     }
   }
   return tree;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM TABS MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a new custom tab for a project.
+ * Requires editor or owner access.
+ */
+export async function createCustomTab({
+  projectId,
+  userId,
+  name,
+  description,
+  content = "",
+}) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  // Validate tab name — must be unique per project
+  if (!name || name.trim().length === 0) {
+    throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
+  }
+
+  const trimmedName = name.trim();
+
+  // Check for duplicates (case-insensitive)
+  const isDuplicate = project.customTabs?.some(
+    (t) => t.name.toLowerCase() === trimmedName.toLowerCase(),
+  );
+
+  if (isDuplicate) {
+    throw domainError(
+      `A tab named "${trimmedName}" already exists`,
+      "DUPLICATE_TAB",
+      409,
+    );
+  }
+
+  // Calculate order (add to end)
+  const maxOrder =
+    project.customTabs?.length > 0
+      ? Math.max(...project.customTabs.map((t) => t.order))
+      : 0;
+
+  const newTab = {
+    name: trimmedName,
+    description: description?.trim() || "",
+    content: content?.trim() || "",
+    order: (maxOrder || 0) + 1,
+    isNative: false,
+    createdBy: userId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const updated = await Project.findByIdAndUpdate(
+    projectId,
+    { $push: { customTabs: newTab } },
+    { new: true },
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * Update a custom tab's name, description, or content.
+ * Requires editor or owner access.
+ * Cannot update "Other Docs" (reserved tab).
+ */
+export async function updateCustomTab({
+  projectId,
+  userId,
+  tabId,
+  name,
+  description,
+  content,
+}) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  const tab = project.customTabs?.find(
+    (t) => t._id?.toString() === tabId?.toString(),
+  );
+
+  if (!tab) {
+    throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
+  }
+
+  // Build update object
+  const updates = { updatedAt: new Date() };
+
+  // Validate and update name
+  if (name !== undefined && name !== null) {
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+      throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
+    }
+
+    // Check for duplicate names (excluding this tab)
+    const isDuplicate = project.customTabs?.some(
+      (t) =>
+        t._id?.toString() !== tabId?.toString() &&
+        t.name.toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      throw domainError(
+        `A tab named "${trimmedName}" already exists`,
+        "DUPLICATE_TAB",
+        409,
+      );
+    }
+
+    updates.name = trimmedName;
+  }
+
+  // Update description
+  if (description !== undefined) {
+    updates.description = description?.trim() || "";
+  }
+
+  // Update content (with versioning)
+  if (content !== undefined) {
+    const oldContent = tab.content;
+    updates.content = content?.trim() || "";
+
+    // Create version snapshot if content changed
+    if (oldContent !== updates.content) {
+      const snapshotSource = project.editedCustomTabs?.some(
+        (e) => e.tabId?.toString() === tabId?.toString(),
+      )
+        ? "user"
+        : "ai_full";
+
+      if (oldContent) {
+        await DocumentVersion.createVersion({
+          projectId: project._id,
+          section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+          content: oldContent,
+          source: snapshotSource,
+          meta: { changeSummary: "Snapshot before content edit" },
+        }).catch((err) =>
+          console.warn("[versions] Custom tab snapshot failed:", err.message),
+        );
+      }
+
+      // Record new version
+      await DocumentVersion.createVersion({
+        projectId: project._id,
+        section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+        content: updates.content,
+        source: "user",
+        meta: { changeSummary: "Custom tab edit" },
+      }).catch((err) =>
+        console.warn("[versions] Custom tab version save failed:", err.message),
+      );
+
+      // Mark as edited
+      let editedCustomTabs = (project.editedCustomTabs || []).filter(
+        (e) => e.tabId?.toString() !== tabId?.toString(),
+      );
+      editedCustomTabs.push({
+        tabId,
+        editedAt: new Date(),
+        stale: false,
+      });
+      await Project.findByIdAndUpdate(projectId, { editedCustomTabs });
+    }
+  }
+
+  // Apply updates to the specific tab
+  await Project.updateOne(
+    { _id: projectId, "customTabs._id": tabId },
+    {
+      $set: {
+        "customTabs.$": { ...(tab.toObject?.() || tab), ...updates },
+      },
+    },
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * Delete a custom tab.
+ * Requires owner access (stricter than editor).
+ * Cannot delete "Other Docs" (reserved tab).
+ */
+export async function deleteCustomTab({ projectId, userId, tabId }) {
+  const project = await assertAccess(projectId, userId, "owner");
+
+  const tab = project.customTabs?.find(
+    (t) => t._id?.toString() === tabId?.toString(),
+  );
+
+  if (!tab) {
+    throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
+  }
+
+  // Remove the tab
+  await Project.findByIdAndUpdate(projectId, {
+    $pull: { customTabs: { _id: tabId } },
+  });
+
+  // Remove related edited tracking
+  await Project.findByIdAndUpdate(projectId, {
+    $pull: { editedCustomTabs: { tabId } },
+  });
+
+  // Delete version history for this tab
+  await DocumentVersion.deleteMany({
+    projectId,
+    section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+  }).catch((err) =>
+    console.warn(
+      "[versions] Failed to delete custom tab versions:",
+      err.message,
+    ),
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * List all custom tabs for a project.
+ * Sorted by order for consistent UI display.
+ */
+export async function listCustomTabs({ projectId, userId }) {
+  const project = await assertAccess(projectId, userId, "viewer");
+
+  const tabs = project.customTabs?.sort((a, b) => a.order - b.order) || [];
+
+  return { tabs };
+}
+
+/**
+ * Reorder custom tabs (bulk update).
+ * Requires editor or owner access.
+ * Input: array of { tabId, order }
+ */
+export async function reorderCustomTabs({ projectId, userId, orders }) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  if (!Array.isArray(orders)) {
+    throw domainError("orders must be an array", "VALIDATION_ERROR", 422);
+  }
+
+  // Update each tab's order
+  for (const { tabId, order } of orders) {
+    await Project.updateOne(
+      { _id: projectId, "customTabs._id": tabId },
+      { $set: { "customTabs.$.order": order } },
+    );
+  }
+
+  return getProjectById({ projectId, userId });
 }

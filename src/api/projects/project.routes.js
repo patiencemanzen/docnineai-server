@@ -250,6 +250,24 @@ router.get("/:id/portal", validateMongoId, wrap(portalCtrl.getOwnerPortal));
 router.put("/:id/portal", validateMongoId, wrap(portalCtrl.upsertPortal));
 router.post("/:id/portal/publish", validateMongoId, checkPortalPublishLimit, wrap(portalCtrl.togglePublish));
 
+// ── Custom Tabs ───────────────────────────────────────────────
+// POST   /projects/:id/custom-tabs          — create custom tab
+// GET    /projects/:id/custom-tabs          — list custom tabs
+// PATCH  /projects/:id/custom-tabs/:tabId   — update custom tab
+// DELETE /projects/:id/custom-tabs/:tabId   — delete custom tab
+// PATCH  /projects/:id/custom-tabs/reorder  — reorder custom tabs
+
+const validateTabId = [
+  param("tabId").isMongoId().withMessage("Invalid tab ID"),
+  validate,
+];
+
+router.post("/:id/custom-tabs", validateMongoId, wrap(ctrl.createCustomTab));
+router.get("/:id/custom-tabs", validateMongoId, wrap(ctrl.listCustomTabs));
+router.patch("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.updateCustomTab));
+router.delete("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.deleteCustomTab));
+router.patch("/:id/custom-tabs/reorder", validateMongoId, wrap(ctrl.reorderCustomTabs));
+
 
 // ── API Spec (OpenAPI / Postman importer) ─────────────────────
 // GET    /projects/:id/apispec          — get imported spec

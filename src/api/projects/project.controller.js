@@ -810,3 +810,125 @@ export async function resetChat(req, res) {
 
   return ok(res, null, "Chat history cleared.");
 }
+
+// ─────────────────────────────────────────────────────────────
+// CUSTOM TABS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /projects/:id/custom-tabs
+ * Create a new custom tab.
+ * Body: { name, description?, content? }
+ */
+export async function createCustomTab(req, res) {
+  const { name, description, content } = req.body;
+
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    return fail(res, "VALIDATION_ERROR", "name is required and must be a string", 422);
+  }
+
+  try {
+    const result = await projectService.createCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      name,
+      description,
+      content,
+    });
+    return ok(res, { project: result }, "Custom tab created.", 201);
+  } catch (err) {
+    return handleErr(res, err, "createCustomTab");
+  }
+}
+
+/**
+ * PATCH /projects/:id/custom-tabs/:tabId
+ * Update a custom tab (name, description, content).
+ * Body: { name?, description?, content? }
+ */
+export async function updateCustomTab(req, res) {
+  const { tabId } = req.params;
+  const { name, description, content } = req.body;
+
+  if (!tabId) {
+    return fail(res, "VALIDATION_ERROR", "tabId is required", 400);
+  }
+
+  try {
+    const result = await projectService.updateCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      tabId,
+      name,
+      description,
+      content,
+    });
+    return ok(res, { project: result }, "Custom tab updated.");
+  } catch (err) {
+    return handleErr(res, err, "updateCustomTab");
+  }
+}
+
+/**
+ * DELETE /projects/:id/custom-tabs/:tabId
+ * Delete a custom tab.
+ */
+export async function deleteCustomTab(req, res) {
+  const { tabId } = req.params;
+
+  if (!tabId) {
+    return fail(res, "VALIDATION_ERROR", "tabId is required", 400);
+  }
+
+  try {
+    const result = await projectService.deleteCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      tabId,
+    });
+    return ok(res, { project: result }, "Custom tab deleted.");
+  } catch (err) {
+    return handleErr(res, err, "deleteCustomTab");
+  }
+}
+
+/**
+ * GET /projects/:id/custom-tabs
+ * List all custom tabs for a project.
+ */
+export async function listCustomTabs(req, res) {
+  try {
+    const result = await projectService.listCustomTabs({
+      projectId: req.params.id,
+      userId: req.user.userId,
+    });
+    return ok(res, result);
+  } catch (err) {
+    return handleErr(res, err, "listCustomTabs");
+  }
+}
+
+/**
+ * PATCH /projects/:id/custom-tabs/reorder
+ * Reorder all custom tabs.
+ * Body: { orders: [{ tabId, order }, ...] }
+ */
+export async function reorderCustomTabs(req, res) {
+  const { orders } = req.body;
+
+  if (!Array.isArray(orders)) {
+    return fail(res, "VALIDATION_ERROR", "orders must be an array", 422);
+  }
+
+  try {
+    const result = await projectService.reorderCustomTabs({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      orders,
+    });
+    return ok(res, { project: result }, "Custom tabs reordered.");
+  } catch (err) {
+    return handleErr(res, err, "reorderCustomTabs");
+  }
+}
+
