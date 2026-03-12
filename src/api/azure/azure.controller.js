@@ -4,6 +4,7 @@
 
 import * as azureOAuthService from "./azure-oauth.service.js";
 import * as azureService from "../../services/azure-devops.service.js";
+import { User } from "../../models/User.js";
 import { ok, fail, serverError } from "../../utils/response.util.js";
 
 export async function oauthStart(req, res) {
@@ -24,18 +25,26 @@ export async function oauthStart(req, res) {
 
 export async function oauthCallback(req, res) {
   const frontendUrl = process.env.FRONTEND_URL || "";
-  const { assertion, state, error: oauthError } = req.query;
+  const { code, state, error: oauthError } = req.query;
+
+  console.log("[Azure OAuth] Callback received", {
+    hasCode: !!code,
+    hasState: !!state,
+    hasError: !!oauthError,
+  });
 
   if (oauthError) {
+    console.warn("[Azure OAuth] OAuth error from Azure", oauthError);
     const msg = encodeURIComponent(`Azure DevOps denied access: ${oauthError}`);
     return res.redirect(
       `${frontendUrl}/azure/oauth/complete?azure=error&msg=${msg}`,
     );
   }
 
-  if (!assertion || !state) {
+  if (!code || !state) {
+    console.error("[Azure OAuth] Missing code or state");
     const msg = encodeURIComponent(
-      "Missing assertion or state — please try again.",
+      "Missing code or state — please try again.",
     );
     return res.redirect(
       `${frontendUrl}/azure/oauth/complete?azure=error&msg=${msg}`,
@@ -43,15 +52,25 @@ export async function oauthCallback(req, res) {
   }
 
   try {
-    const { azureUsername } = await azureOAuthService.handleOAuthCallback({
-      assertion,
+    console.log("[Azure OAuth] Exchanging code for token...");
+    const result = await azureOAuthService.handleOAuthCallback({
+      code,
       state,
     });
-    const user = encodeURIComponent(azureUsername);
+    console.log("[Azure OAuth] Successfully stored token", {
+      azureUsername: result.azureUsername,
+      userId: result.userId,
+    });
+    const user = encodeURIComponent(result.azureUsername);
     return res.redirect(
       `${frontendUrl}/azure/oauth/complete?azure=connected&user=${user}`,
     );
   } catch (err) {
+    console.error("[Azure OAuth] Callback failed", {
+      code: err.code,
+      message: err.message,
+      status: err.status,
+    });
     const msg = encodeURIComponent(
       err.message || "Azure DevOps connection failed.",
     );
@@ -63,8 +82,17 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
+    // Query User to get the encrypted token (auth middleware only sets userId/email)
+    const user = await User.findById(req.user.userId).select(
+      "+azureDevOpsTokenEncrypted",
+    );
+
+    if (!user || !user.azureDevOpsTokenEncrypted) {
+      return ok(res, { repos: [], hasNextPage: false });
+    }
+
     const token = await azureOAuthService.decryptProvidersToken(
-      req.user.azureDevOpsTokenEncrypted,
+      user.azureDevOpsTokenEncrypted,
     );
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
     const perPage = Math.min(
@@ -86,12 +114,43 @@ export async function listRepos(req, res) {
 
 export async function connectionStatus(req, res) {
   try {
-    const hasConnection = !!req.user.azureDevOpsTokenEncrypted;
+    console.log("[Azure Status] Checking connection for user", {
+      userId: req.user.userId,
+    });
+
+    const user = await User.findById(req.user.userId).select(
+      "+azureDevOpsTokenEncrypted",
+    );
+    if (!user) {
+      console.error("[Azure Status] User not found", {
+        userId: req.user.userId,
+      });
+      return ok(res, { connected: false, azureUsername: null });
+    }
+
+    console.log("[Azure Status] User found", {
+      userId: user._id,
+      hasTokenEncrypted: !!user.azureDevOpsTokenEncrypted,
+      azureDevOpsUsername: user.azureDevOpsUsername,
+    });
+
+    const hasConnection = !!user.azureDevOpsTokenEncrypted;
+
+    if (!hasConnection) {
+      console.warn("[Azure Status] No token found for user", {
+        userId: user._id,
+      });
+    }
+
     return ok(res, {
       connected: hasConnection,
-      azureUsername: req.user.azureDevOpsUsername || null,
+      azureUsername: user.azureDevOpsUsername || null,
     });
   } catch (err) {
+    console.error("[Azure Status] Error checking connection", {
+      message: err.message,
+      userId: req.user.userId,
+    });
     return serverError(res, err, "connectionStatus");
   }
 }

@@ -35,7 +35,7 @@
 //   recoverOrphanedJobs — startup recovery for interrupted pipelines
 // ===================================================================
 
-import { randomUUID, randomBytes } from "crypto";
+import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../models/Project.js";
 import { DocumentVersion, SECTIONS } from "../../models/DocumentVersion.js";
@@ -100,13 +100,13 @@ function parseRepoUrl(raw) {
     const { owner, repo } = adapterParseRepoUrl(provider, raw);
     return {
       owner,
-      repoName:  repo,
+      repoName: repo,
       normalised: normaliseRepoUrl(provider, raw),
       provider,
     };
   } catch {
     const err = new Error(`Cannot parse repository URL: "${raw}"`);
-    err.code   = "INVALID_REPO_URL";
+    err.code = "INVALID_REPO_URL";
     err.status = 400;
     throw err;
   }
@@ -427,18 +427,18 @@ export async function createProject({ userId, repoUrl }) {
     providerToken = encrypt(decrypt(user.gitlab.accessToken));
   }
 
-  const jobId         = randomUUID();
+  const jobId = randomUUID();
   const webhookSecret = randomBytes(32).toString("hex");
 
   const project = await Project.create({
     userId,
-    repoUrl:        normalised,
-    repoOwner:      owner,
+    repoUrl: normalised,
+    repoOwner: owner,
     repoName,
-    provider,                  // ← new field
-    providerToken,             // ← new field (encrypted, null for GitHub)
+    provider, // ← new field
+    providerToken, // ← new field (encrypted, null for GitHub)
     jobId,
-    status:         "running",
+    status: "running",
     search_language: "english",
     webhookSecret,
     webhookEnabled: true,
@@ -454,9 +454,67 @@ export async function createProject({ userId, repoUrl }) {
 }
 
 /**
- * Retry a failed or errored project with a completely fresh full pipeline run.
- * Clears all stored outputs so the run starts from a clean state.
+ * Create a blank "from scratch" project.
+ * No repository, no pipeline — just an empty documentation project.
  */
+export async function createFromScratchProject({ userId, projectName }) {
+  if (!projectName || projectName.trim().length === 0) {
+    throw domainError("Project name is required.", "INVALID_PROJECT_NAME", 400);
+  }
+
+  // Use project name as both owner and repo name for pseudo-URL
+  const cleanName = projectName.trim().replace(/\s+/g, "-").toLowerCase();
+
+  // Check for duplicates with same name
+  const existing = await Project.findOne({
+    userId,
+    repoName: cleanName,
+    sourceType: "manual",
+    status: { $ne: "archived" },
+  });
+
+  if (existing) {
+    throw domainError(
+      `A project named "${projectName}" already exists.`,
+      "DUPLICATE_PROJECT",
+      409,
+    );
+  }
+
+  const project = await Project.create({
+    userId,
+    repoUrl: `manual://${cleanName}`, // pseudo-URL for manual projects
+    repoOwner: "manual",
+    repoName: cleanName,
+    provider: "github", // default provider (unused for manual projects)
+    sourceType: "manual", // marks as from-scratch
+    status: "done", // no pipeline needed
+    meta: {
+      name: projectName,
+      description: `Manual documentation for ${projectName}`,
+    },
+    output: {
+      readme: `# ${projectName}\n\nProject documentation created from scratch. Start editing!`,
+      internalDocs: "",
+      apiReference: "",
+      schemaDocs: "",
+      securityReport: "",
+    },
+    editedOutput: {},
+    editedSections: [],
+    stats: {
+      filesAnalysed: 0,
+      endpoints: 0,
+      models: 0,
+      relationships: 0,
+      components: 0,
+    },
+  });
+
+  return project;
+}
+
+//  * Clears all stored outputs so the run starts from a clean state.
 export async function retryProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
@@ -1160,4 +1218,142 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     });
     failJob(jobId, err);
   }
+}
+
+/**
+ * Run the full pipeline for a ZIP-uploaded project.
+ * Normalizes extracted files similar to Git projects and runs orchestrator.
+ * Called by ZIP upload controller.
+ */
+export async function runZipPipeline({ project, jobId }) {
+  const orchestrate = await getOrchestrate();
+  const onProgress = makeProgressHandler(project._id, jobId);
+
+  console.log(`[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`);
+
+  try {
+    // Extract files from project zipMetadata
+    const { extractedFiles = [] } = project.zipMetadata || {};
+    
+    if (!extractedFiles.length) {
+      throw new Error("No extracted files found in ZIP metadata");
+    }
+
+    console.log(
+      `[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`,
+    );
+
+    // Normalize ZIP files into the same format as Git providers
+    const normalised = {
+      owner: project.repoOwner || "local",
+      repo: project.repoName || "zip-project",
+      branch: "main",
+      commits: [],
+      files: extractedFiles.map((f) => ({
+        path: f.path,
+        type: "blob",
+        lastModified: project.zipMetadata.uploadedAt,
+      })),
+      fileTree: buildFileTree(extractedFiles),
+      fileManifest: extractedFiles.reduce((acc, f) => {
+        acc[f.path] = {
+          path: f.path,
+          size: f.content.length,
+          modified: project.zipMetadata.uploadedAt,
+          hash: createHash("sha256")
+            .update(f.content)
+            .digest("hex"),
+        };
+        return acc;
+      }, {}),
+      lastCommitSha: randomBytes(16).toString("hex"),
+      lastCommitDate: new Date(),
+      lastDocumentedCommit: null,
+      description: project.meta?.description || "",
+      language: project.meta?.language || "unknown",
+      topics: project.meta?.topics || [],
+      isArchived: false,
+      isFork: false,
+      README: extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
+    };
+
+    console.log(
+      `[zip-pipeline:${jobId}] Normalised ZIP project: ${extractedFiles.length} files, languages: ${normalised.language}`,
+    );
+
+    // Run the full orchestrator pipeline
+    const result = await orchestrate(normalised, onProgress);
+
+    if (!result.success) {
+      await Project.findByIdAndUpdate(project._id, {
+        status: "error",
+        errorMessage: result.error || "Unknown pipeline error",
+      });
+      failJob(jobId, new Error(result.error || "Unknown pipeline error"));
+      return;
+    }
+
+    console.log(`[zip-pipeline:${jobId}] Pipeline completed successfully`);
+
+    // Build and persist the full update
+    const update = buildFullRunUpdate(
+      result,
+      normalised.lastCommitSha,
+      null,
+    );
+    await Project.findByIdAndUpdate(project._id, { $set: update });
+
+    // Create version history for all generated sections (parallel)
+    await createInitialVersions(
+      project._id,
+      result.output,
+      normalised.lastCommitSha,
+    );
+
+    // Log non-fatal agent errors
+    if (result.agentErrors?.length) {
+      console.warn(
+        `[zip-pipeline:${jobId}] ${result.agentErrors.length} non-fatal agent error(s):`,
+        result.agentErrors.map((e) => `${e.agent}: ${e.error}`).join("; "),
+      );
+    }
+
+    finishJob(jobId, {
+      success: true,
+      stats: result.stats,
+      security: result.security,
+      agentErrors: result.agentErrors,
+      routing: result.routing,
+    });
+
+    console.log(`[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`);
+  } catch (err) {
+    console.error(`[zip-pipeline:${jobId}] Fatal error:`, err.message);
+    await Project.findByIdAndUpdate(project._id, {
+      status: "error",
+      errorMessage: err.message,
+    });
+    failJob(jobId, err);
+  }
+}
+
+/**
+ * Build a tree structure from extracted files for manifests.
+ */
+function buildFileTree(files) {
+  const tree = {};
+  for (const file of files) {
+    const parts = file.path.split("/");
+    let current = tree;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        current[part] = { type: "blob" };
+      } else {
+        current[part] = current[part] || { type: "tree" };
+        current = current[part];
+      }
+    }
+  }
+  return tree;
 }

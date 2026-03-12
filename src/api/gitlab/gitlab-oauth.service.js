@@ -19,6 +19,12 @@ function getOAuthConfig() {
   const REDIRECT_URI = process.env.GITLAB_REDIRECT_URI;
 
   if (!CLIENT_ID || !CLIENT_SECRET) {
+    console.error("[GitLab OAuth] Missing OAuth config", {
+      hasClientId: !!CLIENT_ID,
+      hasClientSecret: !!CLIENT_SECRET,
+      hasRedirectUri: !!REDIRECT_URI,
+      clientIdValue: CLIENT_ID ? "***" : undefined,
+    });
     throw new Error(
       "GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET must be set in .env\n" +
         "Create an OAuth App at: https://gitlab.com/oauth/applications",
@@ -52,7 +58,7 @@ export function buildOAuthUrl(userId) {
     redirect_uri: REDIRECT_URI,
     response_type: "code",
     state,
-    scope: "read_api read_repository",
+    scope: "api read_repository",
   });
 
   return `https://gitlab.com/oauth/authorize?${params.toString()}`;
@@ -75,65 +81,129 @@ export async function handleOAuthCallback({ code, state }) {
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret);
-  } catch {
-    const err = new Error(
+    console.log("[GitLab OAuth Service] State verified", {
+      userId: statePayload.userId,
+    });
+  } catch (err) {
+    console.error("[GitLab OAuth Service] State verification failed", {
+      message: err.message,
+    });
+    const e = new Error(
       "Invalid or expired OAuth state. Please start the OAuth flow again.",
     );
-    err.code = "INVALID_OAUTH_STATE";
-    err.status = 400;
-    throw err;
+    e.code = "INVALID_OAUTH_STATE";
+    e.status = 400;
+    throw e;
   }
 
   const userId = statePayload.userId;
 
   // 2. Exchange code for access token
-  const tokenRes = await axios.post(
-    "https://gitlab.com/oauth/token",
-    {
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      code,
-      grant_type: "authorization_code",
-      redirect_uri: REDIRECT_URI,
-    },
-    { headers: { Accept: "application/json" } },
-  );
+  console.log("[GitLab OAuth Service] Exchanging code for token...");
+  let tokenRes;
+  try {
+    tokenRes = await axios.post(
+      "https://gitlab.com/oauth/token",
+      {
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: REDIRECT_URI,
+      },
+      { headers: { Accept: "application/json" } },
+    );
+  } catch (err) {
+    console.error("[GitLab OAuth Service] Token exchange failed", {
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    const e = new Error(`GitLab token exchange failed: ${err.message}`);
+    e.code = "TOKEN_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
+  }
 
   const { access_token, refresh_token, error } = tokenRes.data;
   if (error || !access_token) {
-    const err = new Error(
+    console.error("[GitLab OAuth Service] No access token in response", {
+      error,
+      hasToken: !!access_token,
+    });
+    const e = new Error(
       `GitLab OAuth error: ${error || "no access token returned"}`,
     );
-    err.code = "OAUTH_EXCHANGE_FAILED";
-    err.status = 400;
+    e.code = "OAUTH_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
+  }
+
+  console.log("[GitLab OAuth Service] Got access token, fetching user profile...");
+
+  // 3. Fetch GitLab user profile using access token
+  let glUser;
+  try {
+    glUser = await glService.getAuthenticatedUser(access_token);
+  } catch (err) {
+    console.error("[GitLab OAuth Service] Failed to fetch user profile", {
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      data: err.response?.data,
+      message: err.message,
+    });
     throw err;
   }
 
-  // 3. Fetch GitLab user profile using access token
-  const glUser = await glService.getAuthenticatedUser(access_token);
+  console.log("[GitLab OAuth Service] Got GitLab user", {
+    gitlabId: glUser.id,
+    gitlabUsername: glUser.username,
+  });
 
   // 4. Update User record with GitLab identity
-  await User.findByIdAndUpdate(userId, {
+  console.log("[GitLab OAuth Service] Updating user with GitLab identity...");
+  const updated1 = await User.findByIdAndUpdate(userId, {
     gitlabId: String(glUser.id),
     gitlabUsername: glUser.username,
   });
 
+  if (!updated1) {
+    console.error("[GitLab OAuth Service] User not found when updating identity", {
+      userId,
+    });
+    throw new Error(
+      "User not found in database. Please log in again and try.",
+    );
+  }
+
   // 5. Store encrypted token on User document
-  // (For GitLab, we store per-project tokens in Project.providerToken)
-  // But we can also keep a default token on User for convenience
-  await User.findByIdAndUpdate(
+  console.log("[GitLab OAuth Service] Encrypting and storing token...");
+  const encryptedToken = encrypt(access_token);
+  const encryptedRefresh = refresh_token ? encrypt(refresh_token) : null;
+
+  const updated2 = await User.findByIdAndUpdate(
     userId,
     {
-      gitlabTokenEncrypted: encrypt(access_token),
-      gitlabRefreshTokenEncrypted: refresh_token
-        ? encrypt(refresh_token)
-        : null,
+      gitlabTokenEncrypted: encryptedToken,
+      gitlabRefreshTokenEncrypted: encryptedRefresh,
       gitlabConnectedAt: new Date(),
     },
     { new: true },
   );
 
-  return { gitlabUsername: glUser.username };
+  if (!updated2) {
+    console.error("[GitLab OAuth Service] User not found when storing token", {
+      userId,
+    });
+    throw new Error("Failed to store GitLab token. Please try again.");
+  }
+
+  console.log("[GitLab OAuth Service] Successfully stored token", {
+    userId,
+    hasTokenEncrypted: !!updated2.gitlabTokenEncrypted,
+    gitlabUsername: updated2.gitlabUsername,
+  });
+
+  return { gitlabUsername: glUser.username, userId };
 }
 
 // ── Store provider-specific token on project ──────────────────

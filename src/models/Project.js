@@ -235,7 +235,7 @@ const ProjectSchema = new Schema(
     },
     provider: {
       type: String,
-      enum: ["github", "gitlab", "bitbucket", "azure"],
+      enum: ["github", "gitlab", "bitbucket", "azure", "zip", "manual"],
       default: "github",
     },
 

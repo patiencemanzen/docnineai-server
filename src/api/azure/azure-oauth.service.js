@@ -44,15 +44,30 @@ export function buildOAuthUrl(userId) {
 
   const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m" });
 
+  console.log("[Azure OAuth] Building authorization URL", {
+    CLIENT_ID,
+    REDIRECT_URI,
+    scope: "vso.code",
+  });
+
+  // Azure DevOps OAuth2 authorization request
+  // Scope: vso.code includes both read and write permissions
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
-    response_type: "Assertion",
+    response_type: "code",
     state,
-    scope: "vso.code",
+    scope: "vso.code", // Standard Azure DevOps scope for code access
     redirect_uri: REDIRECT_URI,
   });
 
-  return `https://app.vssps.visualstudio.com/oauth2/authorize?${params.toString()}`;
+  // Azure DevOps OAuth2 authorization endpoint
+  const url = `https://app.vssps.visualstudio.com/oauth2/authorize?${params.toString()}`;
+  
+  // Log full URL for debugging
+  console.log("[Azure OAuth] Full authorization URL:");
+  console.log(url);
+  
+  return url;
 }
 
 // ── OAuth Step 2: Exchange assertion → token ──────────────────
@@ -62,7 +77,7 @@ export function buildOAuthUrl(userId) {
  * @param {{ assertion: string, state: string }}
  * @returns {{ azureUsername: string }}
  */
-export async function handleOAuthCallback({ assertion, state }) {
+export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
@@ -70,64 +85,130 @@ export async function handleOAuthCallback({ assertion, state }) {
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret);
-  } catch {
-    const err = new Error(
+    console.log("[Azure OAuth Service] State verified", {
+      userId: statePayload.userId,
+    });
+  } catch (err) {
+    console.error("[Azure OAuth Service] State verification failed", {
+      message: err.message,
+    });
+    const e = new Error(
       "Invalid or expired OAuth state. Please start the OAuth flow again.",
     );
-    err.code = "INVALID_OAUTH_STATE";
-    err.status = 400;
-    throw err;
+    e.code = "INVALID_OAUTH_STATE";
+    e.status = 400;
+    throw e;
   }
 
   const userId = statePayload.userId;
 
-  // 2. Exchange assertion for PAT
-  const tokenRes = await axios.post(
-    "https://app.vssps.visualstudio.com/oauth2/token",
-    {
-      assertion,
-      client_assertion_type:
-        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+  // 2. Exchange code for access token
+  console.log("[Azure OAuth Service] Exchanging code for token...");
+  let tokenRes;
+  try {
+    // Azure requires form-encoded data for token exchange
+    const params = new URLSearchParams({
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      grant_type: "authorization_code",
+      code,
       redirect_uri: REDIRECT_URI,
-    },
-  );
+    });
+
+    tokenRes = await axios.post(
+      "https://app.vssps.visualstudio.com/oauth2/token",
+      params.toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+    );
+  } catch (err) {
+    console.error("[Azure OAuth Service] Token exchange failed", {
+      status: err.response?.status,
+      data: err.response?.data,
+      message: err.message,
+    });
+    const e = new Error(`Azure token exchange failed: ${err.message}`);
+    e.code = "TOKEN_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
+  }
 
   const { access_token, refresh_token, error } = tokenRes.data;
+  
+  console.log("[Azure OAuth Service] Token exchange response", {
+    hasAccessToken: !!access_token,
+    hasRefreshToken: !!refresh_token,
+    error: error || null,
+    responseKeys: Object.keys(tokenRes.data || {}),
+  });
+  
   if (error || !access_token) {
-    const err = new Error(
+    console.error("[Azure OAuth Service] No access token in response", {
+      error,
+      hasToken: !!access_token,
+    });
+    const e = new Error(
       `Azure DevOps OAuth error: ${error || "no access token returned"}`,
     );
-    err.code = "OAUTH_EXCHANGE_FAILED";
-    err.status = 400;
-    throw err;
+    e.code = "OAUTH_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
   }
+
+  console.log("[Azure OAuth Service] Got access token, fetching user profile...");
 
   // 3. Fetch Azure DevOps user profile
   const azUser = await azService.getAuthenticatedUser(access_token);
 
+  console.log("[Azure OAuth Service] Got Azure user", {
+    azureId: azUser.id,
+    azureUsername: azUser.username,
+  });
+
   // 4. Update User record
-  await User.findByIdAndUpdate(userId, {
+  console.log("[Azure OAuth Service] Updating user with Azure identity...");
+  const updated1 = await User.findByIdAndUpdate(userId, {
     azureDevOpsId: azUser.id,
     azureDevOpsUsername: azUser.username,
   });
 
+  if (!updated1) {
+    console.error("[Azure OAuth Service] User not found when updating identity", {
+      userId,
+    });
+    throw new Error(
+      "User not found in database. Please log in again and try.",
+    );
+  }
+
   // 5. Store encrypted token
-  await User.findByIdAndUpdate(
+  console.log("[Azure OAuth Service] Encrypting and storing token...");
+  const encryptedToken = encrypt(access_token);
+  const encryptedRefresh = refresh_token ? encrypt(refresh_token) : null;
+
+  const updated2 = await User.findByIdAndUpdate(
     userId,
     {
-      azureDevOpsTokenEncrypted: encrypt(access_token),
-      azureDevOpsRefreshTokenEncrypted: refresh_token
-        ? encrypt(refresh_token)
-        : null,
+      azureDevOpsTokenEncrypted: encryptedToken,
+      azureDevOpsRefreshTokenEncrypted: encryptedRefresh,
       azureDevOpsConnectedAt: new Date(),
     },
     { new: true },
   );
 
-  return { azureUsername: azUser.username };
+  if (!updated2) {
+    console.error("[Azure OAuth Service] User not found when storing token", {
+      userId,
+    });
+    throw new Error("Failed to store Azure token. Please try again.");
+  }
+
+  console.log("[Azure OAuth Service] Successfully stored token", {
+    userId,
+    hasTokenEncrypted: !!updated2.azureDevOpsTokenEncrypted,
+    azureDevOpsUsername: updated2.azureDevOpsUsername,
+  });
+
+  return { azureUsername: azUser.username, userId };
 }
 
 // ── Token management ──────────────────────────────────────────

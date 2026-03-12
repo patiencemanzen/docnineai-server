@@ -98,6 +98,7 @@ router.get("/shared", wrap(shareCtrl.getSharedProjects));
 
 // ── Collection ────────────────────────────────────────────────
 router.post("/", rules.createProject, validate, checkProjectLimit, wrap(ctrl.createProject));
+router.post("/from-scratch", checkProjectLimit, wrap(ctrl.createFromScratchProject));
 router.get("/", rules.listProjects, validate, wrap(ctrl.listProjects));
 
 // ── Item ──────────────────────────────────────────────────────

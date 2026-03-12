@@ -295,44 +295,71 @@ export async function orchestrate(repoUrl, onProgress) {
   };
 
   // ── PHASE 1: Fetch Repository ─────────────────────────────────
-  emit("fetch", "running", "Connecting to GitHub…");
-  const fetchStart = Date.now();
-
+  // Support both: URL strings (fetch from provider) or pre-fetched objects (ZIP uploads)
   let meta, files, owner, repo;
-  try {
-    const fetched = await Promise.race([
-      fetchRepoFilesWithProgress(repoUrl, (msg) =>
-        emit("fetch", "running", msg),
-      ),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("GitHub fetch timed out")),
-          TIMEOUTS.fetch,
+  
+  const isPrefetched = typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
+  
+  if (isPrefetched) {
+    // ZIP project or other pre-fetched sources — files already extracted
+    emit("fetch", "running", "Using pre-extracted files…");
+    const fetchStart = Date.now();
+    ({ meta, files, owner, repo } = repoUrl);
+    const fetchDuration = Date.now() - fetchStart;
+    emit(
+      "fetch",
+      "done",
+      `${files.length} pre-extracted files ready`,
+      `${owner}/${repo}`,
+      fetchDuration,
+    );
+    trackStep("Fetch Repo", "done", `${files.length} files (pre-extracted)`, fetchDuration);
+  } else {
+    // Git-based projects — fetch from provider
+    emit("fetch", "running", "Connecting to GitHub…");
+    const fetchStart = Date.now();
+
+    try {
+      const fetched = await Promise.race([
+        fetchRepoFilesWithProgress(repoUrl, (msg) =>
+          emit("fetch", "running", msg),
         ),
-      ),
-    ]);
-    ({ meta, files, owner, repo } = fetched);
-  } catch (err) {
-    // Fetch failure is fatal — nothing else can run without files
-    emit("fetch", "error", "Failed to fetch repository", err.message);
-    return { success: false, error: err.message, phase: "fetch" };
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("GitHub fetch timed out")),
+            TIMEOUTS.fetch,
+          ),
+        ),
+      ]);
+      ({ meta, files, owner, repo } = fetched);
+    } catch (err) {
+      // Fetch failure is fatal — nothing else can run without files
+      emit("fetch", "error", "Failed to fetch repository", err.message);
+      return { success: false, error: err.message, phase: "fetch" };
+    }
+    
+    const fetchDuration = Date.now() - fetchStart;
+    emit(
+      "fetch",
+      "done",
+      `${files.length} files downloaded`,
+      `${owner}/${repo}`,
+      fetchDuration,
+    );
+    trackStep("Fetch Repo", "done", `${files.length} files`, fetchDuration);
   }
 
-  const fetchDuration = Date.now() - fetchStart;
-  emit(
-    "fetch",
-    "done",
-    `${files.length} files downloaded`,
-    `${owner}/${repo}`,
-    fetchDuration,
-  );
-  trackStep("Fetch Repo", "done", `${files.length} files`, fetchDuration);
-
   // Fetch commit SHA and file tree in parallel — lightweight, non-blocking
-  const [currentCommitSha, treeWithSha] = await Promise.all([
-    getCommitSha(owner, repo, meta.defaultBranch).catch(() => null),
-    getFileTreeWithSha(owner, repo, meta.defaultBranch).catch(() => []),
-  ]);
+  // (Skip for pre-fetched ZIP projects — already have this data)
+  let currentCommitSha = repoUrl.lastCommitSha || null;
+  let treeWithSha = repoUrl.fileTree || [];
+  
+  if (!isPrefetched) {
+    [currentCommitSha, treeWithSha] = await Promise.all([
+      getCommitSha(owner, repo, meta.defaultBranch).catch(() => null),
+      getFileTreeWithSha(owner, repo, meta.defaultBranch).catch(() => []),
+    ]);
+  }
 
   // ── PHASE 2: Agent 1 — Repo Scanner (Sequential, blocks all others) ──
   // Must run first — its projectMap, structure, and techStack drive

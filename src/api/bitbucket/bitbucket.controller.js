@@ -4,6 +4,7 @@
 
 import * as bitbucketOAuthService from "./bitbucket-oauth.service.js";
 import * as bitbucketService from "../../services/bitbucket.service.js";
+import { User } from "../../models/User.js";
 import { ok, fail, serverError } from "../../utils/response.util.js";
 
 export async function oauthStart(req, res) {
@@ -26,7 +27,14 @@ export async function oauthCallback(req, res) {
   const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
+  console.log("[Bitbucket OAuth] Callback received", {
+    hasCode: !!code,
+    hasState: !!state,
+    hasError: !!oauthError,
+  });
+
   if (oauthError) {
+    console.warn("[Bitbucket OAuth] OAuth error from Bitbucket", oauthError);
     const msg = encodeURIComponent(`Bitbucket denied access: ${oauthError}`);
     return res.redirect(
       `${frontendUrl}/bitbucket/oauth/complete?bitbucket=error&msg=${msg}`,
@@ -34,6 +42,7 @@ export async function oauthCallback(req, res) {
   }
 
   if (!code || !state) {
+    console.error("[Bitbucket OAuth] Missing code or state");
     const msg = encodeURIComponent("Missing code or state — please try again.");
     return res.redirect(
       `${frontendUrl}/bitbucket/oauth/complete?bitbucket=error&msg=${msg}`,
@@ -41,16 +50,25 @@ export async function oauthCallback(req, res) {
   }
 
   try {
-    const { bitbucketUsername } =
-      await bitbucketOAuthService.handleOAuthCallback({
-        code,
-        state,
-      });
-    const user = encodeURIComponent(bitbucketUsername);
+    console.log("[Bitbucket OAuth] Exchanging code for token...");
+    const result = await bitbucketOAuthService.handleOAuthCallback({
+      code,
+      state,
+    });
+    console.log("[Bitbucket OAuth] Successfully stored token", {
+      bitbucketUsername: result.bitbucketUsername,
+      userId: result.userId,
+    });
+    const user = encodeURIComponent(result.bitbucketUsername);
     return res.redirect(
       `${frontendUrl}/bitbucket/oauth/complete?bitbucket=connected&user=${user}`,
     );
   } catch (err) {
+    console.error("[Bitbucket OAuth] Callback failed", {
+      code: err.code,
+      message: err.message,
+      status: err.status,
+    });
     const msg = encodeURIComponent(
       err.message || "Bitbucket connection failed.",
     );
@@ -62,8 +80,14 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
+    // Query User to get the encrypted token (auth middleware only sets userId/email)
+    const user = await User.findById(req.user.userId).select("+bitbucketTokenEncrypted");
+    if (!user || !user.bitbucketTokenEncrypted) {
+      return ok(res, { repos: [], hasNextPage: false });
+    }
+
     const token = await bitbucketOAuthService.decryptProvidersToken(
-      req.user.bitbucketTokenEncrypted,
+      user.bitbucketTokenEncrypted,
     );
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
     const perPage = Math.min(
@@ -85,12 +109,39 @@ export async function listRepos(req, res) {
 
 export async function connectionStatus(req, res) {
   try {
-    const hasConnection = !!req.user.bitbucketTokenEncrypted;
+    console.log("[Bitbucket Status] Checking connection for user", {
+      userId: req.user.userId,
+    });
+
+    const user = await User.findById(req.user.userId).select("+bitbucketTokenEncrypted");
+    if (!user) {
+      console.error("[Bitbucket Status] User not found", { userId: req.user.userId });
+      return ok(res, { connected: false, bitbucketUsername: null });
+    }
+
+    console.log("[Bitbucket Status] User found", {
+      userId: user._id,
+      hasTokenEncrypted: !!user.bitbucketTokenEncrypted,
+      bitbucketUsername: user.bitbucketUsername,
+    });
+
+    const hasConnection = !!user.bitbucketTokenEncrypted;
+    
+    if (!hasConnection) {
+      console.warn("[Bitbucket Status] No token found for user", {
+        userId: user._id,
+      });
+    }
+
     return ok(res, {
       connected: hasConnection,
-      bitbucketUsername: req.user.bitbucketUsername || null,
+      bitbucketUsername: user.bitbucketUsername || null,
     });
   } catch (err) {
+    console.error("[Bitbucket Status] Error checking connection", {
+      message: err.message,
+      userId: req.user.userId,
+    });
     return serverError(res, err, "connectionStatus");
   }
 }

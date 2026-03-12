@@ -70,15 +70,17 @@ export function getOAuthUrl(state) {
 
 /** Exchange an OAuth code for tokens. Returns { access_token, refresh_token, expires_in }. */
 export async function exchangeCode(code) {
+  // Bitbucket requires form-encoded data, not JSON
+  const params = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+  });
+
   const { data } = await axios.post(
     "https://bitbucket.org/site/oauth2/access_token",
+    params.toString(),
     {
-      grant_type: "authorization_code",
-      code,
-      client_id: process.env.BITBUCKET_CLIENT_ID,
-      client_secret: process.env.BITBUCKET_CLIENT_SECRET,
-    },
-    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       auth: {
         username: process.env.BITBUCKET_CLIENT_ID,
         password: process.env.BITBUCKET_CLIENT_SECRET,
@@ -90,13 +92,17 @@ export async function exchangeCode(code) {
 
 /** Refresh an expired Bitbucket access token. */
 export async function refreshAccessToken(refreshToken) {
+  // Bitbucket requires form-encoded data, not JSON
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
   const { data } = await axios.post(
     "https://bitbucket.org/site/oauth2/access_token",
+    params.toString(),
     {
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    },
-    {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       auth: {
         username: process.env.BITBUCKET_CLIENT_ID,
         password: process.env.BITBUCKET_CLIENT_SECRET,

@@ -4,6 +4,7 @@
 
 import * as gitlabOAuthService from "./gitlab-oauth.service.js";
 import * as gitlabService from "../../services/gitlab.service.js";
+import { User } from "../../models/User.js";
 import { ok, fail, serverError } from "../../utils/response.util.js";
 
 export async function oauthStart(req, res) {
@@ -22,7 +23,14 @@ export async function oauthCallback(req, res) {
   const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
+  console.log("[GitLab OAuth] Callback received", {
+    hasCode: !!code,
+    hasState: !!state,
+    hasError: !!oauthError,
+  });
+
   if (oauthError) {
+    console.warn("[GitLab OAuth] OAuth error from GitLab", oauthError);
     const msg = encodeURIComponent(`GitLab denied access: ${oauthError}`);
     return res.redirect(
       `${frontendUrl}/gitlab/oauth/complete?gitlab=error&msg=${msg}`,
@@ -30,6 +38,7 @@ export async function oauthCallback(req, res) {
   }
 
   if (!code || !state) {
+    console.error("[GitLab OAuth] Missing code or state");
     const msg = encodeURIComponent("Missing code or state — please try again.");
     return res.redirect(
       `${frontendUrl}/gitlab/oauth/complete?gitlab=error&msg=${msg}`,
@@ -37,15 +46,26 @@ export async function oauthCallback(req, res) {
   }
 
   try {
-    const { gitlabUsername } = await gitlabOAuthService.handleOAuthCallback({
+    console.log("[GitLab OAuth] Exchanging code for token...");
+    const result = await gitlabOAuthService.handleOAuthCallback({
       code,
       state,
     });
-    const user = encodeURIComponent(gitlabUsername);
+    console.log("[GitLab OAuth] Successfully stored token", {
+      gitlabUsername: result.gitlabUsername,
+      userId: result.userId,
+    });
+
+    const user = encodeURIComponent(result.gitlabUsername);
     return res.redirect(
       `${frontendUrl}/gitlab/oauth/complete?gitlab=connected&user=${user}`,
     );
   } catch (err) {
+    console.error("[GitLab OAuth] Callback failed", {
+      code: err.code,
+      message: err.message,
+      status: err.status,
+    });
     const msg = encodeURIComponent(err.message || "GitLab connection failed.");
     return res.redirect(
       `${frontendUrl}/gitlab/oauth/complete?gitlab=error&msg=${msg}`,
@@ -55,8 +75,14 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
+    // Query User to get the encrypted token (auth middleware only sets userId/email)
+    const user = await User.findById(req.user.userId).select("+gitlabTokenEncrypted");
+    if (!user || !user.gitlabTokenEncrypted) {
+      return ok(res, { repos: [], hasNextPage: false });
+    }
+
     const token = await gitlabOAuthService.decryptProvidersToken(
-      req.user.gitlabTokenEncrypted,
+      user.gitlabTokenEncrypted,
     );
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
     const perPage = Math.min(
@@ -78,12 +104,39 @@ export async function listRepos(req, res) {
 
 export async function connectionStatus(req, res) {
   try {
-    const hasConnection = !!req.user.gitlabTokenEncrypted;
+    console.log("[GitLab Status] Checking connection for user", {
+      userId: req.user.userId,
+    });
+
+    const user = await User.findById(req.user.userId).select("+gitlabTokenEncrypted");
+    if (!user) {
+      console.error("[GitLab Status] User not found", { userId: req.user.userId });
+      return ok(res, { connected: false, gitlabUsername: null });
+    }
+
+    console.log("[GitLab Status] User found", {
+      userId: user._id,
+      hasTokenEncrypted: !!user.gitlabTokenEncrypted,
+      gitlabUsername: user.gitlabUsername,
+    });
+
+    const hasConnection = !!user.gitlabTokenEncrypted;
+    
+    if (!hasConnection) {
+      console.warn("[GitLab Status] No token found for user", {
+        userId: user._id,
+      });
+    }
+
     return ok(res, {
       connected: hasConnection,
-      gitlabUsername: req.user.gitlabUsername || null,
+      gitlabUsername: user.gitlabUsername || null,
     });
   } catch (err) {
+    console.error("[GitLab Status] Error checking connection", {
+      message: err.message,
+      userId: req.user.userId,
+    });
     return serverError(res, err, "connectionStatus");
   }
 }

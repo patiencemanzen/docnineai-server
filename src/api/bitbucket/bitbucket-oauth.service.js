@@ -48,6 +48,7 @@ export function buildOAuthUrl(userId) {
     client_id: CLIENT_ID,
     response_type: "code",
     state,
+    redirect_uri: REDIRECT_URI,
   });
 
   return `https://bitbucket.org/site/oauth2/authorize?${params.toString()}`;
@@ -68,66 +69,125 @@ export async function handleOAuthCallback({ code, state }) {
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret);
-  } catch {
-    const err = new Error(
+    console.log("[Bitbucket OAuth Service] State verified", {
+      userId: statePayload.userId,
+    });
+  } catch (err) {
+    console.error("[Bitbucket OAuth Service] State verification failed", {
+      message: err.message,
+    });
+    const e = new Error(
       "Invalid or expired OAuth state. Please start the OAuth flow again.",
     );
-    err.code = "INVALID_OAUTH_STATE";
-    err.status = 400;
-    throw err;
+    e.code = "INVALID_OAUTH_STATE";
+    e.status = 400;
+    throw e;
   }
 
   const userId = statePayload.userId;
 
   // 2. Exchange code for access token
-  const tokenRes = await axios.post(
-    "https://bitbucket.org/site/oauth2/access_token",
-    {
+  console.log("[Bitbucket OAuth Service] Exchanging code for token...");
+  let tokenRes;
+  try {
+    // Bitbucket requires form-encoded data, not JSON
+    const params = new URLSearchParams({
       grant_type: "authorization_code",
       code,
       redirect_uri: REDIRECT_URI,
-    },
-    {
-      auth: {
-        username: CLIENT_ID,
-        password: CLIENT_SECRET,
+    });
+
+    tokenRes = await axios.post(
+      "https://bitbucket.org/site/oauth2/access_token",
+      params.toString(),
+      {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        auth: {
+          username: CLIENT_ID,
+          password: CLIENT_SECRET,
+        },
       },
-    },
-  );
+    );
+  } catch (err) {
+    console.error("[Bitbucket OAuth Service] Token exchange failed", {
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    const e = new Error(`Bitbucket token exchange failed: ${err.message}`);
+    e.code = "TOKEN_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
+  }
 
   const { access_token, refresh_token, error } = tokenRes.data;
   if (error || !access_token) {
-    const err = new Error(
+    console.error("[Bitbucket OAuth Service] No access token in response", {
+      error,
+      hasToken: !!access_token,
+    });
+    const e = new Error(
       `Bitbucket OAuth error: ${error || "no access token returned"}`,
     );
-    err.code = "OAUTH_EXCHANGE_FAILED";
-    err.status = 400;
-    throw err;
+    e.code = "OAUTH_EXCHANGE_FAILED";
+    e.status = 400;
+    throw e;
   }
+
+  console.log("[Bitbucket OAuth Service] Got access token, fetching user profile...");
 
   // 3. Fetch Bitbucket user profile
   const bbUser = await bbService.getAuthenticatedUser(access_token);
 
-  // 4. Update User record with Bitbucket identity
-  await User.findByIdAndUpdate(userId, {
+  console.log("[Bitbucket OAuth Service] Got Bitbucket user", {
     bitbucketId: bbUser.id,
     bitbucketUsername: bbUser.username,
   });
 
+  // 4. Update User record with Bitbucket identity
+  console.log("[Bitbucket OAuth Service] Updating user with Bitbucket identity...");
+  const updated1 = await User.findByIdAndUpdate(userId, {
+    bitbucketId: bbUser.id,
+    bitbucketUsername: bbUser.username,
+  });
+
+  if (!updated1) {
+    console.error("[Bitbucket OAuth Service] User not found when updating identity", {
+      userId,
+    });
+    throw new Error(
+      "User not found in database. Please log in again and try.",
+    );
+  }
+
   // 5. Store encrypted token on User
-  await User.findByIdAndUpdate(
+  console.log("[Bitbucket OAuth Service] Encrypting and storing token...");
+  const encryptedToken = encrypt(access_token);
+  const encryptedRefresh = refresh_token ? encrypt(refresh_token) : null;
+
+  const updated2 = await User.findByIdAndUpdate(
     userId,
     {
-      bitbucketTokenEncrypted: encrypt(access_token),
-      bitbucketRefreshTokenEncrypted: refresh_token
-        ? encrypt(refresh_token)
-        : null,
+      bitbucketTokenEncrypted: encryptedToken,
+      bitbucketRefreshTokenEncrypted: encryptedRefresh,
       bitbucketConnectedAt: new Date(),
     },
     { new: true },
   );
 
-  return { bitbucketUsername: bbUser.username };
+  if (!updated2) {
+    console.error("[Bitbucket OAuth Service] User not found when storing token", {
+      userId,
+    });
+    throw new Error("Failed to store Bitbucket token. Please try again.");
+  }
+
+  console.log("[Bitbucket OAuth Service] Successfully stored token", {
+    userId,
+    hasTokenEncrypted: !!updated2.bitbucketTokenEncrypted,
+    bitbucketUsername: updated2.bitbucketUsername,
+  });
+
+  return { bitbucketUsername: bbUser.username, userId };
 }
 
 // ── Token management ──────────────────────────────────────────

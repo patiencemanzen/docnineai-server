@@ -25,7 +25,7 @@ const SKIP_EXT =
 // ── Internal helpers ──────────────────────────────────────────
 
 function glHeaders(accessToken) {
-  return { "PRIVATE-TOKEN": accessToken, Accept: "application/json" };
+  return { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
 }
 
 /** GitLab requires "owner%2Frepo" encoding in project API paths */

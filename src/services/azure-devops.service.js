@@ -87,7 +87,7 @@ export function parseRepoUrl(url) {
 export function getOAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: process.env.AZURE_DEVOPS_CLIENT_ID,
-    response_type: "Assertion",
+    response_type: "code",
     state,
     scope: "vso.code",
     redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
@@ -95,20 +95,22 @@ export function getOAuthUrl(state) {
   return `https://app.vssps.visualstudio.com/oauth2/authorize?${params}`;
 }
 
-/** Exchange OAuth assertion for PAT. */
-export async function exchangeCode(assertion) {
+/** Exchange OAuth authorization code for access token. */
+export async function exchangeCode(code) {
+  const params = new URLSearchParams({
+    client_id: process.env.AZURE_DEVOPS_CLIENT_ID,
+    client_secret: process.env.AZURE_DEVOPS_CLIENT_SECRET,
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
+  });
+  
   const { data } = await axios.post(
     "https://app.vssps.visualstudio.com/oauth2/token",
-    {
-      assertion,
-      client_assertion_type:
-        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-      client_id: process.env.AZURE_DEVOPS_CLIENT_ID,
-      client_secret: process.env.AZURE_DEVOPS_CLIENT_SECRET,
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
-    },
+    params.toString(),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
+  
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token || null,

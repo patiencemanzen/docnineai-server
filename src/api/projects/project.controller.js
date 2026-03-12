@@ -111,6 +111,25 @@ export async function createProject(req, res) {
   }
 }
 
+export async function createFromScratchProject(req, res) {
+  try {
+    const project = await projectService.createFromScratchProject({
+      userId: req.user.userId,
+      projectName: req.body.projectName,
+    });
+    // Track usage for plan gate checks
+    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    return ok(
+      res,
+      { project },
+      "From-scratch project created.",
+      201,
+    );
+  } catch (err) {
+    return handleErr(res, err, "createFromScratchProject");
+  }
+}
+
 export async function listProjects(req, res) {
   const { page = "1", limit = "20", status, sort, search } = req.query;
   try {
