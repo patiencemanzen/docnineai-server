@@ -391,6 +391,10 @@ export async function recoverOrphanedJobs() {
  * Create a new project and start the full documentation pipeline.
  * Returns immediately with the project document — pipeline runs async.
  */
+/**
+ * Create a new documentation project for a GitHub repository.
+ * Logs the project creation to changelog.
+ */
 export async function createProject({ userId, repoUrl }) {
   // provider is auto-detected from the URL (github.com vs gitlab.com)
   const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
@@ -445,6 +449,16 @@ export async function createProject({ userId, repoUrl }) {
   });
 
   registerJob(jobId);
+
+  // Log project creation to changelog
+  try {
+    const { logProjectChange } = await import("../../services/changelog.service.js");
+    await logProjectChange(project._id, userId, "pipeline_started", {
+      details: `Analysis pipeline started for ${owner}/${repoName}`,
+    });
+  } catch (err) {
+    console.warn("[changelog] Failed to log project creation:", err.message);
+  }
 
   runPipeline({ project, normalised, jobId }).catch((err) =>
     console.error(`❌ Pipeline crash [${jobId}]:`, err.message),
@@ -691,6 +705,10 @@ export async function updateProject({ projectId, userId, updates }) {
  * @param {{ projectId, userId, forceFullRun, webhookChangedFiles }}
  * @returns {{ project, streamUrl }}
  */
+/**
+ * Sync a project — check for new commits and re-document.
+ * Logs the sync operation to changelog.
+ */
 export async function syncProject({
   projectId,
   userId,
@@ -727,6 +745,16 @@ export async function syncProject({
   await project.save();
 
   registerJob(jobId);
+
+  // Log sync operation to changelog
+  try {
+    const { logProjectChange } = await import("../../services/changelog.service.js");
+    await logProjectChange(projectId, userId, "pipeline_started", {
+      details: forceFullRun ? "Full re-analysis started" : "Incremental sync started",
+    });
+  } catch (err) {
+    console.warn("[changelog] Failed to log sync:", err.message);
+  }
 
   // Fire-and-forget — caller streams progress via SSE
   runSync({ project, jobId, forceFullRun, webhookChangedFiles }).catch((err) =>
@@ -810,6 +838,14 @@ export async function editDocSection({ projectId, userId, section, content }) {
     console.warn("[versions] Version save failed:", err.message),
   );
 
+  // Log the change to changelog
+  try {
+    const { logSectionEdit } = await import("../../services/changelog.service.js");
+    await logSectionEdit(projectId, userId, section, currentContent, content);
+  } catch (err) {
+    console.warn("[changelog] Failed to log section edit:", err.message);
+  }
+
   return getProjectById({ projectId, userId });
 }
 
@@ -867,6 +903,14 @@ export async function acceptAISection({ projectId, userId, section }) {
       source: "user",
       meta: { changeSummary: "Snapshot before accepting AI regeneration" },
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
+  }
+
+  // Log the change to changelog
+  try {
+    const { logSectionAccept } = await import("../../services/changelog.service.js");
+    await logSectionAccept(projectId, userId, section);
+  } catch (err) {
+    console.warn("[changelog] Failed to log section accept:", err.message);
   }
 
   return revertDocSection({ projectId, userId, section });

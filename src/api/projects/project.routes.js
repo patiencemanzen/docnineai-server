@@ -59,7 +59,10 @@ import apispecRoutes from "../apispec/apispec.routes.js";
 import { protect } from "../../middleware/auth.middleware.js";
 import { rules, validate } from "../../middleware/validate.middleware.js";
 import { apiLimiter } from "../../middleware/rateLimiter.middleware.js";
-import { checkProjectLimit, checkPortalPublishLimit } from "../../middleware/plan-gate.middleware.js";
+import {
+  checkProjectLimit,
+  checkPortalPublishLimit,
+} from "../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../utils/response.util.js";
 import { SECTIONS } from "../../models/DocumentVersion.js";
 
@@ -97,8 +100,18 @@ const validateVersionId = [
 router.get("/shared", wrap(shareCtrl.getSharedProjects));
 
 // ── Collection ────────────────────────────────────────────────
-router.post("/", rules.createProject, validate, checkProjectLimit, wrap(ctrl.createProject));
-router.post("/from-scratch", checkProjectLimit, wrap(ctrl.createFromScratchProject));
+router.post(
+  "/",
+  rules.createProject,
+  validate,
+  checkProjectLimit,
+  wrap(ctrl.createProject),
+);
+router.post(
+  "/from-scratch",
+  checkProjectLimit,
+  wrap(ctrl.createFromScratchProject),
+);
 router.get("/", rules.listProjects, validate, wrap(ctrl.listProjects));
 
 // ── Item ──────────────────────────────────────────────────────
@@ -169,16 +182,40 @@ router.post(
   wrap(ctrl.restoreVersion),
 );
 
-// ── Exports ───────────────────────────────────────────────────
+// ── Change Log / Activity History ──────────────────────────────
+router.get(
+  "/:id/changelog",
+  validateMongoId,
+  wrap(ctrl.getProjectChangeLog),
+);
+// Allow both GET and POST for PDF/YAML to support optional data from frontend
 router.get("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
+router.post("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
 router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
+router.post("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
 router.post("/:id/export/notion", validateMongoId, wrap(ctrl.exportNotion));
 
 // Google Docs export
-router.get("/:id/export/google-docs/connect", validateMongoId, wrap(ctrl.googleDocsConnect));
-router.get("/:id/export/google-docs/status", validateMongoId, wrap(ctrl.googleDocsStatus));
-router.delete("/:id/export/google-docs", validateMongoId, wrap(ctrl.googleDocsDisconnect));
-router.post("/:id/export/google-docs", validateMongoId, wrap(ctrl.exportGoogleDocs));
+router.get(
+  "/:id/export/google-docs/connect",
+  validateMongoId,
+  wrap(ctrl.googleDocsConnect),
+);
+router.get(
+  "/:id/export/google-docs/status",
+  validateMongoId,
+  wrap(ctrl.googleDocsStatus),
+);
+router.delete(
+  "/:id/export/google-docs",
+  validateMongoId,
+  wrap(ctrl.googleDocsDisconnect),
+);
+router.post(
+  "/:id/export/google-docs",
+  validateMongoId,
+  wrap(ctrl.exportGoogleDocs),
+);
 
 // ── Chat (streaming SSE — chatHandler not wrapped; resetChat is wrapped) ──────
 router.post("/:id/chat", validateMongoId, ctrl.chatHandler);
@@ -195,10 +232,30 @@ router.post("/share/accept/:token", wrap(shareCtrl.acceptInvite));
 
 router.post("/:id/share", validateMongoId, wrap(shareCtrl.inviteUsers));
 router.get("/:id/share", validateMongoId, wrap(shareCtrl.listAccess));
-router.patch("/:id/share/:shareId", validateMongoId, validateShareId, wrap(shareCtrl.changeRole));
-router.delete("/:id/share/:shareId", validateMongoId, validateShareId, wrap(shareCtrl.revokeAccess));
-router.post("/:id/share/:shareId/resend", validateMongoId, validateShareId, wrap(shareCtrl.resendInvite));
-router.delete("/:id/share/:shareId/cancel", validateMongoId, validateShareId, wrap(shareCtrl.cancelInvite));
+router.patch(
+  "/:id/share/:shareId",
+  validateMongoId,
+  validateShareId,
+  wrap(shareCtrl.changeRole),
+);
+router.delete(
+  "/:id/share/:shareId",
+  validateMongoId,
+  validateShareId,
+  wrap(shareCtrl.revokeAccess),
+);
+router.post(
+  "/:id/share/:shareId/resend",
+  validateMongoId,
+  validateShareId,
+  wrap(shareCtrl.resendInvite),
+);
+router.delete(
+  "/:id/share/:shareId/cancel",
+  validateMongoId,
+  validateShareId,
+  wrap(shareCtrl.cancelInvite),
+);
 
 // ── Attachments (Other Docs) ──────────────────────────────────
 const validateAttachmentId = [
@@ -248,7 +305,12 @@ router.delete(
 
 router.get("/:id/portal", validateMongoId, wrap(portalCtrl.getOwnerPortal));
 router.put("/:id/portal", validateMongoId, wrap(portalCtrl.upsertPortal));
-router.post("/:id/portal/publish", validateMongoId, checkPortalPublishLimit, wrap(portalCtrl.togglePublish));
+router.post(
+  "/:id/portal/publish",
+  validateMongoId,
+  checkPortalPublishLimit,
+  wrap(portalCtrl.togglePublish),
+);
 
 // ── Custom Tabs ───────────────────────────────────────────────
 // POST   /projects/:id/custom-tabs          — create custom tab
@@ -264,10 +326,23 @@ const validateTabId = [
 
 router.post("/:id/custom-tabs", validateMongoId, wrap(ctrl.createCustomTab));
 router.get("/:id/custom-tabs", validateMongoId, wrap(ctrl.listCustomTabs));
-router.patch("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.updateCustomTab));
-router.delete("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.deleteCustomTab));
-router.patch("/:id/custom-tabs/reorder", validateMongoId, wrap(ctrl.reorderCustomTabs));
-
+router.patch(
+  "/:id/custom-tabs/:tabId",
+  validateMongoId,
+  validateTabId,
+  wrap(ctrl.updateCustomTab),
+);
+router.delete(
+  "/:id/custom-tabs/:tabId",
+  validateMongoId,
+  validateTabId,
+  wrap(ctrl.deleteCustomTab),
+);
+router.patch(
+  "/:id/custom-tabs/reorder",
+  validateMongoId,
+  wrap(ctrl.reorderCustomTabs),
+);
 
 // ── API Spec (OpenAPI / Postman importer) ─────────────────────
 // GET    /projects/:id/apispec          — get imported spec
