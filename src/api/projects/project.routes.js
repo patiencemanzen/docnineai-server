@@ -56,6 +56,7 @@ import * as shareCtrl from "./share.controller.js";
 import * as portalCtrl from "../portal/portal.controller.js";
 import zipRoutes from "./zip-upload.routes.js";
 import apispecRoutes from "../apispec/apispec.routes.js";
+import mcpRoutes from "./mcp.routes.js";
 import { protect } from "../../middleware/auth.middleware.js";
 import { rules, validate } from "../../middleware/validate.middleware.js";
 import { apiLimiter } from "../../middleware/rateLimiter.middleware.js";
@@ -353,5 +354,14 @@ router.patch(
 // POST   /projects/:id/apispec/try      — Try-It proxy
 
 router.use("/:id/apispec", validateMongoId, apispecRoutes);
+
+// ── MCP Server ────────────────────────────────────────────────
+// GET    /projects/:id/mcp/health       — health check
+// GET    /projects/:id/mcp/info         — get MCP server info
+// GET    /projects/:id/mcp/tools        — list available tools
+// POST   /projects/:id/mcp/call         — call tool (generic)
+// POST   /projects/:id/mcp/:tool        — call specific tool
+
+router.use("/:id/mcp", validateMongoId, mcpRoutes);
 
 export default router;

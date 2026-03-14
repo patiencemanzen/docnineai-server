@@ -15,17 +15,20 @@
 1. [What's New in v3](#whats-new-in-v3)
 2. [Architecture](#architecture)
 3. [Quick Start](#quick-start)
-4. [Environment Variables](#environment-variables)
-5. [API Reference](#api-reference)
+4. [MCP Server with Token Auth](#mcp-server-with-token-auth) ⭐ **NEW**
+5. [Environment Variables](#environment-variables)
+6. [API Reference](#api-reference)
    - [Auth](#auth-routes)
    - [GitHub](#github-routes)
    - [Projects](#project-routes)
    - [Exports](#export-routes)
+   - [MCP](#mcp-routes)
    - [Legacy Pipeline](#legacy-api-v2-compatible)
-6. [GitHub OAuth Setup](#github-oauth-setup)
-7. [Webhook & Auto-Sync](#webhook--auto-sync)
-8. [Deployment](#deployment)
-9. [Project Structure](#project-structure)                  |
+7. [GitHub OAuth Setup](#github-oauth-setup)
+8. [Webhook & Auto-Sync](#webhook--auto-sync)
+9. [Testing](#testing) ⭐ **NEW**
+10. [Deployment](#deployment)
+11. [Project Structure](#project-structure)
 
 ---
 
@@ -84,6 +87,77 @@ npm start            # production
 **Minimum required variables:** `MONGODB_URI`, `GROQ_API_KEY`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`.
 
 Get a free Groq key at [console.groq.com](https://console.groq.com).
+
+---
+
+## MCP Server with Token Auth
+
+> **Model Context Protocol (MCP)** integration with API token authentication for Claude, Cursor, VS Code, and other MCP-compatible tools
+
+### Features
+
+✅ **12+ AI-powered tools** for codebase analysis:
+- Documentation (README, API refs, schemas, components)
+- QA (Ask codebase, semantic search)
+- Security (OWASP audit, critical findings, security score)
+- Project (list projects, summaries, diffs)
+
+✅ **Token-based authentication** — Secure API tokens created from dashboard  
+✅ **Per-project isolation** — Each token scoped to specific projects  
+✅ **Zero setup overhead** — One line in your MCP config  
+
+### Quick Example
+
+**1. Create token in dashboard:**
+- Settings → API Tokens → New Token
+- Check scopes: `api`, `mcp`
+- Copy token: `docnine_abc123xyz...`
+
+**2. Configure Claude:**
+```json
+{
+  "mcpServers": {
+    "docnine": {
+      "url": "https://mcp.docnineai.com/projects/PROJECT_ID/mcp",
+      "auth": { "type": "bearer", "token": "docnine_abc123xyz..." }
+    }
+  }
+}
+```
+
+**3. Use in Claude:**
+```
+@docnine What security vulnerabilities did you find?
+```
+
+### Full Documentation
+
+👉 **[MCP-TOKEN.md](./MCP-TOKEN.md)** — Complete MCP setup guide with:
+- Step-by-step configuration for Claude, Cursor, VS Code
+- All 12 available tools reference
+- HTTP API for raw requests
+- Token management best practices
+- CI/CD integration examples
+- Troubleshooting guide
+
+### API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/projects/:id/mcp/health` | No | Health check |
+| `GET` | `/projects/:id/mcp/tools` | Bearer | List available tools |
+| `POST` | `/projects/:id/mcp/call` | Bearer | Generic tool call |
+| `POST` | `/projects/:id/mcp/:tool` | Bearer | Direct tool endpoint |
+
+### Testing
+
+👉 **[TESTING.md](./TESTING.md)** — Complete testing guide with:
+- Step-by-step test cases
+- API request examples with curl
+- Authentication error scenarios
+- Load testing guide
+- Integration testing with Claude/Cursor
+- Automated test suite examples
 
 ---
 
