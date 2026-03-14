@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@notionhq/client": "^2.3.0",
+    "adm-zip": "^0.5.16",
     "axios": "^1.7.2",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",

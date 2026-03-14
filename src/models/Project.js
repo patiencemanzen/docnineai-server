@@ -233,6 +233,67 @@ const ProjectSchema = new Schema(
       default: [],
       select: false,
     },
+    provider: {
+      type: String,
+      enum: ["github", "gitlab", "bitbucket", "azure", "zip", "manual"],
+      default: "github",
+    },
+
+    // Encrypted OAuth access token for providers that need per-user auth (GitLab, Bitbucket, Azure).
+    // null for GitHub (uses server-level GITHUB_TOKEN env var).
+    providerToken: {
+      type: String,
+      select: false, // never returned in queries unless explicitly selected
+    },
+
+    // ── Source type tracking ─────────────────────────────────
+    // Differentiates between git providers and ZIP uploads
+    sourceType: {
+      type: String,
+      enum: ["github", "gitlab", "bitbucket", "azure", "zip", "manual"],
+      default: "github",
+    },
+
+    // ── ZIP-specific metadata ────────────────────────────────
+    // Only populated for sourceType === "zip"
+    zipMetadata: {
+      type: Schema.Types.Mixed,
+      default: () => ({}),
+      select: false, // only fetched when needed
+    },
+
+    // ── Custom tabs (user-created documentation sections) ─────
+    // Users can create additional tabs beyond the native ones.
+    // Each tab has a name, description, content, and order.
+    // The "Other Docs" tab is reserved and cannot be renamed/deleted.
+    customTabs: {
+      type: [
+        {
+          _id: { type: Schema.Types.ObjectId, auto: true },
+          name: { type: String, required: true }, // e.g. "Custom Guide", "FAQ"
+          description: { type: String, default: "" },
+          content: { type: String, default: "" }, // Markdown content
+          order: { type: Number, required: true }, // For UI ordering
+          isNative: { type: Boolean, default: false }, // Always false for custom tabs (for future extensibility)
+          createdAt: { type: Date, default: Date.now },
+          updatedAt: { type: Date, default: Date.now },
+          createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+        },
+      ],
+      default: [],
+    },
+
+    // Tracks edited custom tabs (following same pattern as editedSections)
+    editedCustomTabs: {
+      type: [
+        {
+          tabId: { type: Schema.Types.ObjectId, required: true },
+          editedAt: { type: Date, required: true },
+          stale: { type: Boolean, default: false },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,

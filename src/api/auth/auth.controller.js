@@ -10,12 +10,13 @@ import { getRefreshCookieOpts } from "../../utils/jwt.util.js";
 
 // ── POST /auth/signup ─────────────────────────────────────────
 export async function signup(req, res) {
-  const { name, email, password } = req.body;
+  const { name, email, password, agreeToTerms } = req.body;
   try {
     const { user, accessToken, refreshToken } = await authService.signup({
       name,
       email,
       password,
+      agreeToTerms,
     });
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return ok(
@@ -26,6 +27,8 @@ export async function signup(req, res) {
     );
   } catch (err) {
     if (err.code === "EMAIL_TAKEN")
+      return fail(res, err.code, err.message, err.status);
+    if (err.code === "T_AND_C_REQUIRED")
       return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "signup");
   }

@@ -7,6 +7,7 @@
 
 import { Router } from "express";
 import * as ctrl from "./auth.controller.js";
+import tokenRoutes from "./token.routes.js";
 import { rules, validate } from "../../middleware/validate.middleware.js";
 import { protect } from "../../middleware/auth.middleware.js";
 import {
@@ -99,5 +100,8 @@ router.post(
   validate,
   wrap(ctrl.changePassword),
 );
+
+// ── API Tokens ────────────────────────────────────────────────
+router.use("/tokens", tokenRoutes);
 
 export default router;

@@ -21,8 +21,16 @@ import { generateGitHubActionsWorkflow } from "../../services/webhook.service.js
  * Create a new user and send a verification email.
  * @returns {{ user: User, accessToken: string, refreshToken: string }}
  * @throws with code EMAIL_TAKEN if email already registered
+ * @throws with code T_AND_C_REQUIRED if terms not accepted
  */
-export async function signup({ name, email, password }) {
+export async function signup({ name, email, password, agreeToTerms = false }) {
+  // Require explicit T&C agreement
+  if (!agreeToTerms) {
+    const err = new Error("You must agree to the Terms of Service and Privacy Policy.");
+    err.code = "T_AND_C_REQUIRED";
+    err.status = 422;
+    throw err;
+  }
   const existing = await User.findOne({ email });
   if (existing) {
     const err = new Error("An account with this email already exists.");

@@ -89,6 +89,66 @@ const UserSchema = new Schema(
       trim: true,
     },
 
+    // ── GitLab connection (optional) ──────────────────────────
+    gitlabId: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    gitlabUsername: {
+      type: String,
+      trim: true,
+    },
+    gitlabTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    gitlabRefreshTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    gitlabConnectedAt: Date,
+
+    // ── Bitbucket connection (optional) ───────────────────────
+    bitbucketId: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    bitbucketUsername: {
+      type: String,
+      trim: true,
+    },
+    bitbucketTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    bitbucketRefreshTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    bitbucketConnectedAt: Date,
+
+    // ── Azure DevOps connection (optional) ────────────────────
+    azureDevOpsId: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    azureDevOpsUsername: {
+      type: String,
+      trim: true,
+    },
+    azureDevOpsTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    azureDevOpsRefreshTokenEncrypted: {
+      type: String,
+      select: false,
+    },
+    azureDevOpsConnectedAt: Date,
+
     // ── Google connection (optional) ──────────────────────────
     googleId: {
       type: String,

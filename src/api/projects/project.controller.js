@@ -33,7 +33,7 @@ async function getExportToPDF() {
 
 async function getExportToNotion() {
   if (_exportToNotion) return _exportToNotion;
-  
+
   try {
     const m = await import("../../services/export.service.js");
     _exportToNotion = m.exportToNotion;
@@ -99,7 +99,9 @@ export async function createProject(req, res) {
       repoUrl: req.body.repoUrl,
     });
     // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
+      () => {},
+    );
     return ok(
       res,
       { project, streamUrl: `/projects/${project._id}/stream` },
@@ -108,6 +110,22 @@ export async function createProject(req, res) {
     );
   } catch (err) {
     return handleErr(res, err, "createProject");
+  }
+}
+
+export async function createFromScratchProject(req, res) {
+  try {
+    const project = await projectService.createFromScratchProject({
+      userId: req.user.userId,
+      projectName: req.body.projectName,
+    });
+    // Track usage for plan gate checks
+    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
+      () => {},
+    );
+    return ok(res, { project }, "From-scratch project created.", 201);
+  } catch (err) {
+    return handleErr(res, err, "createFromScratchProject");
   }
 }
 
@@ -154,7 +172,9 @@ export async function deleteProject(req, res) {
       userId: req.user.userId,
     });
     // Decrement usage counter
-    await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(
+      () => {},
+    );
     return ok(res, null, "Project deleted.");
   } catch (err) {
     return handleErr(res, err, "deleteProject");
@@ -267,7 +287,7 @@ export async function streamProject(req, res) {
   res.flushHeaders();
 
   const jobId = project.jobId;
-  
+
   console.log(
     `[stream] Project ${projectId} · jobId: ${jobId} · status: ${project.status}`,
   );
@@ -278,9 +298,7 @@ export async function streamProject(req, res) {
   // job registration between instances.
   let job = jobs.get(jobId);
   if (!job && project.status === "running") {
-    console.log(
-      `[stream] Job not yet registered, waiting (timeout 5s)…`,
-    );
+    console.log(`[stream] Job not yet registered, waiting (timeout 5s)…`);
     let waited = 0;
     while (!job && waited < 5000) {
       await new Promise((r) => setTimeout(r, 200));
@@ -334,20 +352,26 @@ export async function streamProject(req, res) {
     return res.end();
   }
 
-  console.log(`[stream] Project ${projectId} · streaming ${job.events.length} buffered events`);
+  console.log(
+    `[stream] Project ${projectId} · streaming ${job.events.length} buffered events`,
+  );
   for (const e of job.events) {
     res.write(`data: ${JSON.stringify(e)}\n\n`);
   }
 
   if (job.status !== "running") {
-    console.log(`[stream] Project ${projectId} · job ${job.status}, sending final result`);
+    console.log(
+      `[stream] Project ${projectId} · job ${job.status}, sending final result`,
+    );
     res.write(
       `data: ${JSON.stringify({ step: "done", result: job.result })}\n\n`,
     );
     return res.end();
   }
 
-  console.log(`[stream] Project ${projectId} · job still running, subscribing to updates`);
+  console.log(
+    `[stream] Project ${projectId} · job still running, subscribing to updates`,
+  );
   const clients = streams.get(jobId) || new Set();
   clients.add(res);
   streams.set(jobId, clients);
@@ -515,6 +539,38 @@ export async function restoreVersion(req, res) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// CHANGE LOG / ACTIVITY HISTORY
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * GET /projects/:id/changelog
+ * Returns the change log for a project (all user-facing edits, exports, etc)
+ * Users can see what was changed and when.
+ */
+export async function getProjectChangeLog(req, res) {
+  const { page = "1", limit = "50" } = req.query;
+  try {
+    const project = await projectService.getProjectById({
+      projectId: req.params.id,
+      userId: req.user.userId,
+    });
+
+    // User has access to the project
+    const { getProjectHistory } =
+      await import("../../services/changelog.service.js");
+    const result = await getProjectHistory(
+      req.params.id,
+      parseInt(limit, 10),
+      (parseInt(page, 10) - 1) * parseInt(limit, 10),
+    );
+
+    return ok(res, result, "Project change log retrieved.");
+  } catch (err) {
+    return handleErr(res, err, "getProjectChangeLog");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────────────────────
 
@@ -534,12 +590,27 @@ export async function exportPdf(req, res) {
     });
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
+
+    // Use frontend-provided data (with cleaned markdown) if available, else use project data
+    const exportData = req.body?.tabs ? req.body : null;
+
     exportToPDF(res, {
       meta: project.meta || {},
-      output: project.effectiveOutput, // serve merged content
+      output: exportData?.tabs ? exportData : project.effectiveOutput,
       stats: project.stats || {},
       securityScore: project.security?.score ?? null,
+      tabs: exportData?.tabs, // pass custom tabs if available
+      projectDescription: exportData?.projectDescription,
     });
+
+    // Log the export
+    const { logExport } = await import("../../services/changelog.service.js");
+    await logExport(
+      req.params.id,
+      req.user.userId,
+      "pdf",
+      exportData || { tabs: [] },
+    );
   } catch (err) {
     return handleErr(res, err, "exportPdf");
   }
@@ -555,14 +626,27 @@ export async function exportYaml(req, res) {
       503,
     );
   try {
-    await projectService.getProjectById({
+    const project = await projectService.getProjectById({
       projectId: req.params.id,
       userId: req.user.userId,
     });
+
+    // Use frontend-provided data if available
+    const exportData = req.body?.tabs ? req.body : null;
+
     const yml = genWorkflow(`${req.protocol}://${req.get("host")}`);
     res.setHeader("Content-Type", "text/yaml");
     res.setHeader("Content-Disposition", "attachment; filename=document.yml");
     res.send(yml);
+
+    // Log the export
+    const { logExport } = await import("../../services/changelog.service.js");
+    await logExport(
+      req.params.id,
+      req.user.userId,
+      "yaml",
+      exportData || { tabs: [] },
+    );
   } catch (err) {
     return handleErr(res, err, "exportYaml");
   }
@@ -580,7 +664,8 @@ export async function exportNotion(req, res) {
     );
   try {
     // Fetch this user's Notion credentials (throws NOTION_NOT_CONNECTED if absent)
-    const { getDecryptedNotionSettings } = await import("../../services/notion.service.js");
+    const { getDecryptedNotionSettings } =
+      await import("../../services/notion.service.js");
     let notionCreds;
     try {
       notionCreds = await getDecryptedNotionSettings(req.user.userId);
@@ -603,14 +688,29 @@ export async function exportNotion(req, res) {
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
 
+    // Use frontend-provided data (with cleaned markdown) if available
+    const exportData = req.body?.tabs ? req.body : null;
+
     const result = await exportToNotion({
       meta: project.meta || {},
-      output: project.effectiveOutput,
+      output: exportData?.tabs ? exportData : project.effectiveOutput,
       stats: project.stats || {},
       securityScore: project.security?.score ?? null,
       apiKey: notionCreds.apiKey,
       parentPageId: notionCreds.parentPageId,
+      tabs: exportData?.tabs, // pass custom tabs if available
     });
+
+    // Log the export
+    const { logExport } = await import("../../services/changelog.service.js");
+    await logExport(
+      req.params.id,
+      req.user.userId,
+      "notion",
+      exportData || { tabs: [] },
+      result,
+    );
+
     return ok(res, result, "Documentation pushed to Notion.");
   } catch (err) {
     return handleErr(res, err, "exportNotion");
@@ -621,7 +721,12 @@ export async function exportNotion(req, res) {
 export async function googleDocsConnect(req, res) {
   await getGoogleDocsExport(); // load module to populate _getGoogleDocsOAuthUrl
   if (!_getGoogleDocsOAuthUrl)
-    return fail(res, "SERVICE_UNAVAILABLE", "Google Docs service unavailable.", 503);
+    return fail(
+      res,
+      "SERVICE_UNAVAILABLE",
+      "Google Docs service unavailable.",
+      503,
+    );
   try {
     // Verify the user owns this project (access control)
     await projectService.getProjectById({
@@ -638,8 +743,7 @@ export async function googleDocsConnect(req, res) {
 // ── GET /projects/:id/export/google-docs/status ───────────────
 export async function googleDocsStatus(req, res) {
   await getGoogleDocsExport();
-  if (!_getGoogleDocsConnectionStatus)
-    return ok(res, { connected: false });
+  if (!_getGoogleDocsConnectionStatus) return ok(res, { connected: false });
   try {
     const status = await _getGoogleDocsConnectionStatus(req.user.userId);
     return ok(res, status);
@@ -651,8 +755,7 @@ export async function googleDocsStatus(req, res) {
 // ── DELETE /projects/:id/export/google-docs ───────────────────
 export async function googleDocsDisconnect(req, res) {
   await getGoogleDocsExport();
-  if (!_disconnectGoogleDocs)
-    return ok(res, null, "Not connected.");
+  if (!_disconnectGoogleDocs) return ok(res, null, "Not connected.");
   try {
     await _disconnectGoogleDocs(req.user.userId);
     return ok(res, null, "Google Drive disconnected.");
@@ -665,7 +768,12 @@ export async function googleDocsDisconnect(req, res) {
 export async function exportGoogleDocs(req, res) {
   const exportToGoogleDocs = await getGoogleDocsExport();
   if (!exportToGoogleDocs)
-    return fail(res, "SERVICE_UNAVAILABLE", "Google Docs export unavailable.", 503);
+    return fail(
+      res,
+      "SERVICE_UNAVAILABLE",
+      "Google Docs export unavailable.",
+      503,
+    );
   try {
     const project = await projectService.getProjectById({
       projectId: req.params.id,
@@ -673,13 +781,30 @@ export async function exportGoogleDocs(req, res) {
     });
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
+
+    // Use frontend-provided data (with cleaned markdown) if available
+    const exportData = req.body?.tabs ? req.body : null;
+
     const result = await exportToGoogleDocs({
       meta: project.meta || {},
-      output: project.effectiveOutput,
+      output: exportData?.tabs ? exportData : project.effectiveOutput,
       stats: project.stats || {},
       securityScore: project.security?.score ?? null,
       userId: req.user.userId,
+      tabs: exportData?.tabs, // pass custom tabs if available
+      projectDescription: exportData?.projectDescription,
     });
+
+    // Log the export
+    const { logExport } = await import("../../services/changelog.service.js");
+    await logExport(
+      req.params.id,
+      req.user.userId,
+      "google_docs",
+      exportData || { tabs: [] },
+      result,
+    );
+
     return ok(res, result, "Documentation exported to Google Docs.");
   } catch (err) {
     if (err.message === "GOOGLE_NOT_CONNECTED")
@@ -731,7 +856,8 @@ export async function chatHandler(req, res) {
       success: false,
       error: {
         code: "CHAT_SESSION_NOT_FOUND",
-        message: "No chat session available. Run the documentation pipeline first.",
+        message:
+          "No chat session available. Run the documentation pipeline first.",
       },
     });
   }
@@ -742,13 +868,20 @@ export async function chatHandler(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const { chatStream, ensureSession } = await import("../../services/chat.service.js");
+  const { chatStream, ensureSession } =
+    await import("../../services/chat.service.js");
 
   // Rebuild the in-memory session from persisted output if the server was
   // restarted since the pipeline last ran (sessions are in-memory only).
   const effectiveOutput = Object.fromEntries(
-    ["readme", "apiReference", "schemaDocs", "internalDocs", "securityReport", "otherDocs"]
-      .map((k) => [k, project.editedOutput?.[k] || project.output?.[k] || ""])
+    [
+      "readme",
+      "apiReference",
+      "schemaDocs",
+      "internalDocs",
+      "securityReport",
+      "otherDocs",
+    ].map((k) => [k, project.editedOutput?.[k] || project.output?.[k] || ""]),
   );
   ensureSession({
     jobId: project.chatSessionId,
@@ -757,15 +890,27 @@ export async function chatHandler(req, res) {
   });
 
   const send = (obj) => {
-    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch { /* client gone */ }
+    try {
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    } catch {
+      /* client gone */
+    }
   };
 
   await chatStream({
     jobId: project.chatSessionId,
     message: message.trim(),
-    onToken(token) { send({ type: "token", token }); },
-    onDone(result) { send({ type: "done", ...result }); res.end(); },
-    onError(err)  { send({ type: "error", message: err.message }); res.end(); },
+    onToken(token) {
+      send({ type: "token", token });
+    },
+    onDone(result) {
+      send({ type: "done", ...result });
+      res.end();
+    },
+    onError(err) {
+      send({ type: "error", message: err.message });
+      res.end();
+    },
   });
 }
 
@@ -790,4 +935,130 @@ export async function resetChat(req, res) {
   }
 
   return ok(res, null, "Chat history cleared.");
+}
+
+// ─────────────────────────────────────────────────────────────
+// CUSTOM TABS
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /projects/:id/custom-tabs
+ * Create a new custom tab.
+ * Body: { name, description?, content? }
+ */
+export async function createCustomTab(req, res) {
+  const { name, description, content } = req.body;
+
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    return fail(
+      res,
+      "VALIDATION_ERROR",
+      "name is required and must be a string",
+      422,
+    );
+  }
+
+  try {
+    const result = await projectService.createCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      name,
+      description,
+      content,
+    });
+    return ok(res, { project: result }, "Custom tab created.", 201);
+  } catch (err) {
+    return handleErr(res, err, "createCustomTab");
+  }
+}
+
+/**
+ * PATCH /projects/:id/custom-tabs/:tabId
+ * Update a custom tab (name, description, content).
+ * Body: { name?, description?, content? }
+ */
+export async function updateCustomTab(req, res) {
+  const { tabId } = req.params;
+  const { name, description, content } = req.body;
+
+  if (!tabId) {
+    return fail(res, "VALIDATION_ERROR", "tabId is required", 400);
+  }
+
+  try {
+    const result = await projectService.updateCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      tabId,
+      name,
+      description,
+      content,
+    });
+    return ok(res, { project: result }, "Custom tab updated.");
+  } catch (err) {
+    return handleErr(res, err, "updateCustomTab");
+  }
+}
+
+/**
+ * DELETE /projects/:id/custom-tabs/:tabId
+ * Delete a custom tab.
+ */
+export async function deleteCustomTab(req, res) {
+  const { tabId } = req.params;
+
+  if (!tabId) {
+    return fail(res, "VALIDATION_ERROR", "tabId is required", 400);
+  }
+
+  try {
+    const result = await projectService.deleteCustomTab({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      tabId,
+    });
+    return ok(res, { project: result }, "Custom tab deleted.");
+  } catch (err) {
+    return handleErr(res, err, "deleteCustomTab");
+  }
+}
+
+/**
+ * GET /projects/:id/custom-tabs
+ * List all custom tabs for a project.
+ */
+export async function listCustomTabs(req, res) {
+  try {
+    const result = await projectService.listCustomTabs({
+      projectId: req.params.id,
+      userId: req.user.userId,
+    });
+    return ok(res, result);
+  } catch (err) {
+    return handleErr(res, err, "listCustomTabs");
+  }
+}
+
+/**
+ * PATCH /projects/:id/custom-tabs/reorder
+ * Reorder all custom tabs.
+ * Body: { orders: [{ tabId, order }, ...] }
+ */
+export async function reorderCustomTabs(req, res) {
+  const { orders } = req.body;
+
+  if (!Array.isArray(orders)) {
+    return fail(res, "VALIDATION_ERROR", "orders must be an array", 422);
+  }
+
+  try {
+    const result = await projectService.reorderCustomTabs({
+      projectId: req.params.id,
+      userId: req.user.userId,
+      orders,
+    });
+    return ok(res, { project: result }, "Custom tabs reordered.");
+  } catch (err) {
+    return handleErr(res, err, "reorderCustomTabs");
+  }
 }

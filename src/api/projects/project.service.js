@@ -35,7 +35,7 @@
 //   recoverOrphanedJobs — startup recovery for interrupted pipelines
 // ===================================================================
 
-import { randomUUID, randomBytes } from "crypto";
+import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../models/Project.js";
 import { DocumentVersion, SECTIONS } from "../../models/DocumentVersion.js";
@@ -90,35 +90,26 @@ async function getIncrementalSync() {
 // ─── Helpers ──────────────────────────────────────────────────────
 
 /**
- * Parse and normalise a GitHub repository URL.
- * Accepts: full HTTPS URL, SSH URL, or "owner/repo" shorthand.
+ * Parse any supported git provider URL.
+ * Auto-detects provider from the URL host.
+ * Returns { owner, repoName, normalised, provider }.
  */
-function parseGitHubUrl(raw) {
-  const cleaned = raw
-    .trim()
-    .replace(/\.git$/, "")
-    .replace(/\/$/, "");
-
-  const https = cleaned.match(/github\.com[:/]([^/\s]+)\/([^/\s#?]+)/);
-  if (https)
+function parseRepoUrl(raw) {
+  const provider = detectProvider(raw);
+  try {
+    const { owner, repo } = adapterParseRepoUrl(provider, raw);
     return {
-      owner: https[1],
-      repoName: https[2],
-      normalised: `https://github.com/${https[1]}/${https[2]}`,
+      owner,
+      repoName: repo,
+      normalised: normaliseRepoUrl(provider, raw),
+      provider,
     };
-
-  const short = cleaned.match(/^([^/\s]+)\/([^/\s]+)$/);
-  if (short)
-    return {
-      owner: short[1],
-      repoName: short[2],
-      normalised: `https://github.com/${short[1]}/${short[2]}`,
-    };
-
-  const err = new Error(`Cannot parse GitHub URL: "${raw}"`);
-  err.code = "INVALID_REPO_URL";
-  err.status = 400;
-  throw err;
+  } catch {
+    const err = new Error(`Cannot parse repository URL: "${raw}"`);
+    err.code = "INVALID_REPO_URL";
+    err.status = 400;
+    throw err;
+  }
 }
 
 /**
@@ -400,8 +391,13 @@ export async function recoverOrphanedJobs() {
  * Create a new project and start the full documentation pipeline.
  * Returns immediately with the project document — pipeline runs async.
  */
+/**
+ * Create a new documentation project for a GitHub repository.
+ * Logs the project creation to changelog.
+ */
 export async function createProject({ userId, repoUrl }) {
-  const { owner, repoName, normalised } = parseGitHubUrl(repoUrl);
+  // provider is auto-detected from the URL (github.com vs gitlab.com)
+  const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
 
   // Prevent duplicate pipelines for the same repo
   const active = await Project.findOne({
@@ -417,8 +413,25 @@ export async function createProject({ userId, repoUrl }) {
       409,
     );
 
+  // For GitLab: look up the user's stored access token so the pipeline
+  // can authenticate against the GitLab API.
+  let providerToken = null;
+  if (provider === "gitlab") {
+    const user = await User.findById(userId).select("+gitlab.accessToken");
+    if (!user?.gitlab?.accessToken) {
+      throw domainError(
+        "GitLab account not connected. Connect via Settings → GitLab.",
+        "GITLAB_NOT_CONNECTED",
+        400,
+      );
+    }
+    // Decrypt once here; re-encrypt and store on the project so the
+    // pipeline can use it without another DB round-trip.
+    const { encrypt } = await import("../../utils/crypto.util.js");
+    providerToken = encrypt(decrypt(user.gitlab.accessToken));
+  }
+
   const jobId = randomUUID();
-  // Generate a unique 32-byte hex secret for this project's webhook
   const webhookSecret = randomBytes(32).toString("hex");
 
   const project = await Project.create({
@@ -426,6 +439,8 @@ export async function createProject({ userId, repoUrl }) {
     repoUrl: normalised,
     repoOwner: owner,
     repoName,
+    provider, // ← new field
+    providerToken, // ← new field (encrypted, null for GitHub)
     jobId,
     status: "running",
     search_language: "english",
@@ -435,7 +450,16 @@ export async function createProject({ userId, repoUrl }) {
 
   registerJob(jobId);
 
-  // Fire-and-forget — caller streams progress via SSE
+  // Log project creation to changelog
+  try {
+    const { logProjectChange } = await import("../../services/changelog.service.js");
+    await logProjectChange(project._id, userId, "pipeline_started", {
+      details: `Analysis pipeline started for ${owner}/${repoName}`,
+    });
+  } catch (err) {
+    console.warn("[changelog] Failed to log project creation:", err.message);
+  }
+
   runPipeline({ project, normalised, jobId }).catch((err) =>
     console.error(`❌ Pipeline crash [${jobId}]:`, err.message),
   );
@@ -444,9 +468,67 @@ export async function createProject({ userId, repoUrl }) {
 }
 
 /**
- * Retry a failed or errored project with a completely fresh full pipeline run.
- * Clears all stored outputs so the run starts from a clean state.
+ * Create a blank "from scratch" project.
+ * No repository, no pipeline — just an empty documentation project.
  */
+export async function createFromScratchProject({ userId, projectName }) {
+  if (!projectName || projectName.trim().length === 0) {
+    throw domainError("Project name is required.", "INVALID_PROJECT_NAME", 400);
+  }
+
+  // Use project name as both owner and repo name for pseudo-URL
+  const cleanName = projectName.trim().replace(/\s+/g, "-").toLowerCase();
+
+  // Check for duplicates with same name
+  const existing = await Project.findOne({
+    userId,
+    repoName: cleanName,
+    sourceType: "manual",
+    status: { $ne: "archived" },
+  });
+
+  if (existing) {
+    throw domainError(
+      `A project named "${projectName}" already exists.`,
+      "DUPLICATE_PROJECT",
+      409,
+    );
+  }
+
+  const project = await Project.create({
+    userId,
+    repoUrl: `manual://${cleanName}`, // pseudo-URL for manual projects
+    repoOwner: "manual",
+    repoName: cleanName,
+    provider: "github", // default provider (unused for manual projects)
+    sourceType: "manual", // marks as from-scratch
+    status: "done", // no pipeline needed
+    meta: {
+      name: projectName,
+      description: `Manual documentation for ${projectName}`,
+    },
+    output: {
+      readme: `# ${projectName}\n\nProject documentation created from scratch. Start editing!`,
+      internalDocs: "",
+      apiReference: "",
+      schemaDocs: "",
+      securityReport: "",
+    },
+    editedOutput: {},
+    editedSections: [],
+    stats: {
+      filesAnalysed: 0,
+      endpoints: 0,
+      models: 0,
+      relationships: 0,
+      components: 0,
+    },
+  });
+
+  return project;
+}
+
+//  * Clears all stored outputs so the run starts from a clean state.
 export async function retryProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
@@ -623,6 +705,10 @@ export async function updateProject({ projectId, userId, updates }) {
  * @param {{ projectId, userId, forceFullRun, webhookChangedFiles }}
  * @returns {{ project, streamUrl }}
  */
+/**
+ * Sync a project — check for new commits and re-document.
+ * Logs the sync operation to changelog.
+ */
 export async function syncProject({
   projectId,
   userId,
@@ -659,6 +745,16 @@ export async function syncProject({
   await project.save();
 
   registerJob(jobId);
+
+  // Log sync operation to changelog
+  try {
+    const { logProjectChange } = await import("../../services/changelog.service.js");
+    await logProjectChange(projectId, userId, "pipeline_started", {
+      details: forceFullRun ? "Full re-analysis started" : "Incremental sync started",
+    });
+  } catch (err) {
+    console.warn("[changelog] Failed to log sync:", err.message);
+  }
 
   // Fire-and-forget — caller streams progress via SSE
   runSync({ project, jobId, forceFullRun, webhookChangedFiles }).catch((err) =>
@@ -742,6 +838,14 @@ export async function editDocSection({ projectId, userId, section, content }) {
     console.warn("[versions] Version save failed:", err.message),
   );
 
+  // Log the change to changelog
+  try {
+    const { logSectionEdit } = await import("../../services/changelog.service.js");
+    await logSectionEdit(projectId, userId, section, currentContent, content);
+  } catch (err) {
+    console.warn("[changelog] Failed to log section edit:", err.message);
+  }
+
   return getProjectById({ projectId, userId });
 }
 
@@ -799,6 +903,14 @@ export async function acceptAISection({ projectId, userId, section }) {
       source: "user",
       meta: { changeSummary: "Snapshot before accepting AI regeneration" },
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
+  }
+
+  // Log the change to changelog
+  try {
+    const { logSectionAccept } = await import("../../services/changelog.service.js");
+    await logSectionAccept(projectId, userId, section);
+  } catch (err) {
+    console.warn("[changelog] Failed to log section accept:", err.message);
   }
 
   return revertDocSection({ projectId, userId, section });
@@ -1150,4 +1262,397 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     });
     failJob(jobId, err);
   }
+}
+
+/**
+ * Run the full pipeline for a ZIP-uploaded project.
+ * Normalizes extracted files similar to Git projects and runs orchestrator.
+ * Called by ZIP upload controller.
+ */
+export async function runZipPipeline({ project, jobId }) {
+  const orchestrate = await getOrchestrate();
+  const onProgress = makeProgressHandler(project._id, jobId);
+
+  console.log(
+    `[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`,
+  );
+
+  try {
+    // Extract files from project zipMetadata
+    const { extractedFiles = [] } = project.zipMetadata || {};
+
+    if (!extractedFiles.length) {
+      throw new Error("No extracted files found in ZIP metadata");
+    }
+
+    console.log(
+      `[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`,
+    );
+
+    // Normalize ZIP files into the same format as Git providers
+    const normalised = {
+      owner: project.repoOwner || "local",
+      repo: project.repoName || "zip-project",
+      branch: "main",
+      commits: [],
+      files: extractedFiles.map((f) => ({
+        path: f.path,
+        type: "blob",
+        lastModified: project.zipMetadata.uploadedAt,
+      })),
+      fileTree: buildFileTree(extractedFiles),
+      fileManifest: extractedFiles.reduce((acc, f) => {
+        acc[f.path] = {
+          path: f.path,
+          size: f.content.length,
+          modified: project.zipMetadata.uploadedAt,
+          hash: createHash("sha256").update(f.content).digest("hex"),
+        };
+        return acc;
+      }, {}),
+      lastCommitSha: randomBytes(16).toString("hex"),
+      lastCommitDate: new Date(),
+      lastDocumentedCommit: null,
+      description: project.meta?.description || "",
+      language: project.meta?.language || "unknown",
+      topics: project.meta?.topics || [],
+      isArchived: false,
+      isFork: false,
+      README:
+        extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
+    };
+
+    console.log(
+      `[zip-pipeline:${jobId}] Normalised ZIP project: ${extractedFiles.length} files, languages: ${normalised.language}`,
+    );
+
+    // Run the full orchestrator pipeline
+    const result = await orchestrate(normalised, onProgress);
+
+    if (!result.success) {
+      await Project.findByIdAndUpdate(project._id, {
+        status: "error",
+        errorMessage: result.error || "Unknown pipeline error",
+      });
+      failJob(jobId, new Error(result.error || "Unknown pipeline error"));
+      return;
+    }
+
+    console.log(`[zip-pipeline:${jobId}] Pipeline completed successfully`);
+
+    // Build and persist the full update
+    const update = buildFullRunUpdate(result, normalised.lastCommitSha, null);
+    await Project.findByIdAndUpdate(project._id, { $set: update });
+
+    // Create version history for all generated sections (parallel)
+    await createInitialVersions(
+      project._id,
+      result.output,
+      normalised.lastCommitSha,
+    );
+
+    // Log non-fatal agent errors
+    if (result.agentErrors?.length) {
+      console.warn(
+        `[zip-pipeline:${jobId}] ${result.agentErrors.length} non-fatal agent error(s):`,
+        result.agentErrors.map((e) => `${e.agent}: ${e.error}`).join("; "),
+      );
+    }
+
+    finishJob(jobId, {
+      success: true,
+      stats: result.stats,
+      security: result.security,
+      agentErrors: result.agentErrors,
+      routing: result.routing,
+    });
+
+    console.log(
+      `[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`,
+    );
+  } catch (err) {
+    console.error(`[zip-pipeline:${jobId}] Fatal error:`, err.message);
+    await Project.findByIdAndUpdate(project._id, {
+      status: "error",
+      errorMessage: err.message,
+    });
+    failJob(jobId, err);
+  }
+}
+
+/**
+ * Build a tree structure from extracted files for manifests.
+ */
+function buildFileTree(files) {
+  const tree = {};
+  for (const file of files) {
+    const parts = file.path.split("/");
+    let current = tree;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        current[part] = { type: "blob" };
+      } else {
+        current[part] = current[part] || { type: "tree" };
+        current = current[part];
+      }
+    }
+  }
+  return tree;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM TABS MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a new custom tab for a project.
+ * Requires editor or owner access.
+ */
+export async function createCustomTab({
+  projectId,
+  userId,
+  name,
+  description,
+  content = "",
+}) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  // Validate tab name — must be unique per project
+  if (!name || name.trim().length === 0) {
+    throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
+  }
+
+  const trimmedName = name.trim();
+
+  // Check for duplicates (case-insensitive)
+  const isDuplicate = project.customTabs?.some(
+    (t) => t.name.toLowerCase() === trimmedName.toLowerCase(),
+  );
+
+  if (isDuplicate) {
+    throw domainError(
+      `A tab named "${trimmedName}" already exists`,
+      "DUPLICATE_TAB",
+      409,
+    );
+  }
+
+  // Calculate order (add to end)
+  const maxOrder =
+    project.customTabs?.length > 0
+      ? Math.max(...project.customTabs.map((t) => t.order))
+      : 0;
+
+  const newTab = {
+    name: trimmedName,
+    description: description?.trim() || "",
+    content: content?.trim() || "",
+    order: (maxOrder || 0) + 1,
+    isNative: false,
+    createdBy: userId,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const updated = await Project.findByIdAndUpdate(
+    projectId,
+    { $push: { customTabs: newTab } },
+    { new: true },
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * Update a custom tab's name, description, or content.
+ * Requires editor or owner access.
+ * Cannot update "Other Docs" (reserved tab).
+ */
+export async function updateCustomTab({
+  projectId,
+  userId,
+  tabId,
+  name,
+  description,
+  content,
+}) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  const tab = project.customTabs?.find(
+    (t) => t._id?.toString() === tabId?.toString(),
+  );
+
+  if (!tab) {
+    throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
+  }
+
+  // Build update object
+  const updates = { updatedAt: new Date() };
+
+  // Validate and update name
+  if (name !== undefined && name !== null) {
+    const trimmedName = name.trim();
+    if (trimmedName.length === 0) {
+      throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
+    }
+
+    // Check for duplicate names (excluding this tab)
+    const isDuplicate = project.customTabs?.some(
+      (t) =>
+        t._id?.toString() !== tabId?.toString() &&
+        t.name.toLowerCase() === trimmedName.toLowerCase(),
+    );
+
+    if (isDuplicate) {
+      throw domainError(
+        `A tab named "${trimmedName}" already exists`,
+        "DUPLICATE_TAB",
+        409,
+      );
+    }
+
+    updates.name = trimmedName;
+  }
+
+  // Update description
+  if (description !== undefined) {
+    updates.description = description?.trim() || "";
+  }
+
+  // Update content (with versioning)
+  if (content !== undefined) {
+    const oldContent = tab.content;
+    updates.content = content?.trim() || "";
+
+    // Create version snapshot if content changed
+    if (oldContent !== updates.content) {
+      const snapshotSource = project.editedCustomTabs?.some(
+        (e) => e.tabId?.toString() === tabId?.toString(),
+      )
+        ? "user"
+        : "ai_full";
+
+      if (oldContent) {
+        await DocumentVersion.createVersion({
+          projectId: project._id,
+          section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+          content: oldContent,
+          source: snapshotSource,
+          meta: { changeSummary: "Snapshot before content edit" },
+        }).catch((err) =>
+          console.warn("[versions] Custom tab snapshot failed:", err.message),
+        );
+      }
+
+      // Record new version
+      await DocumentVersion.createVersion({
+        projectId: project._id,
+        section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+        content: updates.content,
+        source: "user",
+        meta: { changeSummary: "Custom tab edit" },
+      }).catch((err) =>
+        console.warn("[versions] Custom tab version save failed:", err.message),
+      );
+
+      // Mark as edited
+      let editedCustomTabs = (project.editedCustomTabs || []).filter(
+        (e) => e.tabId?.toString() !== tabId?.toString(),
+      );
+      editedCustomTabs.push({
+        tabId,
+        editedAt: new Date(),
+        stale: false,
+      });
+      await Project.findByIdAndUpdate(projectId, { editedCustomTabs });
+    }
+  }
+
+  // Apply updates to the specific tab
+  await Project.updateOne(
+    { _id: projectId, "customTabs._id": tabId },
+    {
+      $set: {
+        "customTabs.$": { ...(tab.toObject?.() || tab), ...updates },
+      },
+    },
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * Delete a custom tab.
+ * Requires owner access (stricter than editor).
+ * Cannot delete "Other Docs" (reserved tab).
+ */
+export async function deleteCustomTab({ projectId, userId, tabId }) {
+  const project = await assertAccess(projectId, userId, "owner");
+
+  const tab = project.customTabs?.find(
+    (t) => t._id?.toString() === tabId?.toString(),
+  );
+
+  if (!tab) {
+    throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
+  }
+
+  // Remove the tab
+  await Project.findByIdAndUpdate(projectId, {
+    $pull: { customTabs: { _id: tabId } },
+  });
+
+  // Remove related edited tracking
+  await Project.findByIdAndUpdate(projectId, {
+    $pull: { editedCustomTabs: { tabId } },
+  });
+
+  // Delete version history for this tab
+  await DocumentVersion.deleteMany({
+    projectId,
+    section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
+  }).catch((err) =>
+    console.warn(
+      "[versions] Failed to delete custom tab versions:",
+      err.message,
+    ),
+  );
+
+  return getProjectById({ projectId, userId });
+}
+
+/**
+ * List all custom tabs for a project.
+ * Sorted by order for consistent UI display.
+ */
+export async function listCustomTabs({ projectId, userId }) {
+  const project = await assertAccess(projectId, userId, "viewer");
+
+  const tabs = project.customTabs?.sort((a, b) => a.order - b.order) || [];
+
+  return { tabs };
+}
+
+/**
+ * Reorder custom tabs (bulk update).
+ * Requires editor or owner access.
+ * Input: array of { tabId, order }
+ */
+export async function reorderCustomTabs({ projectId, userId, orders }) {
+  const project = await assertAccess(projectId, userId, "editor");
+
+  if (!Array.isArray(orders)) {
+    throw domainError("orders must be an array", "VALIDATION_ERROR", 422);
+  }
+
+  // Update each tab's order
+  for (const { tabId, order } of orders) {
+    await Project.updateOne(
+      { _id: projectId, "customTabs._id": tabId },
+      { $set: { "customTabs.$.order": order } },
+    );
+  }
+
+  return getProjectById({ projectId, userId });
 }
