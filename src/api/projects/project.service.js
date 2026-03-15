@@ -50,6 +50,12 @@ import {
   recoverLostJob,
 } from "../../services/job-registry.service.js";
 
+import {
+  detectProvider,
+  parseRepoUrl as adapterParseRepoUrl,
+  normaliseRepoUrl,
+} from "../../adapters/provider.adapter.js";
+
 // ─── All known output sections ────────────────────────────────────
 // Superset of SECTIONS from the model — includes new sections added
 // by the improved Doc Writer and Security Auditor.
