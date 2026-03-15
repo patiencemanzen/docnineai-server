@@ -67,7 +67,6 @@ router.get("/google/callback", wrap(ctrl.googleLoginCallback));
 
 // ── OAuth — Google Docs export ────────────────────────────────
 router.get("/google-docs/callback", wrap(ctrl.googleDocsCallback));
-// Settings page endpoints (protected — require JWT)
 router.get("/google-docs/status", protect, wrap(ctrl.googleDocsStatusForUser));
 router.get("/google-docs/start", protect, wrap(ctrl.googleDocsStart));
 router.delete("/google-docs", protect, wrap(ctrl.googleDocsDisconnectForUser));
