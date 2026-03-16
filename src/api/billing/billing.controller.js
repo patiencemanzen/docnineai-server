@@ -16,9 +16,12 @@ import {
   addSeats,
   getBillingHistory,
   generateInvoicePdf,
+  countTeamBillableSeats,
+  computeTeamPlanCharge,
 } from "../../services/billing.service.js";
 import { Subscription } from "../../models/Subscription.js";
 import { Project } from "../../models/Project.js";
+import { ProjectShare } from "../../models/ProjectShare.js";
 import { PaymentMethod } from "../../models/PaymentMethod.js";
 import { PlanUsage } from "../../models/PlanUsage.js";
 import { Invoice } from "../../models/Invoice.js";
@@ -97,6 +100,119 @@ export async function getSubscription(req, res) {
     });
   } catch (err) {
     return serverError(res, err, "getSubscription");
+  }
+}
+
+// ── GET /billing/team-seats ──────────────────────────────────────
+/**
+ * Get Team plan seat breakdown for UI display.
+ * Shows: owner (1) + collaborators (count) + monthly rate.
+ * Only available for Team plan subscribers.
+ */
+export async function getTeamSeatsDetails(req, res) {
+  try {
+    const sub = await getOrCreateSubscription(req.user.userId);
+
+    // Only Team plan subscribers can access this
+    if (sub.plan !== "team") {
+      return fail(
+        res,
+        "Team plan details only available for Team subscribers",
+        400,
+      );
+    }
+
+    // Count actual billable seats (owner + accepted collaborators)
+    const currentSeats = await countTeamBillableSeats(req.user.userId);
+
+    // Get all projects owned by this user
+    const projects = await Project.find({ userId: req.user.userId })
+      .select("_id")
+      .lean();
+    const projectIds = projects.map((p) => p._id);
+
+    // Get all accepted shares with collaborator details
+    const shares = await ProjectShare.find(
+      { projectId: { $in: projectIds }, status: "accepted" },
+      "projectId inviteeUserId inviteeEmail role",
+    )
+      .populate("inviteeUserId", "name email")
+      .lean();
+
+    // Group by unique user to avoid double-counting (user may have access to multiple projects)
+    const uniqueCollaborators = {};
+    for (const share of shares) {
+      const userId = share.inviteeUserId?._id?.toString();
+      if (userId && !uniqueCollaborators[userId]) {
+        uniqueCollaborators[userId] = {
+          userId,
+          name: share.inviteeUserId?.name || share.inviteeEmail,
+          email: share.inviteeUserId?.email || share.inviteeEmail,
+          access: "accepted",
+          projectCount: 0,
+        };
+      }
+      if (userId) {
+        uniqueCollaborators[userId].projectCount += 1;
+      }
+    }
+
+    const collaboratorList = Object.values(uniqueCollaborators);
+
+    // Calculate monthly costs (exact decimal, no rounding)
+    const TEAM_RATE_PER_USER = 20.0; // $20/user/mo
+    const monthlyRate = currentSeats * TEAM_RATE_PER_USER;
+
+    // If mid-cycle, calculate prorated amount for this period
+    const daysRemaining = Math.max(
+      0,
+      Math.ceil((sub.currentPeriodEnd - new Date()) / (1000 * 60 * 60 * 24)),
+    );
+    const totalDaysInCycle = Math.ceil(
+      (sub.currentPeriodEnd - sub.currentPeriodStart) / (1000 * 60 * 60 * 24),
+    );
+    const proratedDaily =
+      daysRemaining > 0
+        ? Math.round((monthlyRate * 100 * daysRemaining) / totalDaysInCycle) /
+          100
+        : 0;
+
+    return ok(
+      res,
+      {
+        teamSeats: {
+          plan: "team",
+          owner: {
+            count: 1,
+            name: req.user.name,
+            email: req.user.email,
+          },
+          collaborators: collaboratorList,
+          totalSeats: currentSeats,
+
+          // Billing info
+          billingCycle: sub.billingCycle || "monthly",
+          monthlyRate: monthlyRate.toFixed(2),
+          ratePerUser: TEAM_RATE_PER_USER.toFixed(2),
+
+          // Current billing period
+          periodStart: sub.currentPeriodStart,
+          periodEnd: sub.currentPeriodEnd,
+          daysRemaining,
+          proratedDaily: proratedDaily.toFixed(2),
+
+          // Breakdown
+          seatBreakdown: {
+            owner: 1,
+            collaborators: collaboratorList.length,
+            total: currentSeats,
+          },
+        },
+      },
+      "Team seat details loaded",
+    );
+  } catch (err) {
+    return serverError(res, err, "getTeamSeatsDetails");
   }
 }
 
