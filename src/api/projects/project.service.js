@@ -99,22 +99,43 @@ async function getIncrementalSync() {
  * Parse any supported git provider URL.
  * Auto-detects provider from the URL host.
  * Returns { owner, repoName, normalised, provider }.
+ *
+ * Note: Azure DevOps requires special handling as it returns
+ * { owner, project, repo } instead of { owner, repo }
  */
 function parseRepoUrl(raw) {
   const provider = detectProvider(raw);
   try {
-    const { owner, repo } = adapterParseRepoUrl(provider, raw);
+    const parsed = adapterParseRepoUrl(provider, raw);
+
+    // Extract repoName based on provider
+    let repoName, owner;
+    if (provider === "azure") {
+      owner = parsed.owner;
+      repoName = parsed.repo;
+      // For Azure: owner is org, repo is the repository name
+      // project is the Azure DevOps project name
+    } else {
+      owner = parsed.owner;
+      repoName = parsed.repo;
+    }
+
     return {
       owner,
-      repoName: repo,
+      repoName,
       normalised: normaliseRepoUrl(provider, raw),
       provider,
     };
-  } catch {
-    const err = new Error(`Cannot parse repository URL: "${raw}"`);
-    err.code = "INVALID_REPO_URL";
-    err.status = 400;
-    throw err;
+  } catch (err) {
+    const message = `Cannot parse repository URL: "${raw}"`;
+    console.error(`[parseRepoUrl] ${message}`, {
+      provider: detectProvider(raw),
+      error: err.message,
+    });
+    const error = new Error(message);
+    error.code = "INVALID_REPO_URL";
+    error.status = 400;
+    throw error;
   }
 }
 
@@ -398,79 +419,139 @@ export async function recoverOrphanedJobs() {
  * Returns immediately with the project document — pipeline runs async.
  */
 /**
- * Create a new documentation project for a GitHub repository.
+ * Create a new documentation project for a GitHub/GitLab/Azure DevOps repository.
  * Logs the project creation to changelog.
+ *
+ * Process:
+ * 1. Parse and validate repository URL
+ * 2. Check for duplicate pipelines
+ * 3. For GitLab: fetch and encrypt access token
+ * 4. For Azure DevOps: fetch and encrypt access token
+ * 5. Create project document
+ * 6. Register async pipeline job
  */
 export async function createProject({ userId, repoUrl }) {
-  // provider is auto-detected from the URL (github.com vs gitlab.com)
-  const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
+  try {
+    // provider is auto-detected from the URL (github.com vs gitlab.com vs dev.azure.com)
+    const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
 
-  // Prevent duplicate pipelines for the same repo
-  const active = await Project.findOne({
-    userId,
-    repoOwner: owner,
-    repoName,
-    status: { $in: ["queued", "running"] },
-  });
-  if (active)
-    throw domainError(
-      `A pipeline for ${owner}/${repoName} is already in progress.`,
-      "DUPLICATE_PROJECT",
-      409,
-    );
+    console.log("[createProject] Parsed repo URL", {
+      provider,
+      owner,
+      repoName,
+      repoUrl: normalised,
+    });
 
-  // For GitLab: look up the user's stored access token so the pipeline
-  // can authenticate against the GitLab API.
-  let providerToken = null;
-  if (provider === "gitlab") {
-    const user = await User.findById(userId).select("+gitlab.accessToken");
-    if (!user?.gitlab?.accessToken) {
+    // Prevent duplicate pipelines for the same repo
+    const active = await Project.findOne({
+      userId,
+      repoOwner: owner,
+      repoName,
+      status: { $in: ["queued", "running"] },
+    });
+    if (active) {
+      console.warn("[createProject] Duplicate pipeline detected", {
+        userId,
+        owner,
+        repoName,
+      });
       throw domainError(
-        "GitLab account not connected. Connect via Settings → GitLab.",
-        "GITLAB_NOT_CONNECTED",
-        400,
+        `A pipeline for ${owner}/${repoName} is already in progress.`,
+        "DUPLICATE_PROJECT",
+        409,
       );
     }
-    // Decrypt once here; re-encrypt and store on the project so the
-    // pipeline can use it without another DB round-trip.
-    const { encrypt } = await import("../../utils/crypto.util.js");
-    providerToken = encrypt(decrypt(user.gitlab.accessToken));
-  }
 
-  const jobId = randomUUID();
-  const webhookSecret = randomBytes(32).toString("hex");
+    // For GitLab: look up the user's stored access token so the pipeline
+    // can authenticate against the GitLab API.
+    let providerToken = null;
+    if (provider === "gitlab") {
+      const user = await User.findById(userId).select("+gitlab.accessToken");
+      if (!user?.gitlab?.accessToken) {
+        console.warn("[createProject] GitLab token not found", { userId });
+        throw domainError(
+          "GitLab account not connected. Connect via Settings → GitLab.",
+          "GITLAB_NOT_CONNECTED",
+          400,
+        );
+      }
+      // Decrypt once here; re-encrypt and store on the project so the
+      // pipeline can use it without another DB round-trip.
+      const { encrypt, decrypt } = await import("../../utils/crypto.util.js");
+      providerToken = encrypt(decrypt(user.gitlab.accessToken));
+      console.log("[createProject] GitLab token prepared for project");
+    }
 
-  const project = await Project.create({
-    userId,
-    repoUrl: normalised,
-    repoOwner: owner,
-    repoName,
-    provider, // ← new field
-    providerToken, // ← new field (encrypted, null for GitHub)
-    jobId,
-    status: "running",
-    search_language: "english",
-    webhookSecret,
-    webhookEnabled: true,
-  });
+    // For Azure DevOps: look up the user's stored access token
+    if (provider === "azure") {
+      const user = await User.findById(userId).select(
+        "+azureDevOpsTokenEncrypted",
+      );
+      if (!user?.azureDevOpsTokenEncrypted) {
+        console.warn("[createProject] Azure DevOps token not found", {
+          userId,
+        });
+        throw domainError(
+          "Azure DevOps account not connected. Connect via Settings → Azure DevOps.",
+          "AZURE_NOT_CONNECTED",
+          400,
+        );
+      }
+      // Decrypt once here; re-encrypt and store on the project
+      const { encrypt, decrypt } = await import("../../utils/crypto.util.js");
+      providerToken = encrypt(decrypt(user.azureDevOpsTokenEncrypted));
+      console.log("[createProject] Azure DevOps token prepared for project");
+    }
 
-  registerJob(jobId);
+    const jobId = randomUUID();
+    const webhookSecret = randomBytes(32).toString("hex");
 
-  // Log project creation to changelog
-  try {
-    const { logProjectChange } = await import("../../services/changelog.service.js");
-    await logProjectChange(project._id, userId, "pipeline_started", {
-      details: `Analysis pipeline started for ${owner}/${repoName}`,
+    const project = await Project.create({
+      userId,
+      repoUrl: normalised,
+      repoOwner: owner,
+      repoName,
+      provider,
+      providerToken,
+      jobId,
+      status: "running",
+      search_language: "english",
+      webhookSecret,
+      webhookEnabled: true,
     });
+
+    console.log("[createProject] Project created successfully", {
+      projectId: project._id,
+      provider,
+      owner,
+      repoName,
+    });
+
+    registerJob(jobId);
+
+    // Log project creation to changelog
+    try {
+      const { logProjectChange } =
+        await import("../../services/changelog.service.js");
+      await logProjectChange(project._id, userId, "pipeline_started", {
+        details: `Analysis pipeline started for ${owner}/${repoName}`,
+      });
+    } catch (err) {
+      console.warn("[changelog] Failed to log project creation:", err.message);
+    }
+
+    runPipeline({ project, normalised, jobId }).catch((err) =>
+      console.error(`❌ Pipeline crash [${jobId}]:`, err.message),
+    );
+
+    return project;
   } catch (err) {
-    console.warn("[changelog] Failed to log project creation:", err.message);
+    console.error("[createProject] Error creating project", {
+      error: err.code || err.message,
+      repoUrl,
+    });
+    throw err;
   }
-
-  runPipeline({ project, normalised, jobId }).catch((err) =>
-    console.error(`❌ Pipeline crash [${jobId}]:`, err.message),
-  );
-
-  return project;
 }
 
 /**
@@ -754,9 +835,12 @@ export async function syncProject({
 
   // Log sync operation to changelog
   try {
-    const { logProjectChange } = await import("../../services/changelog.service.js");
+    const { logProjectChange } =
+      await import("../../services/changelog.service.js");
     await logProjectChange(projectId, userId, "pipeline_started", {
-      details: forceFullRun ? "Full re-analysis started" : "Incremental sync started",
+      details: forceFullRun
+        ? "Full re-analysis started"
+        : "Incremental sync started",
     });
   } catch (err) {
     console.warn("[changelog] Failed to log sync:", err.message);
@@ -846,7 +930,8 @@ export async function editDocSection({ projectId, userId, section, content }) {
 
   // Log the change to changelog
   try {
-    const { logSectionEdit } = await import("../../services/changelog.service.js");
+    const { logSectionEdit } =
+      await import("../../services/changelog.service.js");
     await logSectionEdit(projectId, userId, section, currentContent, content);
   } catch (err) {
     console.warn("[changelog] Failed to log section edit:", err.message);
@@ -913,7 +998,8 @@ export async function acceptAISection({ projectId, userId, section }) {
 
   // Log the change to changelog
   try {
-    const { logSectionAccept } = await import("../../services/changelog.service.js");
+    const { logSectionAccept } =
+      await import("../../services/changelog.service.js");
     await logSectionAccept(projectId, userId, section);
   } catch (err) {
     console.warn("[changelog] Failed to log section accept:", err.message);

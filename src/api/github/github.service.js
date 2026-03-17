@@ -203,42 +203,60 @@ export async function getUserRepos(
     org = null, // if provided, fetch org repos instead of /user/repos
   } = {},
 ) {
-  const token = await getDecryptedToken(userId);
+  try {
+    console.log("[github.service] Fetching repositories", { page, perPage, type, sort, org });
+    
+    const token = await getDecryptedToken(userId);
 
-  // Org repos use a different endpoint and don't support the 'type' filter
-  const endpoint = org
-    ? `${GH_API}/orgs/${encodeURIComponent(org)}/repos`
-    : `${GH_API}/user/repos`;
-  const params = org
-    ? { sort, per_page: perPage, page }
-    : { type, sort, per_page: perPage, page };
+    // Org repos use a different endpoint and don't support the 'type' filter
+    const endpoint = org
+      ? `${GH_API}/orgs/${encodeURIComponent(org)}/repos`
+      : `${GH_API}/user/repos`;
+    const params = org
+      ? { sort, per_page: perPage, page }
+      : { type, sort, per_page: perPage, page };
 
-  const res = await axios.get(endpoint, {
-    headers: ghHeaders(token),
-    params,
-  });
+    const res = await axios.get(endpoint, {
+      headers: ghHeaders(token),
+      params,
+    });
 
-  const repos = res.data.map((r) => ({
-    id: r.id,
-    name: r.name,
-    fullName: r.full_name,
-    description: r.description,
-    url: r.html_url,
-    cloneUrl: r.clone_url,
-    language: r.language,
-    stars: r.stargazers_count,
-    forks: r.forks_count,
-    isPrivate: r.private,
-    isArchived: r.archived,
-    defaultBranch: r.default_branch,
-    updatedAt: r.updated_at,
-  }));
+    console.log("[github.service] Raw GitHub API response", {
+      repoCount: res.data?.length || 0,
+      firstRepo: res.data?.[0] ? { id: res.data[0].id, name: res.data[0].name, full_name: res.data[0].full_name } : null,
+    });
 
-  // GitHub paginates via Link header
-  const linkHeader = res.headers.link || "";
-  const hasNextPage = linkHeader.includes('rel="next"');
+    const repos = res.data.map((r) => ({
+      id: r.id,
+      name: r.name,
+      full_name: r.full_name,
+      description: r.description,
+      html_url: r.html_url,
+      clone_url: r.clone_url,
+      language: r.language,
+      stargazers_count: r.stargazers_count,
+      forks_count: r.forks_count,
+      private: r.private,
+      archived: r.archived,
+      default_branch: r.default_branch,
+      updated_at: r.updated_at,
+    }));
 
-  return { repos, page, perPage, hasNextPage };
+    // GitHub paginates via Link header
+    const linkHeader = res.headers.link || "";
+    const hasNextPage = linkHeader.includes('rel="next"');
+
+    console.log("[github.service] Mapped repositories successfully", { count: repos.length, hasNextPage });
+    return { repos, page, perPage, hasNextPage };
+  } catch (err) {
+    console.error("[github.service] Error fetching repositories", {
+      error_code: err.code,
+      error_message: err.message,
+      response_status: err.response?.status,
+      response_data: err.response?.data,
+    });
+    throw err;
+  }
 }
 
 // ── Connection status ─────────────────────────────────────────

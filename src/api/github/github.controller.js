@@ -81,6 +81,15 @@ export async function listRepos(req, res) {
   const org = req.query.org || null; // if set, fetch from /orgs/{org}/repos
 
   try {
+    console.log("[github.controller] Fetching repos from GitHub service", {
+      page,
+      perPage,
+      type,
+      sort,
+      org,
+      userId: req.user.userId,
+    });
+
     const result = await githubService.getUserRepos(req.user.userId, {
       page,
       perPage,
@@ -88,8 +97,20 @@ export async function listRepos(req, res) {
       sort,
       org,
     });
+
+    console.log("[github.controller] Successfully fetched GitHub repos", {
+      count: result.repos.length,
+      hasNextPage: result.hasNextPage,
+    });
+
     return ok(res, result);
   } catch (err) {
+    console.error("[github.controller] Error in listRepos", {
+      error_code: err.code,
+      error_message: err.message,
+      error_status: err.response?.status,
+      user_id: req.user.userId,
+    });
     if (err.code === "GITHUB_NOT_CONNECTED")
       return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "listRepos");

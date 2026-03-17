@@ -128,26 +128,51 @@ export async function getAuthenticatedUser(accessToken) {
 
 /** List repos the user has access to. */
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
-  const start = (page - 1) * perPage;
-  const { data } = await axios.get(`${BB_API}/repositories`, {
-    headers: bbHeaders(accessToken),
-    params: {
-      role: "member", // owned or member
-      pagelen: perPage,
-      page,
-      sort: "-updated_on",
-    },
-  });
-  return (data.values || []).map((r) => ({
-    id: r.uuid,
-    name: r.name,
-    fullName: r.full_slug,
-    url: r.links.html.href,
-    description: r.description,
-    private: r.is_private,
-    defaultBranch: r.mainbranch?.name || "master",
-    updatedAt: r.updated_on,
-  }));
+  try {
+    console.log("[bitbucket.service] Fetching repositories", { page, perPage });
+    
+    const start = (page - 1) * perPage;
+    const { data } = await axios.get(`${BB_API}/repositories`, {
+      headers: bbHeaders(accessToken),
+      params: {
+        role: "member", // owned or member
+        pagelen: perPage,
+        page,
+        sort: "-updated_on",
+      },
+    });
+    
+    console.log("[bitbucket.service] Raw Bitbucket API response", {
+      repoCount: data.values?.length || 0,
+      firstRepo: data.values?.[0] ? { uuid: data.values[0].uuid, name: data.values[0].name, full_slug: data.values[0].full_slug } : null,
+    });
+
+    const repos = (data.values || []).map((r) => ({
+      id: r.uuid,
+      name: r.name,
+      full_slug: r.full_slug,
+      links: {
+        html: {
+          href: r.links.html.href,
+        },
+      },
+      description: r.description,
+      is_private: r.is_private,
+      mainbranch: r.mainbranch?.name || "master",
+      updated_on: r.updated_on,
+    }));
+
+    console.log("[bitbucket.service] Mapped repositories successfully", { count: repos.length });
+    return repos;
+  } catch (err) {
+    console.error("[bitbucket.service] Error fetching repositories", {
+      error_code: err.code,
+      error_message: err.message,
+      response_status: err.response?.status,
+      response_data: err.response?.data,
+    });
+    throw err;
+  }
 }
 
 // ── Repo metadata ─────────────────────────────────────────────
