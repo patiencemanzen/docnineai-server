@@ -25,10 +25,7 @@ function getOAuthConfig() {
       hasRedirectUri: !!REDIRECT_URI,
       clientIdValue: CLIENT_ID ? "***" : undefined,
     });
-    throw new Error(
-      "GITLAB_CLIENT_ID and GITLAB_CLIENT_SECRET must be set in .env\n" +
-        "Create an OAuth App at: https://gitlab.com/oauth/applications",
-    );
+    throw new Error("Application Keys not set");
   }
 
   return { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI };
@@ -36,7 +33,7 @@ function getOAuthConfig() {
 
 function getStateSecret() {
   const secret = process.env.JWT_ACCESS_SECRET;
-  if (!secret) throw new Error("JWT_ACCESS_SECRET must be set in .env");
+  if (!secret) throw new Error("Token keys not set");
   return secret;
 }
 
@@ -138,7 +135,9 @@ export async function handleOAuthCallback({ code, state }) {
     throw e;
   }
 
-  console.log("[GitLab OAuth Service] Got access token, fetching user profile...");
+  console.log(
+    "[GitLab OAuth Service] Got access token, fetching user profile...",
+  );
 
   // 3. Fetch GitLab user profile using access token
   let glUser;
@@ -167,12 +166,13 @@ export async function handleOAuthCallback({ code, state }) {
   });
 
   if (!updated1) {
-    console.error("[GitLab OAuth Service] User not found when updating identity", {
-      userId,
-    });
-    throw new Error(
-      "User not found in database. Please log in again and try.",
+    console.error(
+      "[GitLab OAuth Service] User not found when updating identity",
+      {
+        userId,
+      },
     );
+    throw new Error("User not found in database. Please log in again and try.");
   }
 
   // 5. Store encrypted token on User document

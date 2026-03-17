@@ -79,11 +79,41 @@ If no components are found, return exactly: []
 
 ## FRAMEWORK-SPECIFIC HINTS
 - NestJS: @Injectable() = singleton service; @Middleware() = middleware class; @Guard() = guard
+- Spring Boot (Java): @Service, @Component, @RestController, @Repository, @Mapper
+- Django (Python): views.py classes, serializers.py, signals.py
+- Flask (Python): blueprints, route decorators, extension classes
+- FastAPI (Python): APIRouter, dependency injection, Pydantic models
+- FastAPI/uvicorn: async def functions, path operations
+- Express.js: middleware functions, route handlers, controllers
+- NestJS/TypeScript: decorators, dependency injection
 - React/Vue hooks: functions starting with "use" = hook type
 - Zustand/Pinia/Redux: store files = store type with state.manages = true
 - React Context: createContext/Provider pattern = context type
 - Express: function(req, res, next) signature = middleware type
+- Flask: @app.route(), @blueprint.route() = route/middleware  
+- Django: View classes, ViewSets, @require_http_method = handler/middleware
+- Laravel (PHP): Controller classes, service providers, jobs
+- Rails (Ruby): controllers, services, ActiveRecord scopes
+- Go (Gin/Echo): HandlerFunc, middleware chains, service injection
+- Kotlin (Spring Boot): @Service, @Component, @RestController, data classes
+- Swift (Vapor): struct/class with @main, routes, middleware
+- C++ (Modern C++): classes, free functions, templates, shared_ptr/unique_ptr
 - Config files: exports of plain objects or dotenv wrappers = config type
+- Flask: @app.route() functions = route type
+- Django Views: class-based views (CBV) or function-based views (FBV) = controller type
+- FastAPI: @app.get(), @router.post() functions = route type
+- Django Models: class Model(models.Model) = model type
+- FastAPI Dependencies: Depends() injected items = service/dependency type
+- Laravel Controllers: class extends Controller = controller type
+- Laravel Models: class extends Model = model type
+- Laravel Services: stand-alone service classes = service type
+- Spring Boot: @Service = service type; @Controller = controller type; @Repository = model type
+- Go: plain functions = utility/helper; structs with methods = service type
+- PHP: namespaced classes = service/controller/model types
+- Swift: structs/classes with methods = service/model type
+- Kotlin: data classes = model type; service-like classes = service type
+- C#: classes with methods = service/controller type; DbSet<> = model type
+- Ruby Rails: models, controllers, services follow strong conventions = use file path to infer type
 
 ## STRICT OUTPUT RULES
 - No markdown of any kind

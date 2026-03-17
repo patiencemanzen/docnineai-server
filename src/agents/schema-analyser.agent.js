@@ -99,11 +99,20 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
 **Sequelize** — sequelize.define(), DataTypes.STRING, belongsTo(), hasMany(), hasOne(), belongsToMany()
 **Mongoose** — new Schema({ }), mongoose.model(), SchemaTypes, ref: 'ModelName'
 **SQLAlchemy** — class Model(Base), Column(), relationship(), ForeignKey(), declarative_base()
+**Pydantic** — BaseModel, Field(), field_validator(), ConfigDict, model_validate()
+**Marshmallow** — Schema class, fields.String(), post_load(), pre_load()
 **Django ORM** — class Model(models.Model), models.CharField(), ForeignKey(), ManyToManyField()
 **ActiveRecord (Rails)** — class Model < ApplicationRecord, belongs_to, has_many, has_one, has_and_belongs_to_many
 **Eloquent (Laravel)** — class Model extends Model, $fillable, $casts, belongsTo(), hasMany()
-**GORM** — type Struct struct { gorm:"..." }, gorm.Model embedding, has_many, belongs_to
-**Hibernate** — @Entity, @Table, @Column, @OneToMany, @ManyToOne, @JoinColumn
+**Doctrine (PHP)** — #[ORM\Entity], #[ORM\Column], #[ORM\ManyToOne], #[ORM\OneToMany], #[ORM\ManyToMany]
+**GORM (Go)** — type Model struct { gorm:"..." }, gorm.Model embedding, has_many, belongs_to
+**Hibernate (Java)** — @Entity, @Table, @Column, @OneToMany, @ManyToOne, @JoinColumn
+**JPA (Java)** — @Entity, @Id, @GeneratedValue, @ManyToOne, @OneToMany, @JoinColumn
+**Spring Data JPA** — extends JpaRepository/CrudRepository, @Repository, custom query methods
+**MyBatis (Java)** — @Mapper, @Select, @Insert, @Update, @Delete, @Results, @Result
+**Kotlin Data Classes** — data class User(...), @Entity, @Table, @Column with annotations
+**Swift Codable** — struct: Codable, @Model (SwiftData), @Relationship, @Attribute
+**Entity Framework (.NET/C#)** — DbSet<Model>, protected override void OnModelCreating(), HasKey(), HasMany()
 **Zod/Joi/Yup** — validation schemas — treat as "schema" orm type, extract field shapes
 
 ## STRICT OUTPUT RULES
@@ -130,28 +139,52 @@ const SCHEMA_REGEX = new RegExp(
     // Prisma
     /model\s+\w+\s*\{/,
     /@@relation|@relation|@default|@@index|@@unique/,
-    // TypeORM
+    // TypeORM (TypeScript/Node.js)
     /@Entity\s*\(|@Table\s*\(|@Column\s*\(|@PrimaryGeneratedColumn/,
     /@OneToMany|@ManyToOne|@OneToOne|@ManyToMany|@JoinTable|@JoinColumn/,
-    // Sequelize
+    // Sequelize (Node.js)
     /sequelize\.define\s*\(|DataTypes\.|belongsTo\s*\(|hasMany\s*\(|hasOne\s*\(|belongsToMany\s*\(/,
-    // Mongoose
+    // Mongoose (Node.js/MongoDB)
     /new\s+Schema\s*\(|mongoose\.Schema|mongoose\.model\s*\(/,
     /SchemaTypes\.|ref\s*:\s*['"]\w+['"]/,
-    // SQLAlchemy
+    // SQLAlchemy (Python)
     /class\s+\w+\s*\(\s*Base\s*\)|Column\s*\(|relationship\s*\(|ForeignKey\s*\(/,
     /declarative_base\s*\(\)|db\.Model/,
-    // Django
+    // Django ORM (Python)
     /models\.Model\s*\)|models\.CharField|models\.ForeignKey|models\.ManyToManyField/,
-    // ActiveRecord
+    /models\.DateTimeField|models\.IntegerField|models\.TextField/,
+    // Pydantic (Python)
+    /BaseModel\s*[\s\n]|Field\s*\(|validator\s+\(/,
+    // Marshmallow (Python)
+    /Schema\)|fields\.\w+\(\)|post_load|pre_load/,
+    // ActiveRecord (Ruby/Rails)
     /belongs_to\s+:|has_many\s+:|has_one\s+:|has_and_belongs_to_many/,
-    // Eloquent
+    /ActiveRecord::Base|validates\s+:/,
+    // Eloquent (Laravel)
     /extends\s+Model|protected\s+\$fillable|protected\s+\$casts/,
-    // GORM
-    /gorm:"[^"]*"|gorm\.Model/,
-    // Hibernate
-    /@Entity|@Table|@ManyToOne|@OneToMany|@JoinColumn/,
-    // Zod / Joi / Yup
+    /belongsTo\s*\(|hasMany\s*\(|hasOne\s*\(|belongsToMany\s*\(/,
+    // GORM (Go)
+    /gorm:"[^"]*"|gorm\.Model|belongs_to|has_many|many_to_many/,
+    // Hibernate (Java)
+    /@Entity|@Table|@Column|@OneToMany|@ManyToOne|@ManyToMany|@JoinColumn/,
+    /@GeneratedValue|@Id/,
+    // JPA (Java)
+    /javax\.persistence\.|jakarta\.persistence\./,
+    // Spring Data (Java)
+    /CrudRepository|JpaRepository|@Repository/,
+    // MyBatis (Java)
+    /@Mapper|@Select|@Insert|@Update|@Delete|@Results|@Result/,
+    // Doctrine (PHP)
+    /#\[ORM\\Entity\]|#\[ORM\\Column\]|#\[ORM\\/,
+    // Entity Framework (.NET/C#)
+    /DbSet<|DbContext|OnModelCreating|HasKey|HasMany|WithMany/,
+    // Kotlin Data Classes
+    /data\s+class\s+\w+/,
+    // Swift Codable
+    /Codable|@Model|@Relationship/,
+    // TypeORM C# Attributes
+    /\[Column\]|\[Table\]|\[Key\]|\[ForeignKey\]/,
+    // Zod / Joi / Yup (Validation schemas)
     /z\.object\s*\(|Joi\.object\s*\(|yup\.object\s*\(|object\s*\(\s*\{/,
     // Generic SQL
     /CREATE\s+TABLE|ALTER\s+TABLE|PRIMARY\s+KEY|FOREIGN\s+KEY|REFERENCES\s+\w+/i,
@@ -182,10 +215,26 @@ const VALID_ORMS = new Set([
   "eloquent",
   "gorm",
   "hibernate",
+  "jpa",
+  "spring-data",
+  "mybatis",
+  "doctrine",
+  "sqlc",
   "zod",
   "joi",
   "yup",
+  "pydantic",
+  "marshmallow",
+  "sql-alchemy",
+  "propel",
+  "doctrine2",
+  "fuel-orm",
+  "cake-orm",
+  "ent",
+  "cqrs",
+  "knex",
   "raw_sql",
+  "pb",
   "other",
 ]);
 

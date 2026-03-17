@@ -79,7 +79,18 @@ Your entire response must start with [ and end with ].
 - Prisma/TypeORM/Sequelize: model definitions, @Entity() → model
 - Zod/Joi/Yup: .object(), .string(), schema exports → schema
 - Django: views.py, urls.py, models.py, serializers.py → controller/route/model/schema
-- Bull/BullMQ, Celery: @Processor(), @Job(), task definitions → job`;
+- FastAPI: @app.get(), dependencies, path operations → route/controller
+- Flask: @app.route(), blueprints → route/middleware
+- Laravel: Controllers, routes/web.php, Models → controller/route/model
+- Spring Boot: @Controller, @Service, @Repository, @Component → controller/service/model/middleware
+- Symfony: Controllers, Services, EventSubscribers → controller/service/event
+- Java: packages, classes with annotations → service/model/controller
+- Go: functions, packages, interfaces → service/utility/helper
+- PHP: namespaces, classes, functions → controller/service/utility
+- Swift: structs, classes, protocols → model/service/helper
+- Ruby/Rails: controllers, models, services → controller/model/service
+- Kotlin: classes, objects, extensions → service/model/utility
+- C/C++: structs, classes, function definitions → model/service/utility`;
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -132,12 +143,18 @@ const VALID_LANGUAGES = new Set([
   "go",
   "rust",
   "java",
+  "kotlin",
   "ruby",
   "php",
+  "csharp",
+  "swift",
+  "c",
+  "cpp",
   "css",
   "html",
   "json",
   "yaml",
+  "sql",
   "other",
 ]);
 
@@ -321,24 +338,59 @@ function heuristicClassify(file) {
 function inferLanguage(filePath) {
   const ext = filePath.split(".").pop()?.toLowerCase();
   const map = {
+    // JavaScript/TypeScript
     ts: "typescript",
     tsx: "typescript",
+    mts: "typescript",
+    cts: "typescript",
     js: "javascript",
     jsx: "javascript",
     mjs: "javascript",
     cjs: "javascript",
+    // Python
     py: "python",
+    pyw: "python",
+    // Go
     go: "go",
+    // Rust
     rs: "rust",
+    // Java & Kotlin
     java: "java",
-    kt: "java",
+    kt: "kotlin",
+    kts: "kotlin",
+    // Ruby
     rb: "ruby",
+    // PHP
     php: "php",
+    php5: "php",
+    php7: "php",
+    php8: "php",
+    phtml: "php",
+    // C/C++
+    c: "c",
+    h: "c",
+    cc: "cpp",
+    cpp: "cpp",
+    cxx: "cpp",
+    "c++": "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
+    // C#/.NET
+    cs: "csharp",
+    csproj: "csharp",
+    // Swift
+    swift: "swift",
+    // SQL
+    sql: "sql",
+    // Styling
     css: "css",
     scss: "css",
     sass: "css",
+    less: "css",
+    // Markup
     html: "html",
     htm: "html",
+    // Data formats
     json: "json",
     yml: "yaml",
     yaml: "yaml",
@@ -385,7 +437,7 @@ function detectTechStack(files) {
   const paths = files.map((f) => f.path).join("\n");
   const manifests = files
     .filter((f) =>
-      /package\.json$|requirements\.txt$|Cargo\.toml$|go\.mod$|pom\.xml$|composer\.json$|Gemfile$/.test(
+      /package\.json$|requirements\.txt$|pyproject\.toml$|Cargo\.toml$|go\.mod$|pom\.xml$|build\.gradle|composer\.json$|Gemfile$|CMakeLists\.txt$|\.csproj$|Package\.swift$|conanfile/i.test(
         f.path,
       ),
     )
@@ -508,6 +560,40 @@ function detectTechStack(files) {
     if (/activerecord/i.test(combined)) stack.push("ActiveRecord");
   }
 
+  // ── C / C++ ───────────────────────────────────────────────────
+  if (/CMakeLists\.txt|Makefile|conanfile/i.test(paths)) {
+    if (/\.cpp$|\.cc$|\.cxx$/m.test(paths)) stack.push("C++");
+    else if (/\.c$/m.test(paths)) stack.push("C");
+    if (/CMakeLists\.txt/i.test(paths)) stack.push("CMake");
+    if (/conanfile/i.test(paths)) stack.push("Conan");
+    if (/Makefile/i.test(paths)) stack.push("Make");
+  }
+
+  // ── C# / .NET ─────────────────────────────────────────────────
+  if (/\.csproj$|appsettings\.json/i.test(paths)) {
+    stack.push("C#");
+    if (/"DotNet"|"net6"|"net7"|"net8"/i.test(combined)) stack.push(".NET");
+    if (/EntityFramework|EF Core/i.test(combined))
+      stack.push("Entity Framework");
+    if (/"Xamarin"/i.test(combined)) stack.push("Xamarin");
+    if (/"ASP.NET"/i.test(combined)) stack.push("ASP.NET");
+  }
+
+  // ── Swift ─────────────────────────────────────────────────────
+  if (/Package\.swift|\.swift$/m.test(paths)) {
+    stack.push("Swift");
+    if (/vapor/i.test(combined)) stack.push("Vapor");
+    if (/perfect/i.test(combined)) stack.push("Perfect");
+    if (/kitura/i.test(combined)) stack.push("Kitura");
+    if (/xcode|xcodeproj/i.test(paths)) stack.push("Xcode");
+  }
+
+  // ── Kotlin ─────────────────────────────────────────────────────
+  if (/\.kts$/m.test(paths) || /kotlin/i.test(combined)) {
+    stack.push("Kotlin");
+    if (/ktor/i.test(combined)) stack.push("Ktor");
+  }
+
   // ── Infrastructure ────────────────────────────────────────────
   if (/Dockerfile/i.test(paths)) stack.push("Docker");
   if (/docker-compose/i.test(paths)) stack.push("Docker Compose");
@@ -530,6 +616,8 @@ function detectTechStack(files) {
     if (/\.php$/m.test(paths)) stack.push("PHP");
     if (/\.cs$/m.test(paths)) stack.push("C#");
     if (/\.swift$/m.test(paths)) stack.push("Swift");
+    if (/\.cpp$|\.cc$|\.cxx$/m.test(paths)) stack.push("C++");
+    if (/\.c$/m.test(paths)) stack.push("C");
   }
 
   return [...new Set(stack)];

@@ -16,10 +16,7 @@ function getOAuthConfig() {
   const REDIRECT_URI = process.env.BITBUCKET_REDIRECT_URI;
 
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    throw new Error(
-      "BITBUCKET_CLIENT_ID and BITBUCKET_CLIENT_SECRET must be set in .env\n" +
-        "Create an OAuth App at: https://bitbucket.org/account/settings/apps/",
-    );
+    throw new Error("Application keys not set.");
   }
 
   return { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI };
@@ -27,7 +24,7 @@ function getOAuthConfig() {
 
 function getStateSecret() {
   const secret = process.env.JWT_ACCESS_SECRET;
-  if (!secret) throw new Error("JWT_ACCESS_SECRET must be set in .env");
+  if (!secret) throw new Error("Token keys not set");
   return secret;
 }
 
@@ -35,6 +32,7 @@ function getStateSecret() {
 
 /**
  * Generate the Bitbucket OAuth authorisation URL.
+ * 
  * @param {string} userId
  * @returns {string} redirect URL
  */
@@ -133,7 +131,9 @@ export async function handleOAuthCallback({ code, state }) {
     throw e;
   }
 
-  console.log("[Bitbucket OAuth Service] Got access token, fetching user profile...");
+  console.log(
+    "[Bitbucket OAuth Service] Got access token, fetching user profile...",
+  );
 
   // 3. Fetch Bitbucket user profile
   const bbUser = await bbService.getAuthenticatedUser(access_token);
@@ -144,19 +144,22 @@ export async function handleOAuthCallback({ code, state }) {
   });
 
   // 4. Update User record with Bitbucket identity
-  console.log("[Bitbucket OAuth Service] Updating user with Bitbucket identity...");
+  console.log(
+    "[Bitbucket OAuth Service] Updating user with Bitbucket identity...",
+  );
   const updated1 = await User.findByIdAndUpdate(userId, {
     bitbucketId: bbUser.id,
     bitbucketUsername: bbUser.username,
   });
 
   if (!updated1) {
-    console.error("[Bitbucket OAuth Service] User not found when updating identity", {
-      userId,
-    });
-    throw new Error(
-      "User not found in database. Please log in again and try.",
+    console.error(
+      "[Bitbucket OAuth Service] User not found when updating identity",
+      {
+        userId,
+      },
     );
+    throw new Error("User not found in database. Please log in again and try.");
   }
 
   // 5. Store encrypted token on User
@@ -175,9 +178,12 @@ export async function handleOAuthCallback({ code, state }) {
   );
 
   if (!updated2) {
-    console.error("[Bitbucket OAuth Service] User not found when storing token", {
-      userId,
-    });
+    console.error(
+      "[Bitbucket OAuth Service] User not found when storing token",
+      {
+        userId,
+      },
+    );
     throw new Error("Failed to store Bitbucket token. Please try again.");
   }
 
