@@ -82,25 +82,48 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
+    const page = Math.max(1, parseInt(req.query.page || "1", 10));
+    const perPage = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.perPage || "30", 10)),
+    );
+    console.log("[Azure.controller] Fetching repos from service", {
+      userId: req.user.userId,
+      page,
+      perPage,
+    });
+
     // Query User to get the encrypted token (auth middleware only sets userId/email)
     const user = await User.findById(req.user.userId).select(
       "+azureDevOpsTokenEncrypted",
     );
 
     if (!user || !user.azureDevOpsTokenEncrypted) {
+      console.warn("[Azure.controller] No Azure DevOps token found for user", {
+        userId: req.user.userId,
+        hasUser: !!user,
+        hasToken: user ? !!user.azureDevOpsTokenEncrypted : false,
+      });
       return ok(res, { repos: [], hasNextPage: false });
     }
 
     const token = await azureOAuthService.decryptProvidersToken(
       user.azureDevOpsTokenEncrypted,
     );
-    const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const perPage = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.perPage || "30", 10)),
-    );
 
     const result = await azureService.listUserRepos(token, page, perPage);
+    console.log("[Azure.controller] Successfully fetched repos", {
+      count: result.length,
+      page,
+      perPage,
+    });
+    if (result.length > 0) {
+      console.log("[Azure.controller] First repo sample", {
+        id: result[0].id,
+        name: result[0].name,
+        webUrl: result[0].webUrl,
+      });
+    }
     return ok(res, {
       repos: result,
       page,
@@ -108,6 +131,12 @@ export async function listRepos(req, res) {
       hasNextPage: result.length === perPage,
     });
   } catch (err) {
+    console.error("[Azure.controller] Failed to fetch repos", {
+      userId: req.user.userId,
+      errorCode: err.code,
+      errorMessage: err.message,
+      status: err.status,
+    });
     return serverError(res, err, "listRepos");
   }
 }

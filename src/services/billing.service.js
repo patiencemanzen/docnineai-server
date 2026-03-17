@@ -263,13 +263,14 @@ export async function activateFromPayment(fwTx) {
 /**
  * Upgrade: immediate effect, charge proration now.
  * Downgrade: schedule for period end.
+ * Zero-cost upgrade: apply immediately (no payment).
  *
  * @param {Object} opts
  * @param {string}  opts.userId
  * @param {string}  opts.newPlanId
  * @param {'monthly'|'annual'} opts.newCycle
  * @param {number}  opts.seats
- * @returns {Promise<{type:'upgrade'|'downgrade', paymentLink?: string, effectiveAt?: Date}>}
+ * @returns {Promise<{type:'upgrade'|'downgrade'|'immediate_no_charge', paymentLink?: string, effectiveAt?: Date}>}
  */
 export async function changePlan({ userId, newPlanId, newCycle, seats }) {
   const sub = await getOrCreateSubscription(userId);
@@ -285,6 +286,43 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
   // ── Upgrade ─────────────────────────────────────────────────
   if (upgrading || (cycleChange && newCycle === "annual")) {
     const proratedCents = calculateProration(sub, newPlanId, newCycle, seats);
+
+    // ── Zero or negative proration: apply immediately ──────────
+    // This happens when upgrading to a cheaper plan or at period end
+    if (proratedCents <= 0) {
+      const periodEnd = addPeriod(new Date(), newCycle);
+      sub.plan = newPlanId;
+      sub.billingCycle = newCycle;
+      sub.seats = seats;
+      sub.status = "active";
+      sub.currentPeriodStart = new Date();
+      sub.currentPeriodEnd = periodEnd;
+      sub.pendingPlan = null;
+      sub.pendingBillingCycle = null;
+      await sub.save();
+
+      // Void the pending invoice if it exists
+      await Invoice.updateMany(
+        {
+          userId,
+          subscriptionId: sub._id,
+          status: "pending",
+          planId: newPlanId,
+        },
+        { status: "void" },
+      );
+
+      await sendPlanUpgradedEmail({
+        to: user.email,
+        name: user.name,
+        newPlanName: getPlan(newPlanId).name,
+        nextRenewalDate: periodEnd,
+      });
+
+      return { type: "immediate_no_charge" };
+    }
+
+    // ── Charge required: create invoice and attempt immediate charge ──
     const txRef = buildTxRef("upgrade");
 
     const invoice = await Invoice.create({
@@ -738,6 +776,203 @@ export async function applyScheduledDowngrade(subscriptionId) {
   await sub.save();
 }
 
+// ── Team plan auto-detection (based on project shares) ──────────
+
+/**
+ * Count unique Team members for billing purposes.
+ * Total = 1 (owner) + unique users with accepted ProjectShare status
+ *
+ * @param {string} userId - subscription owner
+ * @returns {Promise<number>} total billable seats
+ */
+export async function countTeamBillableSeats(userId) {
+  const { Project } = await import("../models/Project.js");
+  const { ProjectShare } = await import("../models/ProjectShare.js");
+
+  // Get all projects owned by this user
+  const projects = await Project.find({ userId }).select("_id").lean();
+  if (projects.length === 0) return 1; // just the owner
+
+  const projectIds = projects.map((p) => p._id);
+
+  // Get all ACCEPTED shares (pending don't count yet)
+  const shares = await ProjectShare.find(
+    { projectId: { $in: projectIds }, status: "accepted" },
+    "inviteeUserId"
+  ).lean();
+
+  // Count unique users (exclude null, avoid duplicates)
+  const uniqueUserIds = new Set(
+    shares.map((s) => s.inviteeUserId).filter(Boolean)
+  );
+
+  // Total = owner + unique collaborators
+  return 1 + uniqueUserIds.size;
+}
+
+/**
+ * Compute Team plan charge with fractional seats + optional daily proration.
+ *
+ * Returns object with credit, charge, and net amounts for mid-cycle changes.
+ * All amounts in USD cents.
+ *
+ * @param {Object} opts
+ * @param {number}  opts.currentSeats         - existing seat count
+ * @param {number}  opts.newSeats             - new seat count
+ * @param {Date}    opts.cycleStartDate       - start of billing period
+ * @param {Date}    opts.cycleEndDate         - end of billing period
+ * @param {number}  opts.daysRemaining        - days left in cycle
+ * @param {boolean} opts.include_proration    - if true, calculate credit on old seats
+ * @returns {Object} { creditCents, chargeCents, netChargeCents, explanation }
+ */
+export function computeTeamPlanCharge({
+  currentSeats,
+  newSeats,
+  cycleStartDate,
+  cycleEndDate,
+  daysRemaining,
+  include_proration = true,
+}) {
+  const TEAM_MONTHLY_RATE = 2000; // $20.00/user/mo in cents
+  const totalDaysInCycle = daysBetween(cycleStartDate, cycleEndDate);
+
+  if (!include_proration) {
+    // Simple: charge for new seats count for full month
+    const chargeCents = Math.round(newSeats * TEAM_MONTHLY_RATE);
+    return {
+      creditCents: 0,
+      chargeCents,
+      netChargeCents: chargeCents,
+      explanation: {
+        currentSeats,
+        newSeats,
+        daysRemaining,
+        totalDaysInCycle,
+        prorationType: "no_proration",
+      },
+    };
+  }
+
+  // Pro-rated calculation: credit old seats, charge new seats for remaining days
+  const dailyRatePerSeat = TEAM_MONTHLY_RATE / totalDaysInCycle;
+  const creditCents = Math.round(currentSeats * dailyRatePerSeat * daysRemaining);
+  const chargeCents = Math.round(newSeats * dailyRatePerSeat * daysRemaining);
+  const netChargeCents = chargeCents - creditCents;
+
+  console.log(
+    `[team-billing] Seat adjustment: ${currentSeats} → ${newSeats} seats ` +
+      `| ${daysRemaining}/${totalDaysInCycle} days remaining ` +
+      `| credit: ${creditCents}¢ ($${(creditCents / 100).toFixed(2)}) ` +
+      `| charge: ${chargeCents}¢ ($${(chargeCents / 100).toFixed(2)}) ` +
+      `| net: ${netChargeCents}¢ ($${(netChargeCents / 100).toFixed(2)})`
+  );
+
+  return {
+    creditCents,
+    chargeCents,
+    netChargeCents,
+    explanation: {
+      currentSeats,
+      newSeats,
+      seatDelta: newSeats - currentSeats,
+      daysRemaining,
+      totalDaysInCycle,
+      dailyRatePerSeat,
+      prorationType: "mid_cycle_team_seat",
+    },
+  };
+}
+
+/**
+ * Sync Team plan seats with actual project shares and apply billing if mid-cycle.
+ * Call this whenever ProjectShare status changes (pending → accepted OR revoked).
+ *
+ * @param {string} projectId
+ * @param {string} projectOwnerId - subscription owner ID
+ * @returns {Promise<{previousSeats, currentSeats, proration?, invoice?}>}
+ */
+export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
+  const sub = await getOrCreateSubscription(projectOwnerId);
+  if (sub.plan !== "team") return null; // Only for Team plan
+
+  const previousSeats = sub.seats || 1;
+  const currentSeats = await countTeamBillableSeats(projectOwnerId);
+
+  console.log(
+    `[team-sync] Project ${projectId}: ${projectOwnerId} seats ${previousSeats} → ${currentSeats}`
+  );
+
+  if (currentSeats === previousSeats) return null; // No change
+
+  // Calculate prorated charge
+  const daysRemaining = daysUntil(sub.currentPeriodEnd);
+
+  const proration = computeTeamPlanCharge({
+    currentSeats: previousSeats,
+    newSeats: currentSeats,
+    cycleStartDate: sub.currentPeriodStart,
+    cycleEndDate: sub.currentPeriodEnd,
+    daysRemaining,
+    include_proration: true,
+  });
+
+  // Update subscription with new seat count
+  sub.seats = currentSeats;
+  await sub.save();
+
+  console.log(`[team-sync] Updated subscription seats to ${currentSeats}`);
+
+  // If net charge <= 0, no invoice needed (credit or break-even)
+  if (proration.netChargeCents <= 0) {
+    console.log(
+      `[team-sync] No charge needed (net: ${proration.netChargeCents}¢)`
+    );
+    return { previousSeats, currentSeats, proration, invoiceCreated: false };
+  }
+
+  // Create invoice for the proration
+  const txRef = buildTxRef("team_seat");
+  const user = await User.findById(projectOwnerId).select("name email");
+
+  const invoice = await Invoice.create({
+    userId: projectOwnerId,
+    subscriptionId: sub._id,
+    type: "team_seat_adjustment",
+    planId: "team",
+    amountCents: proration.netChargeCents,
+    amount: proration.netChargeCents,
+    currency: "USD",
+    seatDelta: currentSeats - previousSeats,
+    description: `Team plan: +${currentSeats - previousSeats} collaborator(s)`,
+    status: "pending",
+    flutterwaveRef: txRef,
+    customerName: user.name,
+    customerEmail: user.email,
+    periodStart: new Date(),
+    periodEnd: sub.currentPeriodEnd,
+    lineItems: [
+      {
+        description: `Team plan seat adjustment: ${previousSeats} → ${currentSeats} seats (prorated ${daysRemaining} days)`,
+        amount: proration.netChargeCents,
+      },
+    ],
+    prorationType: "mid_cycle_team_seat",
+    metadata: { proration: proration.explanation, projectId },
+  });
+
+  console.log(
+    `[team-sync] Created invoice ${invoice._id} for ${proration.netChargeCents}¢`
+  );
+
+  return {
+    previousSeats,
+    currentSeats,
+    proration,
+    invoiceCreated: true,
+    invoiceId: invoice._id,
+  };
+}
+
 // ── Payment method management ─────────────────────────────────────
 
 /**
@@ -956,20 +1191,30 @@ function buildLineItems(planId, cycle, seats) {
 }
 
 function calculateProration(sub, newPlanId, newCycle, seats) {
-  if (!sub.currentPeriodEnd)
+  if (!sub.currentPeriodEnd) {
     return computeCheckoutAmount({ planId: newPlanId, cycle: newCycle, seats });
+  }
 
   const daysRemaining = daysUntil(sub.currentPeriodEnd);
   const totalDays = daysBetween(sub.currentPeriodStart, sub.currentPeriodEnd);
 
+  // Calculate daily rates based on monthly price
+  // This ensures accuracy regardless of actual calendar days
   const oldDailyRate =
     computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats) /
-    30;
-  const newDailyRate = computeMonthlyPrice(newPlanId, newCycle, seats) / 30;
+    totalDays;
+  const newDailyRate = computeMonthlyPrice(newPlanId, newCycle, seats) / totalDays;
 
   const credit = Math.round(oldDailyRate * daysRemaining);
   const newCharge = Math.round(newDailyRate * daysRemaining);
-  const prorated = Math.max(0, newCharge - credit);
+  const prorated = newCharge - credit;
+
+  // Log proration calculation for debugging
+  console.log(
+    `[proration] ${sub.plan}(${sub.billingCycle || "monthly"}) → ${newPlanId}(${newCycle}) | ` +
+      `oldRate: ${oldDailyRate}/day, newRate: ${newDailyRate}/day, ` +
+      `daysRemaining: ${daysRemaining}, credit: ${credit}¢, newCharge: ${newCharge}¢, prorated: ${prorated}¢`,
+  );
 
   return prorated;
 }

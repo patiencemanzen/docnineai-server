@@ -67,10 +67,20 @@ export function parseRepoUrl(provider, repoUrl) {
 /**
  * Normalise a repo URL to its canonical HTTPS form.
  * e.g. git@gitlab.com:foo/bar.git  →  https://gitlab.com/foo/bar
+ *      https://dev.azure.com/org/proj/_git/repo → https://dev.azure.com/org/proj/_git/repo
  */
 export function normaliseRepoUrl(provider, repoUrl) {
   const svc = getAdapter(provider);
-  const { owner, repo } = svc.parseRepoUrl(repoUrl);
+  const parsed = svc.parseRepoUrl(repoUrl);
+  
+  // Azure DevOps uses org/project/repo structure
+  if (provider === "azure") {
+    const { owner, project, repo } = parsed;
+    return `https://dev.azure.com/${owner}/${project}/_git/${repo}`;
+  }
+  
+  // GitHub, GitLab, Bitbucket use org/repo structure
+  const { owner, repo } = parsed;
   const hosts = {
     github: "github.com",
     gitlab: "gitlab.com",

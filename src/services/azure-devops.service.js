@@ -134,46 +134,65 @@ export async function getAuthenticatedUser(accessToken) {
 
 /** List repos the user has access to. */
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
-  // Azure DevOps requires org + project to list repos
-  // For now, we'll fetch repos from the default project or require user selection
-  const skip = (page - 1) * perPage;
-  const { data } = await axios.get(`${AZURE_API}/_apis/projects`, {
-    headers: azHeaders(accessToken),
-    params: { $skip: skip, $top: perPage, "api-version": "7.0" },
-  });
+  try {
+    console.log("[azure-devops.service] Fetching repositories", { page, perPage });
+    
+    // Azure DevOps requires org + project to list repos
+    const skip = (page - 1) * perPage;
+    const { data } = await axios.get(`${AZURE_API}/_apis/projects`, {
+      headers: azHeaders(accessToken),
+      params: { $skip: skip, $top: perPage, "api-version": "7.0" },
+    });
 
-  const projects = data.value || [];
-  const repos = [];
+    const projects = data.value || [];
+    console.log("[azure-devops.service] Fetched projects", { projectCount: projects.length });
+    
+    const repos = [];
 
-  // Fetch repos from each project
-  for (const proj of projects) {
-    try {
-      const { data: projRepos } = await axios.get(
-        `${AZURE_API}/${proj.name}/_apis/git/repositories`,
-        {
-          headers: azHeaders(accessToken),
-          params: { "api-version": "7.0" },
-        },
-      );
-      repos.push(
-        ...(projRepos.value || []).map((r) => ({
+    // Fetch repos from each project
+    for (const proj of projects) {
+      try {
+        const { data: projRepos } = await axios.get(
+          `${AZURE_API}/${proj.name}/_apis/git/repositories`,
+          {
+            headers: azHeaders(accessToken),
+            params: { "api-version": "7.0" },
+          },
+        );
+        
+        const projReposArray = (projRepos.value || []).map((r) => ({
           id: r.id,
           name: r.name,
-          fullName: `${proj.name}/${r.name}`,
-          url: r.webUrl,
+          full_name: `${proj.name}/${r.name}`,
+          webUrl: r.webUrl,
           description: r.description || "",
-          private: !r.isPublic,
+          isPublic: r.isPublic,
           defaultBranch: r.defaultBranch || "main",
-          updatedAt: r.pushedDate,
+          pushedDate: r.pushedDate,
           project: proj.name,
-        })),
-      );
-    } catch {
-      // Skip projects where we can't list repos
+        }));
+        
+        console.log(`[azure-devops.service] Fetched repos from project ${proj.name}`, { repoCount: projReposArray.length });
+        repos.push(...projReposArray);
+      } catch (err) {
+        console.warn(`[azure-devops.service] Failed to fetch repos from project ${proj.name}`, {
+          error_code: err.code,
+          error_message: err.message,
+        });
+      }
     }
-  }
 
-  return repos.slice(skip, skip + perPage);
+    console.log("[azure-devops.service] Mapped repositories successfully", { total: repos.length });
+    return repos.slice(skip, skip + perPage);
+  } catch (err) {
+    console.error("[azure-devops.service] Error fetching repositories", {
+      error_code: err.code,
+      error_message: err.message,
+      response_status: err.response?.status,
+      response_data: err.response?.data,
+    });
+    throw err;
+  }
 }
 
 // ── Repo metadata ─────────────────────────────────────────────

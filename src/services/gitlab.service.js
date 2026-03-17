@@ -112,28 +112,59 @@ export async function getAuthenticatedUser(accessToken) {
   };
 }
 
-/** List repos the user has access to. Returns same shape as GitHub equivalent. */
+/** List repos the user has access to. */
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
-  const { data } = await axios.get(`${GL_API}/projects`, {
-    headers: glHeaders(accessToken),
-    params: {
-      membership: true,
-      order_by: "last_activity_at",
-      sort: "desc",
-      per_page: perPage,
-      page,
-    },
-  });
-  return data.map((p) => ({
-    id: p.id,
-    name: p.name,
-    fullName: p.path_with_namespace,
-    url: p.web_url,
-    description: p.description,
-    private: p.visibility === "private",
-    defaultBranch: p.default_branch,
-    updatedAt: p.last_activity_at,
-  }));
+  try {
+    console.log("[gitlab.service] Fetching repositories", { page, perPage });
+    
+    const { data } = await axios.get(`${GL_API}/projects`, {
+      headers: glHeaders(accessToken),
+      params: {
+        membership: true,
+        order_by: "last_activity_at",
+        sort: "desc",
+        per_page: perPage,
+        page,
+      },
+    });
+    
+    console.log("[gitlab.service] Raw GitLab API response", {
+      projectCount: data?.length || 0,
+      firstProject: data?.[0] ? { id: data[0].id, name: data[0].name, path_with_namespace: data[0].path_with_namespace } : null,
+    });
+
+    const repos = data.map((p) => {
+      if (!p.path_with_namespace || !p.web_url) {
+        console.warn("[gitlab.service] Project missing required fields", {
+          id: p.id,
+          name: p.name,
+          has_path_with_namespace: !!p.path_with_namespace,
+          has_web_url: !!p.web_url,
+        });
+      }
+      return {
+        id: p.id,
+        name: p.name,
+        path_with_namespace: p.path_with_namespace,
+        web_url: p.web_url,
+        description: p.description,
+        visibility: p.visibility,
+        default_branch: p.default_branch,
+        last_activity_at: p.last_activity_at,
+      };
+    });
+
+    console.log("[gitlab.service] Mapped repositories successfully", { count: repos.length });
+    return repos;
+  } catch (err) {
+    console.error("[gitlab.service] Error fetching repositories", {
+      error_code: err.code,
+      error_message: err.message,
+      response_status: err.response?.status,
+      response_data: err.response?.data,
+    });
+    throw err;
+  }
 }
 
 // ── Repo metadata ─────────────────────────────────────────────

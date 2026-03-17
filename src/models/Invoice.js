@@ -100,6 +100,25 @@ const InvoiceSchema = new Schema(
     // Optional for teams submitting expense reports
     vatNumber: { type: String, default: null },
     companyName: { type: String, default: null },
+
+    // ── Invoice metadata ──────────────────────────────────────
+    // Type categorizes the invoice (checkout, renewal, upgrade, team_seat_adjustment, etc)
+    type: {
+      type: String,
+      enum: ["checkout", "renewal", "upgrade", "downgrade", "team_seat_adjustment", "seat_addition", "refund"],
+      default: "checkout",
+    },
+    // Proration type tracks why it's prorated (mid_cycle_team_seat, daily_seat_change, etc)
+    prorationType: {
+      type: String,
+      enum: ["mid_cycle_team_seat", "daily_seat_change", "plan_upgrade", "plan_downgrade", null],
+      default: null,
+    },
+    // Generic metadata for debugging and auditing
+    metadata: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
   },
   {
     timestamps: true,

@@ -33,6 +33,7 @@ router.get("/plans", wrap(ctrl.getPlans));
 router.use(protect, apiLimiter);
 
 router.get("/subscription", wrap(ctrl.getSubscription));
+router.get("/team-seats", wrap(ctrl.getTeamSeatsDetails));
 router.post("/checkout", wrap(ctrl.checkout));
 router.post("/verify-payment", wrap(ctrl.verifyPayment));
 router.post("/change-plan", wrap(ctrl.changePlanHandler));

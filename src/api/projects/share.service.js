@@ -17,6 +17,7 @@ import { Project } from "../../models/Project.js";
 import { ProjectShare } from "../../models/ProjectShare.js";
 import { User } from "../../models/User.js";
 import { sendProjectInviteEmail } from "../../config/email.js";
+import { syncTeamSeatsAndBilling } from "../../services/billing.service.js";
 
 // ─────────────────────────────────────────────────────────────
 // Internal helpers
@@ -191,6 +192,9 @@ export async function revokeAccess(projectId, shareId, ownerId) {
 
   share.status = "revoked";
   await share.save();
+
+  // Sync Team plan billing if owner is on Team plan (seat count decreased)
+  await syncTeamSeatsAndBilling(projectId, ownerId);
 }
 
 /**
@@ -258,6 +262,12 @@ export async function acceptInvite(token, userId) {
   if (userId) share.inviteeUserId = userId;
   share.token = randomUUID(); // invalidate token after use
   await share.save();
+
+  // Sync Team plan billing if owner is on Team plan
+  const project = await Project.findById(share.projectId).select("userId");
+  if (project) {
+    await syncTeamSeatsAndBilling(project._id.toString(), project.userId.toString());
+  }
 
   return { projectId: share.projectId.toString(), role: share.role };
 }

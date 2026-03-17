@@ -78,6 +78,9 @@ export async function listRepos(req, res) {
     // Query User to get the encrypted token (auth middleware only sets userId/email)
     const user = await User.findById(req.user.userId).select("+gitlabTokenEncrypted");
     if (!user || !user.gitlabTokenEncrypted) {
+      console.log("[gitlab.controller] No GitLab token found for user", { 
+        userId: req.user.userId 
+      });
       return ok(res, { repos: [], hasNextPage: false });
     }
 
@@ -90,7 +93,19 @@ export async function listRepos(req, res) {
       Math.max(1, parseInt(req.query.perPage || "30", 10)),
     );
 
+    console.log("[gitlab.controller] Fetching repos from GitLab service", {
+      page,
+      perPage,
+      userId: req.user.userId,
+    });
+
     const result = await gitlabService.listUserRepos(token, page, perPage);
+    
+    console.log("[gitlab.controller] Successfully fetched GitLab repos", {
+      count: result.length,
+      hasNextPage: result.length === perPage,
+    });
+
     return ok(res, {
       repos: result,
       page,
@@ -98,6 +113,12 @@ export async function listRepos(req, res) {
       hasNextPage: result.length === perPage,
     });
   } catch (err) {
+    console.error("[gitlab.controller] Error in listRepos", {
+      error_code: err.code,
+      error_message: err.message,
+      error_status: err.response?.status,
+      user_id: req.user.userId,
+    });
     return serverError(res, err, "listRepos");
   }
 }
