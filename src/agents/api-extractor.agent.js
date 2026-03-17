@@ -89,9 +89,18 @@ If no endpoints are found, return exactly: []
 - Express/Fastify: router.get(), app.post(), fastify.put()
 - NestJS: @Get(), @Post(), @Controller() prefix + @UseGuards()
 - FastAPI: @app.get(), @router.post(), Depends() for auth
-- Django: path(), re_path(), urlpatterns, @login_required
-- Laravel: Route::get(), Route::apiResource(), middleware()
-- Rails: resources :name, get '/path', to: 'controller#action'`;
+- Flask: @app.route(), @api.route(), @api_blueprint.route()
+- Django: path(), re_path(), urlpatterns, @login_required, @require_http_method
+- Laravel: Route::get(), Route::apiResource(), Route::middleware()
+- Rails: resources :name, get '/path', to: 'controller#action', before_filter
+- Spring Boot: @GetMapping, @PostMapping, @RestController, @RequestMapping
+- Symfony: #[Route("/path")], @Route(), controllers
+- Go (Gin): router.GET(), router.POST(), server.HandleFunc()
+- Go (Echo): e.GET(), e.POST(), middleware.JWTWithConfig()
+- PHP (Slim): $app->get(), $app->post(), $app->group()
+- Kotlin (Ktor): get("/path"), post("/path"), routing { }
+- Swift (Vapor): get("/path"), post("/path"), routes(app)
+- Ruby (Rails): get '/path', post '/path', resources :resource`;
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -99,24 +108,43 @@ const ROUTE_ROLES = new Set(["route", "controller", "entry", "handler", "api"]);
 
 const ROUTE_REGEX = new RegExp(
   [
-    // Express / Fastify
+    // Express / Fastify / NodeJS
     /router\.(get|post|put|delete|patch|head|options)\s*\(/,
     /app\.(get|post|put|delete|patch|head|options)\s*\(/,
-    /fastify\.(get|post|put|delete|patch)\s*\(/,
+    /fastify\.(get|post|put|delete|patch|head|options)\s*\(/,
     // NestJS decorators
-    /@(Get|Post|Put|Delete|Patch|Head|Options|All|Request|Controller)\s*\(/,
+    /@(Get|Post|Put|Delete|Patch|Head|Options|All)\s*\(/,
+    /@Controller\s*\(/,
     // FastAPI / Python
-    /@(app|router)\.(get|post|put|delete|patch)\s*\(/,
-    // Django
-    /urlpatterns\s*=/,
-    /path\s*\(\s*['"][^'"]+['"]/,
-    // Laravel
+    /@(app|router)\.(get|post|put|delete|patch|head|options)\s*\(/,
+    /@app\.(get|post|put|delete|patch)\s*\(/,
+    // Flask / Python
+    /@(?:app|api|api_blueprint|blueprint)\.route\s*\(/,
+    /@(?:require_http_method|require_GET|require_POST|require_safe)\s*\(/,
+    // Django / Python
+    /urlpatterns\s*=|path\s*\(|re_path\s*\(/,
+    /def\s+\w+\s*\(\s*request/,
+    // Laravel / PHP
     /Route::(get|post|put|delete|patch|resource|apiResource)\s*\(/,
-    // Rails
+    /\$router->(get|post|put|delete|patch)\s*\(/,
+    // Rails / Ruby
     /resources?\s+:/,
-    /(get|post|put|delete|patch)\s+['"]\/[^'"]*['"]\s*,\s*to:/,
-    // Generic
-    /createRouter|useRouter|mountRouter/,
+    /(get|post|put|delete|patch|destroy)\s+['"]\/[^'"]*['"]\s*,\s*to:/,
+    // Spring Boot / Java
+    /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*\(/,
+    /@(RestController|Controller)\s*\(/,
+    // Go (Gin) / Go
+    /router\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(/,
+    /r\.(GET|POST|PUT|DELETE|PATCH)\s*\(/,
+    // Go (Echo) / Go
+    /e\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(/,
+    /(GET|POST|PUT|DELETE|PATCH)\s+['"]\/[^'"]*['"]/,
+    // Kotlin (Ktor) / Kotlin
+    /routing\s*\{|get\s*\(|post\s*\(|put\s*\(|delete\s*\(|patch\s*\(/,
+    // Swift (Vapor) / Swift
+    /routes\s*\(|app\.(get|post|put|delete|patch)\s*\(/,
+    // Generic patterns
+    /createRouter|useRouter|mountRouter|HandleFunc/,
   ]
     .map((r) => r.source)
     .join("|"),
