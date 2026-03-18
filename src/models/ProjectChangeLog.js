@@ -88,7 +88,6 @@ const ProjectChangeLogSchema = new Schema(
     createdAt: {
       type: Date,
       default: Date.now,
-      index: true,
     },
   },
   { collection: "projectChangeLogs" },
