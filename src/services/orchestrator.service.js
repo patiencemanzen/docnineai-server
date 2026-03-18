@@ -34,16 +34,17 @@ import { updateFileManifest } from "./diff.service.js";
 // ─── Timeouts (ms) ────────────────────────────────────────────────
 // Each agent has an independent timeout so one slow agent can't
 // stall the entire pipeline indefinitely.
+// Increased for large projects (100+ files, thousands of LOC)
 
 const TIMEOUTS = {
-  fetch: 60_000, // GitHub API fetch
-  scan: 120_000, // Repo Scanner — LLM batches over all files
-  api: 90_000, // API Extractor
-  schema: 90_000, // Schema Analyser
-  components: 90_000, // Component Mapper
-  security: 120_000, // Security Auditor — static + LLM
-  write: 180_000, // Doc Writer — multiple LLM calls
-  chat: 15_000, // Chat session setup
+  fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
+  scan: 240_000, // Repo Scanner — LLM batches over all files (doubled for large codebases)
+  api: 180_000, // API Extractor (doubled - many endpoints to extract)
+  schema: 180_000, // Schema Analyser (doubled - complex models and relationships)
+  components: 180_000, // Component Mapper (doubled - 90s -> 180s was failing)
+  security: 240_000, // Security Auditor (doubled - static + LLM analysis on large codebase)
+  write: 300_000, // Doc Writer (increased to 5min - multiple LLM calls for all documents)
+  chat: 30_000, // Chat session setup (doubled)
 };
 
 // ─── Routing Thresholds ───────────────────────────────────────────
@@ -105,6 +106,15 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
       : error.message;
 
     emit(step, "error", `${label} failed — using fallback`, reason);
+
+    // Log full stack trace for debugging
+    if (!timedOut) {
+      console.error(`[${step}:error] ${label} full details:`, {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+    }
     console.error(`[${step}:error] ${label}:`, error);
 
     return { ...fallback, _failed: true, _error: reason, _duration: duration };
@@ -297,9 +307,10 @@ export async function orchestrate(repoUrl, onProgress) {
   // ── PHASE 1: Fetch Repository ─────────────────────────────────
   // Support both: URL strings (fetch from provider) or pre-fetched objects (ZIP uploads)
   let meta, files, owner, repo;
-  
-  const isPrefetched = typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
-  
+
+  const isPrefetched =
+    typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
+
   if (isPrefetched) {
     // ZIP project or other pre-fetched sources — files already extracted
     emit("fetch", "running", "Using pre-extracted files…");
@@ -313,7 +324,12 @@ export async function orchestrate(repoUrl, onProgress) {
       `${owner}/${repo}`,
       fetchDuration,
     );
-    trackStep("Fetch Repo", "done", `${files.length} files (pre-extracted)`, fetchDuration);
+    trackStep(
+      "Fetch Repo",
+      "done",
+      `${files.length} files (pre-extracted)`,
+      fetchDuration,
+    );
   } else {
     // Git-based projects — fetch from provider
     emit("fetch", "running", "Connecting to GitHub…");
@@ -337,7 +353,7 @@ export async function orchestrate(repoUrl, onProgress) {
       emit("fetch", "error", "Failed to fetch repository", err.message);
       return { success: false, error: err.message, phase: "fetch" };
     }
-    
+
     const fetchDuration = Date.now() - fetchStart;
     emit(
       "fetch",
@@ -353,7 +369,7 @@ export async function orchestrate(repoUrl, onProgress) {
   // (Skip for pre-fetched ZIP projects — already have this data)
   let currentCommitSha = repoUrl.lastCommitSha || null;
   let treeWithSha = repoUrl.fileTree || [];
-  
+
   if (!isPrefetched) {
     [currentCommitSha, treeWithSha] = await Promise.all([
       getCommitSha(owner, repo, meta.defaultBranch).catch(() => null),

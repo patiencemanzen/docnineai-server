@@ -378,7 +378,7 @@ export async function handleWebhook({ payload, signature }) {
     };
   }
 
-  const { syncProject } = await import("../api/projects/project.service.js");
+  const { syncProject } = await import("../api/services/projects/project.service.js");
 
   try {
     const result = await syncProject({

@@ -1,10 +1,13 @@
 // ===================================================================
 // Two-token strategy:
-//   Access token  — 15 min, signed with JWT_ACCESS_SECRET
+//   Access token  — 2 days, signed with JWT_ACCESS_SECRET
 //                   sent in response body, stored in memory by client
-//   Refresh token — 7 days, signed with JWT_REFRESH_SECRET
+//   Refresh token — 14 days, signed with JWT_REFRESH_SECRET
 //                   sent as httpOnly Secure cookie
 //                   hash stored in User.refreshTokenHash for revocation
+//
+// Extended from 15min/7days to support 2-day user sessions.
+// Refresh token can be silently renewed on API calls without user interaction.
 //
 // WHY lazy env reads (no module-level constants for secrets):
 //   In ESM, every `import` is resolved and evaluated BEFORE the calling
@@ -12,16 +15,12 @@
 //   AFTER this module is evaluated — so module-level process.env reads
 //   always see undefined for .env file values.
 //   Reading inside functions defers evaluation to call-time, after dotenv.
-//
-// Required env:
-//   JWT_ACCESS_SECRET   — 32+ random chars
-//   JWT_REFRESH_SECRET  — 32+ random chars (different from access)
 // ===================================================================
 
 import jwt from "jsonwebtoken";
 
-const ACCESS_TTL = "15m";
-const REFRESH_TTL = "7d";
+const ACCESS_TTL = "2d"; // Extended from 15m to 2 days
+const REFRESH_TTL = "14d"; // Extended from 7d to 14 days
 
 // ── Internal helpers ──────────────────────────────────────────
 
@@ -31,10 +30,7 @@ function getSecrets() {
   const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
   if (!ACCESS_SECRET || !REFRESH_SECRET) {
-    throw new Error(
-      "JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in .env\n" +
-        "Generate: node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"",
-    );
+    throw new Error("JWT secrets not configured.");
   }
 
   return { ACCESS_SECRET, REFRESH_SECRET };
@@ -114,7 +110,7 @@ export function getRefreshCookieOpts() {
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? "none" : "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+    maxAge: 14 * 24 * 60 * 60 * 1000, // 14 days in ms (extended from 7 days to support 2-day sessions)
     path: "/auth", // cookie only sent to /auth/* routes
   };
 }

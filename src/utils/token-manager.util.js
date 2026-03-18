@@ -5,8 +5,8 @@
 //   • Files are filtered and sorted by relevance before chunking
 // ===================================================================
 
-const CHUNK_SIZE  = parseInt(process.env.CHUNK_SIZE  || "400");
-const BATCH_SIZE  = parseInt(process.env.BATCH_SIZE  || "5");
+const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || "400");
+const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || "5");
 
 // Rough token estimator (1 token ≈ 4 chars for English/code)
 export function estimateTokens(text) {
@@ -15,16 +15,16 @@ export function estimateTokens(text) {
 
 // Split text into token-aware chunks
 export function chunkText(text, maxTokens = CHUNK_SIZE) {
-  const lines   = text.split("\n");
-  const chunks  = [];
-  let current   = [];
+  const lines = text.split("\n");
+  const chunks = [];
+  let current = [];
   let tokenCount = 0;
 
   for (const line of lines) {
     const lineTokens = estimateTokens(line);
     if (tokenCount + lineTokens > maxTokens && current.length > 0) {
       chunks.push(current.join("\n"));
-      current    = [line];
+      current = [line];
       tokenCount = lineTokens;
     } else {
       current.push(line);
@@ -46,24 +46,33 @@ export function batchChunks(chunks, batchSize = BATCH_SIZE) {
 
 // Build numbered batch content string
 export function formatBatch(chunks) {
-  return chunks
-    .map((c, i) => `[CHUNK ${i + 1}]\n${c}`)
-    .join("\n\n---\n\n");
+  return chunks.map((c, i) => `[CHUNK ${i + 1}]\n${c}`).join("\n\n---\n\n");
 }
 
 // File relevance scoring — prioritise important files
 const HIGH_PRIORITY = [
-  /package\.json$/,    /requirements\.txt$/, /Cargo\.toml$/,
-  /go\.mod$/,          /pom\.xml$/,          /README/i,
-  /\.env\.example$/,   /docker-compose/i,    /Dockerfile$/i,
+  /package\.json$/,
+  /requirements\.txt$/,
+  /Cargo\.toml$/,
+  /go\.mod$/,
+  /pom\.xml$/,
+  /README/i,
+  /\.env\.example$/,
+  /docker-compose/i,
+  /Dockerfile$/i,
 ];
-const LOW_PRIORITY  = [
-  /node_modules/, /\.lock$/, /dist\//, /build\//, /coverage\//,
-  /\.min\.(js|css)$/, /\.(png|jpg|gif|svg|ico|woff|ttf|eot)$/,
+const LOW_PRIORITY = [
+  /node_modules/,
+  /\.lock$/,
+  /dist\//,
+  /build\//,
+  /coverage\//,
+  /\.min\.(js|css)$/,
+  /\.(png|jpg|gif|svg|ico|woff|ttf|eot)$/,
 ];
 
 export function scoreFile(filePath) {
-  if (LOW_PRIORITY.some((r) => r.test(filePath)))  return -1;
+  if (LOW_PRIORITY.some((r) => r.test(filePath))) return -1;
   if (HIGH_PRIORITY.some((r) => r.test(filePath))) return 2;
   return 1;
 }

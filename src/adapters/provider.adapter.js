@@ -4,16 +4,6 @@
 // Single import point for all git provider operations.
 // The orchestrator, incremental sync, and webhook handlers import
 // from here instead of github.service.js directly.
-//
-// Extending to Bitbucket / Azure DevOps later:
-//   1. Create bitbucket.service.js mirroring the same exports
-//   2. Add it to PROVIDERS below
-//   That's the only change needed — no orchestrator edits.
-//
-// Usage in orchestrator / incremental sync:
-//   import { getAdapter } from "./provider.adapter.js";
-//   const git = getAdapter(project.provider);
-//   const meta = await git.getRepoMeta(owner, repo, project.providerToken);
 // =============================================================
 
 import * as githubService from "../services/github.service.js";
@@ -72,13 +62,13 @@ export function parseRepoUrl(provider, repoUrl) {
 export function normaliseRepoUrl(provider, repoUrl) {
   const svc = getAdapter(provider);
   const parsed = svc.parseRepoUrl(repoUrl);
-  
+
   // Azure DevOps uses org/project/repo structure
   if (provider === "azure") {
     const { owner, project, repo } = parsed;
     return `https://dev.azure.com/${owner}/${project}/_git/${repo}`;
   }
-  
+
   // GitHub, GitLab, Bitbucket use org/repo structure
   const { owner, repo } = parsed;
   const hosts = {

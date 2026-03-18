@@ -97,10 +97,18 @@ function buildReadmeContext({
   owner,
   repo,
 }) {
+  // Ensure all inputs are safe
+  meta = meta || {};
+  techStack = techStack || [];
+  endpoints = endpoints || [];
+  models = models || [];
+  components = components || [];
+  structure = structure || {};
+
   // Build a richer endpoint summary using the new schema from Agent 2
   const endpointSummary = endpoints.slice(0, 15).map((e) => ({
-    method: e.method,
-    path: e.path,
+    method: e.method || "UNKNOWN",
+    path: e.path || "/",
     auth: e.auth?.required ?? e.auth ?? false,
     description: e.description || "",
     tags: e.tags || [],
@@ -108,12 +116,12 @@ function buildReadmeContext({
 
   // Build richer model summary
   const modelSummary = models.slice(0, 15).map((m) => ({
-    name: m.name,
+    name: m.name || "Unknown",
     description: m.description || "",
     fields: (m.fields || []).slice(0, 6).map((f) => ({
-      name: f.name,
-      type: f.type,
-      required: f.required,
+      name: f.name || "field",
+      type: f.type || "any",
+      required: f.required || false,
     })),
   }));
 
@@ -130,7 +138,8 @@ function buildReadmeContext({
     ...new Set([
       ...(components || [])
         .filter((c) => c.type === "service")
-        .map((c) => c.name),
+        .map((c) => c.name)
+        .filter(Boolean),
       ...(endpoints || []).flatMap((e) => e.tags || []),
     ]),
   ].slice(0, 10);
@@ -138,7 +147,7 @@ function buildReadmeContext({
   return JSON.stringify(
     {
       repo: `${owner}/${repo}`,
-      name: meta?.name || repo,
+      name: meta?.name || repo || "Project",
       description: meta?.description || "",
       language: meta?.language || "unknown",
       stars: meta?.stars || 0,
@@ -544,18 +553,36 @@ function buildComponentIndex(components) {
  * Validate that LLM output looks like Markdown and not JSON or an error.
  */
 function validateMarkdown(raw, docName) {
+  console.log(
+    `[validateMarkdown] Validating ${docName}: raw length=${raw?.length || 0}`,
+  );
+
   if (!raw || typeof raw !== "string") {
-    throw new Error(`${docName}: LLM returned empty or non-string output`);
+    const msg = `${docName}: LLM returned empty or non-string output (type=${typeof raw})`;
+    console.error(`[validateMarkdown:error] ${msg}`);
+    throw new Error(msg);
   }
-  if (raw.trim().startsWith("{") || raw.trim().startsWith("[")) {
-    throw new Error(`${docName}: LLM returned JSON instead of Markdown`);
-  }
-  if (raw.trim().length < 100) {
-    throw new Error(
-      `${docName}: Output suspiciously short (${raw.trim().length} chars)`,
+
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const msg = `${docName}: LLM returned JSON instead of Markdown`;
+    console.error(
+      `[validateMarkdown:error] ${msg} (first 100 chars: ${trimmed.substring(0, 100)})`,
     );
+    throw new Error(msg);
   }
-  return raw.trim();
+
+  if (trimmed.length < 100) {
+    const msg = `${docName}: Output suspiciously short (${trimmed.length} chars)`;
+    console.error(`[validateMarkdown:error] ${msg}. Content: ${trimmed}`);
+    throw new Error(msg);
+  }
+
+  console.log(
+    `[validateMarkdown:success] ${docName} passed validation (${trimmed.length} chars)`,
+  );
+  return trimmed;
 }
 
 /**
@@ -569,10 +596,29 @@ async function llmCallWithRetry({
 }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      return await llmCall({ systemPrompt, userContent, temperature });
+      console.log(
+        `[llmCallWithRetry:attempt] Attempt ${attempt}/${retries}: userContent length=${userContent?.length || 0}`,
+      );
+      const result = await llmCall({ systemPrompt, userContent, temperature });
+      console.log(
+        `[llmCallWithRetry:success] Attempt ${attempt}: output length=${result?.length || 0}`,
+      );
+      return result;
     } catch (err) {
-      if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 600 * attempt));
+      console.error(
+        `[llmCallWithRetry:error] Attempt ${attempt}/${retries}: ${err.name}: ${err.message}`,
+      );
+      if (attempt === retries) {
+        console.error(
+          `[llmCallWithRetry:exhausted] Retries exhausted. Throwing final error.`,
+        );
+        throw err;
+      }
+      const backoffMs = 600 * attempt;
+      console.log(
+        `[llmCallWithRetry:backoff] Waiting ${backoffMs}ms before retry…`,
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
     }
   }
 }
@@ -596,6 +642,20 @@ export async function docWriterAgent({
   const errors = [];
   const docs = {};
 
+  // Log input data summary for debugging
+  console.log(`[doc-writer:agent] Starting with inputs:`, {
+    meta: !!meta,
+    techStack: !!techStack?.length,
+    structure: !!(structure && Object.keys(structure).length),
+    endpoints: !!endpoints?.length,
+    models: !!models?.length,
+    relationships: !!relationships?.length,
+    components: !!components?.length,
+    entryPoints: !!entryPoints?.length,
+    owner,
+    repo,
+  });
+
   // ── 1. README.md ──────────────────────────────────────────────
   const readmeCtx = buildReadmeContext({
     meta,
@@ -608,19 +668,25 @@ export async function docWriterAgent({
     repo,
   });
 
-  notify(
-    "Writing README.md…",
-    `~${Math.ceil(readmeCtx.length / 4)} input tokens`,
+  const readmeCtxLength = readmeCtx.length;
+  const readmeEstimatedTokens = Math.ceil(readmeCtxLength / 4);
+  console.log(
+    `[doc-writer:readme] Prepared context: ${readmeCtxLength} chars (~${readmeEstimatedTokens} tokens)`,
   );
+  notify("Writing README.md…", `~${readmeEstimatedTokens} input tokens`);
 
   try {
+    console.log(`[doc-writer:readme] Calling LLM for README generation…`);
     const raw = await llmCallWithRetry({
       systemPrompt: README_SYSTEM_PROMPT,
       userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
       temperature: 0.2,
     });
+    console.log(`[doc-writer:readme] LLM returned: ${raw?.length || 0} chars`);
     docs.readme = validateMarkdown(raw, "README.md");
+    console.log(`[doc-writer:readme] README validation passed`);
   } catch (err) {
+    console.error(`[doc-writer:readme] Failed:`, err);
     errors.push({ doc: "readme", error: err.message });
     // Minimal fallback README
     docs.readme = buildFallbackReadme({
@@ -630,6 +696,7 @@ export async function docWriterAgent({
       techStack,
       endpoints,
     });
+    console.log(`[doc-writer:readme] Using fallback README`);
     notify("⚠ README.md generation failed — using fallback", err.message);
   }
 

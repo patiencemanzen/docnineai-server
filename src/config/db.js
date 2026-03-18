@@ -6,11 +6,6 @@
 // fires in index.js, so env vars from .env are invisible at load time.
 // Moving checks inside functions means they run at call time, after
 // dotenv.config() has populated process.env.
-//
-// Required env:
-//   MONGODB_URI — full connection string
-//   e.g. mongodb://localhost:27017/project-documentor
-//   e.g. mongodb+srv://user:pass@cluster.mongodb.net/project-documentor
 // ===================================================================
 
 import mongoose from "mongoose";
@@ -63,7 +58,7 @@ async function _connect(URI) {
 
   const host = mongoose.connection.host || "atlas";
   const name = mongoose.connection.name || "db";
-  console.log(`✅ MongoDB → ${host}/${name}`);
+  console.log(`Database Connection → ${host}/${name}`);
 
   await migrateIndexes();
 }
@@ -119,7 +114,7 @@ async function migrateIndexes() {
     );
     await collection.dropIndex("project_search");
     console.log(
-      "✅ Stale index dropped — will be recreated with language_override",
+      "Stale index dropped — will be recreated with language_override",
     );
 
     const { Project } = await import("../models/Project.js");
@@ -127,20 +122,20 @@ async function migrateIndexes() {
     console.log("✅ project_search index recreated");
   } catch (err) {
     // Non-fatal — server keeps running, index will be fixed on next deploy
-    console.warn("⚠️  Index migration skipped:", err.message);
+    console.warn("Index migration skipped:", err.message);
   }
 }
 
 mongoose.connection.on("disconnected", () =>
-  console.warn("⚠️  MongoDB disconnected — will reconnect on next request"),
+  console.warn("Database disconnected — will reconnect on next request"),
 );
 
 mongoose.connection.on("reconnected", () =>
-  console.log("✅ MongoDB reconnected"),
+  console.log("Database reconnected"),
 );
 
 mongoose.connection.on("error", (err) =>
-  console.error("❌ MongoDB error:", err.message),
+  console.error("Database error:", err.message),
 );
 
 export default mongoose;

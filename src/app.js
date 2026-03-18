@@ -4,8 +4,8 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 
 import { connectDB } from "./config/db.js";
-import apiRouter, { loadServices } from "./api/router.js";
-import { recoverOrphanedJobs } from "./api/projects/project.service.js";
+import apiRouter, { loadServices } from "./api/routes/router.js";
+import { recoverOrphanedJobs } from "./api/services/projects/project.service.js";
 import { startBillingCron } from "./services/cron.service.js";
 
 const app = express();
@@ -14,7 +14,7 @@ const app = express();
 // Required on Vercel — without this, express-rate-limit throws
 // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR because Vercel's edge injects
 // X-Forwarded-For but Express "trust proxy" is false by default.
-// Setting to 1 means trust the first hop (Vercel's edge proxy).
+// Setting to 1 means trust the first hop (eg: Vercel's edge proxy).
 app.set("trust proxy", 1);
 
 let initialized = false;
@@ -71,9 +71,8 @@ app.use(
       if (
         process.env.NODE_ENV !== "production" &&
         incomingOrigin.startsWith("http://localhost")
-      ) {
+      )
         return callback(null, true);
-      }
 
       callback(new Error(`CORS: origin ${incomingOrigin} not allowed`));
     },
@@ -82,6 +81,7 @@ app.use(
 );
 
 // ── Body parsing ───────────────────────────
+
 // Webhook routes need the raw Buffer for signature verification —
 // must be registered BEFORE express.json() consumes the body.
 // The /webhook/github prefix covers both GitHub and Flutterwave webhooks,
@@ -94,28 +94,6 @@ app.use(morgan("dev"));
 // ── Health ─────────────────────────────────
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
-});
-
-// ── Diagnostic (non-sensitive) ─────────────
-// Returns which required env vars are set (true/false, no values).
-// Useful for quickly spotting missing Vercel environment variables.
-app.get("/health/check", (_req, res) => {
-  const check = (v) => !!process.env[v];
-  res.json({
-    env: process.env.NODE_ENV || "(not set)",
-    frontend_url: process.env.FRONTEND_URL || "(not set)",
-    vars: {
-      MONGODB_URI: check("MONGODB_URI"),
-      JWT_ACCESS_SECRET: check("JWT_ACCESS_SECRET"),
-      JWT_REFRESH_SECRET: check("JWT_REFRESH_SECRET"),
-      ENCRYPTION_KEY: check("ENCRYPTION_KEY"),
-      GITHUB_CLIENT_ID: check("GITHUB_CLIENT_ID"),
-      GITHUB_CLIENT_SECRET: check("GITHUB_CLIENT_SECRET"),
-      GITHUB_REDIRECT_URI: check("GITHUB_REDIRECT_URI"),
-      FRONTEND_URL: check("FRONTEND_URL"),
-      GROQ_API_KEY: check("GROQ_API_KEY"),
-    },
-  });
 });
 
 // ── API ────────────────────────────────────
