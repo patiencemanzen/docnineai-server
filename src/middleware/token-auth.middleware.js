@@ -4,9 +4,9 @@
  * Attaches token info to req.tokenAuth on success
  */
 
-import { APIToken } from '../models/APIToken.js';
-import { fail } from '../utils/response.util.js';
-import { hashToken } from '../utils/crypto.util.js';
+import { APIToken } from "../models/APIToken.js";
+import { fail } from "../utils/response.util.js";
+import { hashToken } from "../utils/crypto.util.js";
 
 /**
  * Authenticate API token from Authorization header
@@ -15,18 +15,18 @@ import { hashToken } from '../utils/crypto.util.js';
  * Falls back to session auth if no API token
  */
 export async function authenticateAPIToken(req, res, next) {
-  const header = req.headers.authorization || '';
+  const header = req.headers.authorization || "";
 
-  if (!header.startsWith('Bearer ')) {
+  if (!header.startsWith("Bearer ")) {
     // No API token — fall back to session auth (if user is logged in)
     if (req.user) {
       return next();
     }
     return fail(
       res,
-      'NO_TOKEN',
-      'Missing or invalid Authorization header. Use: Authorization: Bearer <token>',
-      401
+      "NO_TOKEN",
+      "Missing or invalid Authorization header. Use: Authorization: Bearer <token>",
+      401,
     );
   }
 
@@ -35,12 +35,7 @@ export async function authenticateAPIToken(req, res, next) {
   try {
     // Validate token format (basic check)
     if (!plainToken || plainToken.length < 10) {
-      return fail(
-        res,
-        'INVALID_TOKEN',
-        'Token format is invalid',
-        401
-      );
+      return fail(res, "INVALID_TOKEN", "Token format is invalid", 401);
     }
 
     // Find token in database by hash
@@ -49,25 +44,20 @@ export async function authenticateAPIToken(req, res, next) {
     const apiToken = await APIToken.findOne({
       tokenHash,
       isRevoked: false, // Only active tokens
-    }).populate('userId', 'email name');
+    }).populate("userId", "email name");
 
     if (!apiToken) {
       return fail(
         res,
-        'INVALID_TOKEN',
-        'API token not found or has been revoked',
-        401
+        "INVALID_TOKEN",
+        "API token not found or has been revoked",
+        401,
       );
     }
 
     // Check expiration
     if (apiToken.expiresAt && new Date() > apiToken.expiresAt) {
-      return fail(
-        res,
-        'TOKEN_EXPIRED',
-        'API token has expired',
-        401
-      );
+      return fail(res, "TOKEN_EXPIRED", "API token has expired", 401);
     }
 
     // Check IP whitelist if configured
@@ -76,9 +66,9 @@ export async function authenticateAPIToken(req, res, next) {
       if (!apiToken.ipWhitelist.includes(clientIp)) {
         return fail(
           res,
-          'IP_BLOCKED',
-          'Client IP is not whitelisted for this token',
-          403
+          "IP_BLOCKED",
+          "Client IP is not whitelisted for this token",
+          403,
         );
       }
     }
@@ -87,7 +77,7 @@ export async function authenticateAPIToken(req, res, next) {
     try {
       await apiToken.recordUsage(clientIp);
     } catch (err) {
-      console.warn('Failed to record token usage:', err);
+      console.warn("Failed to record token usage:", err);
       // Don't fail on usage recording
     }
 
@@ -109,13 +99,8 @@ export async function authenticateAPIToken(req, res, next) {
 
     next();
   } catch (err) {
-    console.error('Token auth error:', err);
-    return fail(
-      res,
-      'AUTH_ERROR',
-      'Failed to authenticate token',
-      500
-    );
+    console.error("Token auth error:", err);
+    return fail(res, "AUTH_ERROR", "Failed to authenticate token", 500);
   }
 }
 
@@ -127,9 +112,9 @@ export function requireAPIToken(req, res, next) {
   if (!req.tokenAuth || !req.tokenAuth.token) {
     return fail(
       res,
-      'REQUIRE_TOKEN',
-      'This endpoint requires API token authentication',
-      401
+      "REQUIRE_TOKEN",
+      "This endpoint requires API token authentication",
+      401,
     );
   }
   next();
@@ -143,21 +128,23 @@ export function checkTokenScope(requiredScopes = []) {
     if (!req.tokenAuth) {
       return fail(
         res,
-        'NO_TOKEN',
-        'Token authentication required for this scope',
-        401
+        "NO_TOKEN",
+        "Token authentication required for this scope",
+        401,
       );
     }
 
     const tokenScopes = req.tokenAuth.scopes || [];
-    const hasScope = requiredScopes.some(scope => tokenScopes.includes(scope));
+    const hasScope = requiredScopes.some((scope) =>
+      tokenScopes.includes(scope),
+    );
 
     if (!hasScope) {
       return fail(
         res,
-        'INSUFFICIENT_SCOPE',
-        `Token missing required scope. Required: ${requiredScopes.join(', ')}`,
-        403
+        "INSUFFICIENT_SCOPE",
+        `Token missing required scope. Required: ${requiredScopes.join(", ")}`,
+        403,
       );
     }
 

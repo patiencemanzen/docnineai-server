@@ -2,22 +2,13 @@
 // Nodemailer transporter — configure via SMTP env vars.
 // Falls back gracefully so the server starts even without email config.
 //
-// Required env (for real sending):
-//   SMTP_HOST     — e.g. smtp.sendgrid.net | smtp.gmail.com
-//   SMTP_PORT     — e.g. 587 (STARTTLS) | 465 (SSL)
-//   SMTP_USER     — SMTP username / API key
-//   SMTP_PASS     — SMTP password / API key
-//   EMAIL_FROM    — sender address, e.g. noreply@yourdomain.com
-//   FRONTEND_URL  — public frontend URL, e.g. https://docnine.vercel.app (used in email links)
-//
 // Without SMTP config: emails are logged to console (dev mode).
 // ===================================================================
 
 import nodemailer from "nodemailer";
 
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
-const FROM =
-  process.env.EMAIL_FROM || "Docnine <noreply@project-documentor.dev>";
+const FRONTEND_URL = process.env.FRONTEND_URL || "";
+const FROM = process.env.EMAIL_FROM || "Docnine <noreply@docnineai.com>";
 
 // Lazy singleton — created on first use
 let _transporter = null;
@@ -27,9 +18,8 @@ function getTransporter() {
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
 
+  // Dev fallback: log emails instead of sending
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    // Dev fallback: log emails instead of sending
-    console.warn("SMTP not configured — emails will be logged to console");
     _transporter = {
       sendMail: async (opts) => {
         console.log("\n [EMAIL — not sent, SMTP unconfigured]");

@@ -1,0 +1,229 @@
+// ===================================================================
+// Thin HTTP layer — calls github.service.js, formats responses.
+// ===================================================================
+
+import * as githubService from "../../services/github/github.service.js";
+import { ok, fail, serverError } from "../../../utils/response.util.js";
+
+// ── GET /github/oauth/start ───────────────────────────────────
+// Returns the GitHub authorization URL as JSON.
+//
+// WHY NOT res.redirect():
+//   This endpoint is called via the browser's fetch() API with a Bearer
+//   token in the Authorization header. A redirect response to
+//   github.com would be followed by fetch(), which would then make a
+//   CORS-blocked request to GitHub — the browser never navigates away.
+//   Instead, we return the URL in JSON and let the client do:
+//     window.location.href = data.url
+export async function oauthStart(req, res) {
+  try {
+    const url = githubService.buildOAuthUrl(req.user.userId);
+    return ok(res, { url }, "Redirect to this URL to authorise GitHub access.");
+  } catch (err) {
+    if (err.message?.includes("GITHUB_CLIENT_ID")) {
+      return fail(res, "GITHUB_NOT_CONFIGURED", err.message, 503);
+    }
+    return serverError(res, err, "oauthStart");
+  }
+}
+
+// ── GET /github/oauth/callback ────────────────────────────────
+// GitHub redirects the browser here after the user grants permission.
+// This is a BROWSER navigation, not a fetch() call — no Bearer token.
+// User identity comes from the signed `state` JWT set in oauthStart.
+//
+// On success/failure, redirect the popup to the SPA's /github/oauth/complete
+// page, which postMessages the result to the parent window and closes itself.
+export async function oauthCallback(req, res) {
+  const frontendUrl = process.env.FRONTEND_URL || "";
+  const { code, state, error: oauthError } = req.query;
+
+  if (oauthError) {
+    const msg = `GitHub denied access: ${oauthError}`;
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>GitHub Connection Failed</title>
+        <meta charset="utf-8" />
+        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
+      </head>
+      <body>
+        <h2>Connection Failed</h2>
+        <p>${msg}</p>
+        <script>
+          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
+          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
+          window.opener?.postMessage({
+            type: 'github-oauth-complete',
+            ...result
+          }, '*');
+          window.close();
+        </script>
+      </body>
+      </html>
+    `);
+  }
+
+  if (!code || !state) {
+    const msg = "Missing code or state — please try again.";
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>GitHub Connection Failed</title>
+        <meta charset="utf-8" />
+        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
+      </head>
+      <body>
+        <h2>Connection Failed</h2>
+        <p>${msg}</p>
+        <script>
+          const result = { status: 'error', msg: '${msg}' };
+          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
+          window.opener?.postMessage({
+            type: 'github-oauth-complete',
+            ...result
+          }, '*');
+          window.close();
+        </script>
+      </body>
+      </html>
+    `);
+  }
+
+  try {
+    const { githubUsername } = await githubService.handleOAuthCallback({
+      code,
+      state,
+    });
+
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>GitHub Connected</title>
+        <meta charset="utf-8" />
+        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
+      </head>
+      <body>
+        <h2>Successfully Connected</h2>
+        <p>GitHub account connected as <strong>${githubUsername}</strong></p>
+        <script>
+          const result = { status: 'success', user: '${githubUsername}' };
+          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
+          window.opener?.postMessage({
+            type: 'github-oauth-complete',
+            ...result
+          }, '*');
+          setTimeout(() => window.close(), 500);
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (err) {
+    const msg = err.message || "GitHub connection failed.";
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>GitHub Connection Failed</title>
+        <meta charset="utf-8" />
+        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
+      </head>
+      <body>
+        <h2>Connection Failed</h2>
+        <p>${msg}</p>
+        <script>
+          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
+          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
+          window.opener?.postMessage({
+            type: 'github-oauth-complete',
+            ...result
+          }, '*');
+          window.close();
+        </script>
+      </body>
+      </html>
+    `);
+  }
+}
+
+// ── GET /github/repos ─────────────────────────────────────────
+export async function listRepos(req, res) {
+  const page = Math.max(1, parseInt(req.query.page || "1", 10));
+  const perPage = Math.min(
+    100,
+    Math.max(1, parseInt(req.query.perPage || "30", 10)),
+  );
+  const type = req.query.type || "all"; // all | owner | member | public | private
+  const sort = req.query.sort || "updated"; // created | updated | pushed | full_name
+  const org = req.query.org || null; // if set, fetch from /orgs/{org}/repos
+
+  try {
+    console.log("[github.controller] Fetching repos from GitHub service", {
+      page,
+      perPage,
+      type,
+      sort,
+      org,
+      userId: req.user.userId,
+    });
+
+    const result = await githubService.getUserRepos(req.user.userId, {
+      page,
+      perPage,
+      type,
+      sort,
+      org,
+    });
+
+    console.log("[github.controller] Successfully fetched GitHub repos", {
+      count: result.repos.length,
+      hasNextPage: result.hasNextPage,
+    });
+
+    return ok(res, result);
+  } catch (err) {
+    console.error("[github.controller] Error in listRepos", {
+      error_code: err.code,
+      error_message: err.message,
+      error_status: err.response?.status,
+      user_id: req.user.userId,
+    });
+    if (err.code === "GITHUB_NOT_CONNECTED")
+      return fail(res, err.code, err.message, err.status);
+    return serverError(res, err, "listRepos");
+  }
+}
+// ── GET /github/orgs ──────────────────────────────────────
+export async function listOrgs(req, res) {
+  try {
+    const orgs = await githubService.getUserOrgs(req.user.userId);
+    return ok(res, { orgs });
+  } catch (err) {
+    if (err.code === "GITHUB_NOT_CONNECTED")
+      return fail(res, err.code, err.message, err.status);
+    return serverError(res, err, "listOrgs");
+  }
+}
+// ── GET /github/status ────────────────────────────────────────
+export async function connectionStatus(req, res) {
+  try {
+    const status = await githubService.getConnectionStatus(req.user.userId);
+    if (!status) return ok(res, { connected: false });
+    return ok(res, status);
+  } catch (err) {
+    return serverError(res, err, "connectionStatus");
+  }
+}
+
+// ── DELETE /github/disconnect ─────────────────────────────────
+export async function disconnect(req, res) {
+  try {
+    await githubService.disconnectGitHub(req.user.userId);
+    return ok(res, null, "GitHub account disconnected.");
+  } catch (err) {
+    return serverError(res, err, "disconnect");
+  }
+}

@@ -34,8 +34,7 @@ const TPM_WINDOW_MS = 62000; // 62s window (slightly over 60s for safety)
 const MAX_TOKENS_PER_CALL = 1800; // input + output budget per call
 
 // ── Sliding window token tracker ─────────────────────────────
-// Each entry: { tokens, ts }
-const tokenLog = [];
+const tokenLog = []; // Each entry: { tokens, ts }
 
 function tokensUsedInWindow() {
   const now = Date.now();
@@ -49,10 +48,10 @@ function recordTokens(tokens) {
   tokenLog.push({ tokens, ts: Date.now() });
 }
 
+/**
+ *  How long until oldest entries roll out of window to free up space?
+ */
 function msUntilCapacity(needed) {
-  /**
-   *  How long until oldest entries roll out of window to free up space?
-   */
   let freed = 0;
   const now = Date.now();
   const cutoff = now - TPM_WINDOW_MS;
