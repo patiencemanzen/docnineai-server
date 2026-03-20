@@ -87,7 +87,34 @@ app.use(
 // The /webhook/github prefix covers both GitHub and Flutterwave webhooks,
 app.use("/webhook/github", express.raw({ type: "*/*", limit: "10mb" }));
 
-app.use(express.json({ limit: "20mb" }));
+// Slack commands come as form-encoded, not JSON — use urlencoded parser
+// This must come BEFORE the JSON parser to avoid stream consumption issues
+app.use(
+  "/slack/commands",
+  express.urlencoded({ extended: true, limit: "10mb" })
+);
+app.use(
+  "/slack/events",
+  express.json({ limit: "10mb" })
+);
+
+const jsonParser = express.json({
+  limit: "20mb",
+  // Capture raw bytes for signature verification (e.g., Slack requests).
+  verify: (req, _res, buf) => {
+    req.rawBody = buf.toString("utf8");
+  },
+});
+
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/slack/commands") ||
+    req.path.startsWith("/slack/events")
+  ) {
+    return next();
+  }
+  return jsonParser(req, res, next);
+});
 app.use(cookieParser());
 app.use(morgan("dev"));
 

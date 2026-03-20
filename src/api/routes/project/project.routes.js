@@ -54,10 +54,12 @@ import * as ctrl from "../../controllers/project/project.controller.js";
 import * as attachmentCtrl from "../../controllers/project/attachment.controller.js";
 import * as shareCtrl from "../../controllers/project/share.controller.js";
 import * as portalCtrl from "../../controllers/portal/portal.controller.js";
+import { MCPController } from "../../controllers/project/mcp.controller.js";
 import zipRoutes from "./zip-upload.routes.js";
 import apispecRoutes from "../apispec/apispec.routes.js";
 import mcpRoutes from "./mcp.routes.js";
 import { protect } from "../../../middleware/auth.middleware.js";
+import { authenticateAPIToken } from "../../../middleware/token-auth.middleware.js";
 import { rules, validate } from "../../../middleware/validate.middleware.js";
 import { apiLimiter } from "../../../middleware/rateLimiter.middleware.js";
 import {
@@ -356,11 +358,28 @@ router.patch(
 router.use("/:id/apispec", validateMongoId, apispecRoutes);
 
 // ── MCP Server ────────────────────────────────────────────────
-// GET    /projects/:id/mcp/health       — health check
-// GET    /projects/:id/mcp/info         — get MCP server info
-// GET    /projects/:id/mcp/tools        — list available tools
-// POST   /projects/:id/mcp/call         — call tool (generic)
-// POST   /projects/:id/mcp/:tool        — call specific tool
+// GET    /projects/mcp/list_projects   — list all user projects (MCP)
+// GET    /projects/:id/mcp/health      — health check
+// GET    /projects/:id/mcp/info        — get MCP server info
+// GET    /projects/:id/mcp/tools       — list available tools
+// POST   /projects/:id/mcp/call        — call tool (generic)
+// POST   /projects/:id/mcp/:tool       — call specific tool
+
+// Special route for list_projects (no project ID needed)
+router.post(
+  "/mcp/list_projects",
+  authenticateAPIToken,
+  wrap(async (req, res) => {
+    const userId = req.tokenAuth?.userId || req.user?.userId;
+    const result = await MCPController.invokeTool(
+      "list_projects",
+      {},
+      null,
+      userId,
+    );
+    res.json(result);
+  }),
+);
 
 router.use("/:id/mcp", validateMongoId, mcpRoutes);
 

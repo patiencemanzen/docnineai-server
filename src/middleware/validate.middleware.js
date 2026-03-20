@@ -142,6 +142,19 @@ export const rules = {
    * Do NOT add a param("id") rule here.
    */
   updateProject: [
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("Name is required")
+      .isLength({ max: 80 })
+      .withMessage("Name must be 80 characters or fewer"),
+    body("description")
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage("Description must be 500 characters or fewer"),
     body("status")
       .optional()
       .isIn(["archived"])

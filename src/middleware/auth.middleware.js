@@ -8,6 +8,7 @@
 
 import { verifyAccessToken } from "../utils/jwt.util.js";
 import { fail } from "../utils/response.util.js";
+import { authenticateAPIToken } from "./token-auth.middleware.js";
 
 /**
  * Hard auth guard — 401 if Bearer token is missing, expired, or invalid.
@@ -26,6 +27,13 @@ export function protect(req, res, next) {
   }
 
   const token = header.slice(7).trim();
+
+  // Support Docnine API tokens (`docnine_...`) for MCP/CLI/programmatic calls.
+  // This is necessary because some `/projects/*/mcp/*` endpoints authenticate
+  // using APITokens rather than JWT access tokens.
+  if (token.startsWith("docnine_")) {
+    return authenticateAPIToken(req, res, next);
+  }
 
   try {
     const payload = verifyAccessToken(token);

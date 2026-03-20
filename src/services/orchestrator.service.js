@@ -34,18 +34,38 @@ import { updateFileManifest } from "./diff.service.js";
 // ─── Timeouts (ms) ────────────────────────────────────────────────
 // Each agent has an independent timeout so one slow agent can't
 // stall the entire pipeline indefinitely.
-// Increased for large projects (100+ files, thousands of LOC)
+//
+// IMPORTANT: On Vercel (serverless), requests timeout at 60s (Pro) / 900s (Enterprise).
+// We detect environment and use conservative timeouts to avoid function termination.
+// Users can retry if a large project is interrupted.
 
-const TIMEOUTS = {
-  fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
-  scan: 240_000, // Repo Scanner — LLM batches over all files (doubled for large codebases)
-  api: 180_000, // API Extractor (doubled - many endpoints to extract)
-  schema: 180_000, // Schema Analyser (doubled - complex models and relationships)
-  components: 180_000, // Component Mapper (doubled - 90s -> 180s was failing)
-  security: 240_000, // Security Auditor (doubled - static + LLM analysis on large codebase)
-  write: 300_000, // Doc Writer (increased to 5min - multiple LLM calls for all documents)
-  chat: 30_000, // Chat session setup (doubled)
-};
+const isVercel = !!process.env.VERCEL;
+const isProduction = process.env.NODE_ENV === "production";
+
+// On Vercel (60s limit), use conservative timeouts that fit within 55s safety margin
+// On local/traditional servers, use extended timeouts for large projects
+const TIMEOUTS =
+  isVercel && isProduction
+    ? {
+        fetch: 15_000, // 15s - GitHub API is usually fast
+        scan: 30_000, // 30s - repo scanning with LLM preview
+        api: 15_000, // 15s - API extraction
+        schema: 15_000, // 15s - Schema analysis
+        components: 15_000, // 15s - Component mapping
+        security: 20_000, // 20s - Security audit
+        write: 25_000, // 25s - Doc writing (critical, needs time)
+        chat: 10_000, // 10s - Chat setup
+      }
+    : {
+        fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
+        scan: 240_000, // Repo Scanner — LLM batches over all files
+        api: 180_000, // API Extractor (doubled - many endpoints to extract)
+        schema: 180_000, // Schema Analyser (doubled - complex models)
+        components: 180_000, // Component Mapper (doubled - was failing at 90s)
+        security: 240_000, // Security Auditor (doubled - static + LLM analysis)
+        write: 300_000, // Doc Writer (5min - multiple LLM calls)
+        chat: 30_000, // Chat session setup
+      };
 
 // ─── Routing Thresholds ───────────────────────────────────────────
 // Agent 1 outputs drive intelligent routing decisions.

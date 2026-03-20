@@ -26,6 +26,7 @@ import portalRoutes from "./portal/portal.routes.js";
 import billingRoutes from "./billing/billing.routes.js";
 import adminRoutes from "./admin/admin.routes.js";
 import cliRoutes from "./cli/cli.routes.js";
+import slackRoutes from "./slack/slack.routes.js";
 import {
   handleWebhook,
   handleFlutterwaveWebhook,
@@ -42,6 +43,7 @@ router.use("/azure", azureRoutes);
 router.use("/projects", projectRoutes);
 router.use("/cli", cliRoutes);
 router.use("/api/cli", cliRoutes);
+router.use("/slack", slackRoutes); // Slack OAuth, commands, events
 router.use("/portal", portalRoutes); // public — no auth
 router.use("/billing", billingRoutes);
 router.use("/admin", adminRoutes);

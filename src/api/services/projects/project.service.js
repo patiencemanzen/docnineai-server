@@ -275,18 +275,38 @@ function buildManifestFromTree(tree, projectMap) {
 /**
  * Build the SSE progress handler.
  * Pushes events to the in-memory job registry AND persists
- * the last 200 events to MongoDB (capped slice).
+ * the last 200 events to MongoDB (capped slice) for recovery.
+ *
+ * IMPROVED: Adds checkpoint tracking to detect progress stalls.
  */
 function makeProgressHandler(projectId, jobId) {
+  let lastCheckpointTime = Date.now();
+
   return async (event) => {
     // Always push to in-memory registry (instant SSE delivery)
     pushEvent(jobId, event);
+
+    // Track checkpoint for stall detection
+    if (
+      event.status === "done" ||
+      event.status === "error" ||
+      event.status === "running"
+    ) {
+      lastCheckpointTime = Date.now();
+    }
 
     // Persist to DB — non-critical, swallow errors
     try {
       await Project.updateOne(
         { _id: projectId },
-        { $push: { events: { $each: [event], $slice: -200 } } },
+        {
+          $push: {
+            events: { $each: [event], $slice: -200 }, // Keep last 200 events
+          },
+          // Update metadata for monitoring
+          "meta.lastProgressAt": new Date(),
+          "meta.lastProgressStep": event.step,
+        },
       );
     } catch {
       /* non-critical — SSE still delivered via in-memory registry */
@@ -367,28 +387,50 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
 // ─── Startup Recovery ─────────────────────────────────────────────
 
 /**
+ * Startup Recovery (Improved)
  * Called once at server startup.
  * Finds projects stuck in "running" or "queued" state (server crash),
- * marks them as "error", and registers synthetic lost jobs so that
- * SSE clients connecting after a restart receive a proper error event.
+ * marks them as "error", and registers synthetic lost jobs.
+ *
+ * Also checks for Vercel-timeout scenarios where the pipeline timed out
+ * but the backend job might still be running. For those, uses a more
+ * lenient recovery message to avoid false positives.
  */
 export async function recoverOrphanedJobs() {
   try {
+    const { jobs, vercelTimeoutJobs, getStaleJobs } =
+      await import("../../../services/job-registry.service.js");
+
     const orphans = await Project.find({
       status: { $in: ["running", "queued"] },
-    }).select("_id jobId status repoName");
+    }).select("_id jobId status repoName createdAt");
 
     if (orphans.length === 0) return;
 
-    const { jobs } = await import("../../../services/job-registry.service.js");
-
+    const { staleJobs } = getStaleJobs();
     const RECOVERY_MSG = "Pipeline was interrupted. Please retry.";
+    const TIMEOUT_RECOVERY_MSG =
+      "Pipeline hit the 60s timeout on Vercel. It may still be running in the background. Please retry.";
+
     const orphanIds = [];
+    let recovered = 0;
 
     for (const p of orphans) {
       // Skip if already registered — genuine in-flight pipeline
-      if (p.jobId && jobs.has(p.jobId)) continue;
-      if (p.jobId) recoverLostJob(p.jobId, RECOVERY_MSG);
+      if (p.jobId && jobs.has(p.jobId)) {
+        console.log(`[recovery] Job ${p.jobId} still in memory, not orphaned`);
+        continue;
+      }
+
+      if (p.jobId) {
+        const isVercelTimeout = vercelTimeoutJobs.has(p.jobId);
+        const msg = isVercelTimeout ? TIMEOUT_RECOVERY_MSG : RECOVERY_MSG;
+        recoverLostJob(p.jobId, msg);
+        recovered++;
+        console.log(
+          `[recovery] Registered lost job ${p.jobId} ${isVercelTimeout ? "(Vercel timeout)" : "(server restart)"}`,
+        );
+      }
       orphanIds.push(p._id);
     }
 
@@ -398,13 +440,18 @@ export async function recoverOrphanedJobs() {
         {
           status: "error",
           errorMessage: RECOVERY_MSG,
+          "meta.recoveredAt": new Date(),
         },
       );
+
       console.log(
-        `[recovery] Marked ${orphanIds.length} orphaned project(s) as error.`,
+        `[recovery] Marked ${orphanIds.length} orphaned project(s) as error (recovered: ${recovered}).`,
         orphans
           .filter((p) => orphanIds.some((id) => id.equals(p._id)))
-          .map((p) => `${p.repoName} (${p.jobId})`)
+          .map(
+            (p) =>
+              `${p.repoName} (${p.jobId}) · age: ${Date.now() - p.createdAt.getTime()}ms`,
+          )
           .join(", "),
       );
     }
@@ -763,6 +810,35 @@ export async function deleteProject({ projectId, userId }) {
  */
 export async function updateProject({ projectId, userId, updates }) {
   const project = await assertOwnership(projectId, userId);
+  let didUpdate = false;
+
+  if (typeof updates?.name === "string") {
+    const name = updates.name.trim();
+    if (!name) {
+      throw domainError(
+        "Project name is required.",
+        "INVALID_PROJECT_NAME",
+        422,
+      );
+    }
+    if (name.length > 80) {
+      throw domainError(
+        "Project name must be 80 characters or fewer.",
+        "INVALID_PROJECT_NAME",
+        422,
+      );
+    }
+    project.meta = project.meta || {};
+    project.meta.name = name;
+    didUpdate = true;
+  }
+
+  if (typeof updates?.description === "string") {
+    const description = updates.description.trim();
+    project.meta = project.meta || {};
+    project.meta.description = description.length ? description : null;
+    didUpdate = true;
+  }
 
   if (updates.status === "archived") {
     if (project.status === "running" || project.status === "queued")
@@ -774,6 +850,10 @@ export async function updateProject({ projectId, userId, updates }) {
 
     project.status = "archived";
     project.archivedAt = new Date();
+    didUpdate = true;
+  }
+
+  if (didUpdate) {
     await project.save();
   }
 
@@ -1134,12 +1214,32 @@ export async function restoreVersion({ projectId, userId, versionId }) {
  * Called by createProject and retryProject.
  * Persists the complete result to MongoDB and finishes the job.
  */
+/**
+ * Run the full pipeline asynchronously.
+ * On Vercel, if the HTTP request is going to timeout (60s), we don't want
+ * to leave the job in limbo. Instead, we detect timeout and flag it so that
+ * retry works properly. The job continues in the background.
+ */
 async function runPipeline({ project, normalised, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
+  const isVercel =
+    !!process.env.VERCEL && process.env.NODE_ENV === "production";
 
   try {
-    const result = await orchestrate(normalised, onProgress);
+    // On Vercel, wrap orchestrate with a timeout detector (55s for safety margin)
+    let result;
+    if (isVercel) {
+      result = await Promise.race([
+        orchestrate(normalised, onProgress),
+        new Promise(
+          (_, reject) =>
+            setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000), // 55s timeout on Vercel
+        ),
+      ]);
+    } else {
+      result = await orchestrate(normalised, onProgress);
+    }
 
     if (!result.success) {
       await Project.findByIdAndUpdate(project._id, {
@@ -1180,7 +1280,38 @@ async function runPipeline({ project, normalised, jobId }) {
       agentErrors: result.agentErrors,
       routing: result.routing,
     });
+
+    // ── Trigger Slack Security Alerts ──────────────────────────────
+    // After pipeline completes, send alerts to Slack if configured
+    try {
+      const { triggerSecurityAlerts } =
+        await import("../../../services/slack-webhook.service.js");
+      await triggerSecurityAlerts(project._id, result.security);
+    } catch (err) {
+      console.warn(
+        `[pipeline:${jobId}] Slack alert trigger failed (non-fatal):`,
+        err.message,
+      );
+    }
   } catch (err) {
+    // Detect Vercel timeout scenario
+    if (err.message === "VERCEL_HTTP_TIMEOUT") {
+      console.warn(
+        `[pipeline:${jobId}] Vercel 55s timeout detected, but pipeline may still be running.`,
+      );
+      const { flagVercelTimeout } =
+        await import("../../../services/job-registry.service.js");
+      flagVercelTimeout(jobId);
+      // Don't mark project as error yet — it might finish
+      // Update project metadata to indicate timeout occurred
+      await Project.findByIdAndUpdate(project._id, {
+        "meta.vercelTimedOut": true,
+        "meta.vercelTimeoutAt": new Date(),
+      }).catch(() => {});
+      return;
+    }
+
+    // Real error — mark as failed
     console.error(`[pipeline:${jobId}] Fatal error:`, err);
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
