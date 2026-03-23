@@ -1,50 +1,6 @@
 // ===================================================================
 // Incremental Sync Pipeline — Enhanced
 // ===================================================================
-//
-// Improvements over previous version:
-//
-//  PERFORMANCE
-//  • Phase 3 (file fetch) and Phase 1 (meta + SHA) now run concurrently
-//    where safe — saves one full round-trip
-//  • Agent file routing is computed before fetch so we only download
-//    exactly the files each agent needs — no over-fetching
-//  • Static section rebuilds run in parallel (Promise.all) instead of
-//    sequential loop — 5 sections → 1 tick instead of 5
-//  • mergeProjectMap called once and shared across all agent calls
-//    instead of being recomputed 4 times per sync
-//  • Version history writes already use Promise.all — preserved
-//
-//  RELIABILITY
-//  • withTimeout now uses AbortController signal so fetch-based
-//    operations respect cancellation
-//  • runAgent catches synchronous throws (not just Promise rejections)
-//  • All MongoDB update fields are computed in one place (buildMongoUpdate)
-//    — no field can be silently omitted by a code path
-//  • fullSyncFallback is extracted and called from a single guard
-//    function (requiresFullRun) that collects the reason — no
-//    scattered early returns
-//
-//  EFFICIENCY
-//  • analyseChanges result is memoised — never called twice
-//  • Agent skips are short-circuited before runAgent overhead
-//  • mergeAgentOutputs receives a single removedPathSet (Set) instead
-//    of converting array to Set inside the merge function on every call
-//  • Removed duplicate mergeProjectMap calls inside each agent closure
-//
-//  OBSERVABILITY
-//  • Every phase emits a structured timing summary
-//  • syncErrors carries phase + agent + section for precise diagnosis
-//  • _diagnostics field on return value exposes per-agent durations
-//
-//  CORRECTNESS
-//  • freshRelationships=undefined guard is now explicit — stored value
-//    is always preserved when schema agent didn't run
-//  • editedSections stale marking uses a Map for O(1) lookup instead
-//    of Array.some on every section
-//  • currentTree fetch (for manifest update) is kicked off during
-//    agent execution instead of after, hiding its latency
-// ===================================================================
 
 import { getAdapter } from "./provider.adapter.js";
 import { decrypt } from "../utils/crypto.util.js";

@@ -553,6 +553,30 @@ export async function createProject({ userId, repoUrl }) {
       console.log("[createProject] Azure DevOps token prepared for project");
     }
 
+    // For GitHub: look up the user's stored access token from GitHubToken collection
+    if (provider === "github") {
+      const { GitHubToken } =
+        await import("../../../models/GitHubToken.js");
+      const githubToken = await GitHubToken.findOne({ userId }).select(
+        "+accessTokenEncrypted",
+      );
+      if (githubToken?.accessTokenEncrypted) {
+        // Decrypt once here; re-encrypt and store on the project so the
+        // pipeline can use it without another DB round-trip.
+        const { encrypt, decrypt } =
+          await import("../../../utils/crypto.util.js");
+        providerToken = encrypt(decrypt(githubToken.accessTokenEncrypted));
+        console.log("[createProject] GitHub token prepared for project");
+      } else {
+        console.warn("[createProject] GitHub token not found for user", {
+          userId,
+        });
+        // GitHub token is optional — public repos can be accessed without it
+        // but rate limits are much lower (60 req/hour vs 5000 req/hour with token)
+        console.log("[createProject] Proceeding without GitHub token (rate limits will apply)");
+      }
+    }
+
     const jobId = randomUUID();
     const webhookSecret = randomBytes(32).toString("hex");
 
@@ -1226,19 +1250,36 @@ async function runPipeline({ project, normalised, jobId }) {
   const isVercel =
     !!process.env.VERCEL && process.env.NODE_ENV === "production";
 
+  // Decrypt the provider token if it exists (GitHub, GitLab, or Azure DevOps)
+  let providerTokenDecrypted = null;
+  if (project.providerToken) {
+    const { decrypt } = await import("../../../utils/crypto.util.js");
+    try {
+      providerTokenDecrypted = decrypt(project.providerToken);
+    } catch (err) {
+      console.warn("[runPipeline] Failed to decrypt provider token:", err.message);
+    }
+  }
+
   try {
     // On Vercel, wrap orchestrate with a timeout detector (55s for safety margin)
     let result;
     if (isVercel) {
       result = await Promise.race([
-        orchestrate(normalised, onProgress),
+        orchestrate(normalised, onProgress, {
+          provider: project.provider,
+          token: providerTokenDecrypted,
+        }),
         new Promise(
           (_, reject) =>
             setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000), // 55s timeout on Vercel
         ),
       ]);
     } else {
-      result = await orchestrate(normalised, onProgress);
+      result = await orchestrate(normalised, onProgress, {
+        provider: project.provider,
+        token: providerTokenDecrypted,
+      });
     }
 
     if (!result.success) {
@@ -1330,6 +1371,17 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   const incrementalSync = await getIncrementalSync();
   const onProgress = makeProgressHandler(project._id, jobId);
 
+  // Decrypt the provider token if it exists
+  let providerTokenDecrypted = null;
+  if (project.providerToken) {
+    const { decrypt } = await import("../../../utils/crypto.util.js");
+    try {
+      providerTokenDecrypted = decrypt(project.providerToken);
+    } catch (err) {
+      console.warn("[runSync] Failed to decrypt provider token:", err.message);
+    }
+  }
+
   console.log(
     `[sync:${jobId}] 🚀 runSync async execution starting immediately · job should be in memory now`,
   );
@@ -1342,6 +1394,8 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     const syncResult = await incrementalSync(project, onProgress, {
       forceFullRun,
       webhookChangedFiles,
+      provider: project.provider,
+      token: providerTokenDecrypted,
     });
 
     console.log(`[sync:${jobId}] Sync result: `, {

@@ -305,7 +305,7 @@ function buildPipelineReport(steps) {
 
 // ─── Orchestrator ─────────────────────────────────────────────────
 
-export async function orchestrate(repoUrl, onProgress) {
+export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const pipelineStart = Date.now();
   const pipelineSteps = []; // tracks each step for the pipeline report
   const agentErrors = []; // collects non-fatal errors across all agents
@@ -352,17 +352,18 @@ export async function orchestrate(repoUrl, onProgress) {
     );
   } else {
     // Git-based projects — fetch from provider
-    emit("fetch", "running", "Connecting to GitHub…");
+    const provider = authContext.provider || "github";
+    emit("fetch", "running", `Connecting to ${provider}…`);
     const fetchStart = Date.now();
 
     try {
       const fetched = await Promise.race([
         fetchRepoFilesWithProgress(repoUrl, (msg) =>
           emit("fetch", "running", msg),
-        ),
+        authContext.token),
         new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error("GitHub fetch timed out")),
+            () => reject(new Error("Repository fetch timed out")),
             TIMEOUTS.fetch,
           ),
         ),
@@ -392,8 +393,8 @@ export async function orchestrate(repoUrl, onProgress) {
 
   if (!isPrefetched) {
     [currentCommitSha, treeWithSha] = await Promise.all([
-      getCommitSha(owner, repo, meta.defaultBranch).catch(() => null),
-      getFileTreeWithSha(owner, repo, meta.defaultBranch).catch(() => []),
+      getCommitSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => null),
+      getFileTreeWithSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => []),
     ]);
   }
 
