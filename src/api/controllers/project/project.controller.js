@@ -4,7 +4,7 @@
 
 import * as projectService from "../../services/projects/project.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-import { jobs, streams } from "../../../services/job-registry.service.js";
+import { jobs, streams, hydrateJobFromRedis, hydrateJobFromDb } from "../../../services/job-registry.service.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
 import { PlanUsage } from "../../../models/PlanUsage.js";
 
@@ -97,10 +97,10 @@ export async function createProject(req, res) {
       userId: req.user.userId,
       repoUrl: req.body.repoUrl,
     });
-    // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
-      () => {},
-    );
+    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    if (!req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    }
     return ok(
       res,
       { project, streamUrl: `/projects/${project._id}/stream` },
@@ -108,6 +108,10 @@ export async function createProject(req, res) {
       201,
     );
   } catch (err) {
+    // Release the reserved slot so the user isn't unfairly penalised.
+    if (req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    }
     return handleErr(res, err, "createProject");
   }
 }
@@ -118,12 +122,16 @@ export async function createFromScratchProject(req, res) {
       userId: req.user.userId,
       projectName: req.body.projectName,
     });
-    // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
-      () => {},
-    );
+    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    if (!req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    }
     return ok(res, { project }, "From-scratch project created.", 201);
   } catch (err) {
+    // Release the reserved slot so the user isn't unfairly penalised.
+    if (req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    }
     return handleErr(res, err, "createFromScratchProject");
   }
 }
@@ -295,35 +303,39 @@ export async function streamProject(req, res) {
   }
 
   /**
-   * Job not in memory. Two cases:
-   * 1. Project is done/error — serve a synthetic result from DB (normal path
-   *    after recovery re-registration was skipped or a very old jobId).
-   * 2. Project is somehow still "running" — could be Vercel timeout (HTTP 60s)
-   *    but backend still working, or true server restart.
+   * Job not in memory. Resolution order:
+   * 1. done/error project   → serve synthetic result from DB and close.
+   * 2. Redis hit            → hydrate from Redis (events + status).
+   * 3. MongoDB events       → fallback hydration from Project.events.
+   * 4. Nothing              → pipeline is dead, send error/retry message.
+   *
+   * After hydration the code falls through to the normal streaming path.
    */
   if (!job) {
-    const syntheticResult = {
-      success: project.status === "done",
-      output: project.effectiveOutput,
-      stats: project.stats,
-      security: project.security,
-      techStack: project.techStack,
-      meta: project.meta,
-      chat: project.chatSessionId ? { sessionId: project.chatSessionId } : null,
-      error: project.errorMessage || null,
-    };
-
     if (project.status === "done" || project.status === "error") {
-      res.write(
-        `data: ${JSON.stringify({ step: "done", result: syntheticResult })}\n\n`,
-      );
-    } else {
-      /**
-       * Still running but no in-memory job — could be:
-       * 1. HTTP request hit 60s timeout on Vercel but pipeline still running
-       * 2. Server restarted mid-pipeline
-       * 3. Clock skew or delayed job registration
-       */
+      const syntheticResult = {
+        success: project.status === "done",
+        output: project.effectiveOutput,
+        stats: project.stats,
+        security: project.security,
+        techStack: project.techStack,
+        meta: project.meta,
+        chat: project.chatSessionId ? { sessionId: project.chatSessionId } : null,
+        error: project.errorMessage || null,
+      };
+      res.write(`data: ${JSON.stringify({ step: "done", result: syntheticResult })}\n\n`);
+      return res.end();
+    }
+
+    // Project is "running" — try Redis first, then MongoDB events fallback.
+    job = await hydrateJobFromRedis(jobId);
+
+    if (!job && project.events?.length) {
+      job = hydrateJobFromDb(jobId, project.events);
+    }
+
+    if (!job) {
+      // No events anywhere — pipeline is dead (server restart / Vercel kill).
       const isLikelyVercelTimeout = project.meta?.vercelTimedOut === true;
       const message = isLikelyVercelTimeout
         ? "Pipeline was interrupted by Vercel's 60s HTTP timeout. It may still be running in the background. Please retry."
@@ -338,8 +350,9 @@ export async function streamProject(req, res) {
           retryUrl: `/projects/${project._id}/retry`,
         })}\n\n`,
       );
+      return res.end();
     }
-    return res.end();
+    // Fall through to the normal streaming path below.
   }
 
   // ── Job exists and is running ──────────────────────────────

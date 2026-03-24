@@ -22,10 +22,9 @@ const SKIP_EXT =
 // ── Internal helpers ──────────────────────────────────────────
 
 function azHeaders(accessToken) {
-  // Azure DevOps uses Basic auth with PAT (username is empty string)
-  const auth = Buffer.from(`:${accessToken}`).toString("base64");
+  // OAuth tokens use Bearer auth
   return {
-    Authorization: `Basic ${auth}`,
+    Authorization: `Bearer ${accessToken}`,
     Accept: "application/json",
   };
 }
@@ -87,7 +86,7 @@ export function parseRepoUrl(url) {
 export function getOAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: process.env.AZURE_DEVOPS_CLIENT_ID,
-    response_type: "code",
+    response_type: "Assertion",
     state,
     scope: "vso.code",
     redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
@@ -98,10 +97,10 @@ export function getOAuthUrl(state) {
 /** Exchange OAuth authorization code for access token. */
 export async function exchangeCode(code) {
   const params = new URLSearchParams({
-    client_id: process.env.AZURE_DEVOPS_CLIENT_ID,
-    client_secret: process.env.AZURE_DEVOPS_CLIENT_SECRET,
-    grant_type: "authorization_code",
-    code,
+    client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+    client_assertion: process.env.AZURE_DEVOPS_CLIENT_SECRET,
+    grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+    assertion: code,
     redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
   });
   
@@ -120,15 +119,17 @@ export async function exchangeCode(code) {
 
 /** Fetch the authenticated Azure DevOps user profile. */
 export async function getAuthenticatedUser(accessToken) {
-  const { data } = await axios.get(`${AZURE_API}/_api/_identity/me`, {
-    headers: azHeaders(accessToken),
-  });
+  // Use VSTS profile API (works with OAuth tokens)
+  const { data } = await axios.get(
+    "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.0",
+    { headers: azHeaders(accessToken) },
+  );
   return {
-    id: data.id,
-    username: data.providerDisplayName || data.displayName,
-    name: data.displayName || data.providerDisplayName,
+    id: data.id || data.publicAlias,
+    username: data.displayName,
+    name: data.displayName,
     email: data.emailAddress || null,
-    avatarUrl: data.avatar?.large || null,
+    avatarUrl: data.coreAttributes?.Avatar?.value?.value || null,
   };
 }
 

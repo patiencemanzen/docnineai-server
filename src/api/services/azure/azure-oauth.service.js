@@ -51,12 +51,12 @@ export function buildOAuthUrl(userId) {
   });
 
   // Azure DevOps OAuth2 authorization request
-  // Scope: vso.code includes both read and write permissions
+  // Azure DevOps uses response_type=Assertion (not "code")
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
-    response_type: "code",
+    response_type: "Assertion",
     state,
-    scope: "vso.code", // Standard Azure DevOps scope for code access
+    scope: "vso.code",
     redirect_uri: REDIRECT_URI,
   });
 
@@ -106,12 +106,12 @@ export async function handleOAuthCallback({ code, state }) {
   console.log("[Azure OAuth Service] Exchanging code for token...");
   let tokenRes;
   try {
-    // Azure requires form-encoded data for token exchange
+    // Azure DevOps uses non-standard OAuth token exchange parameters
     const params = new URLSearchParams({
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      grant_type: "authorization_code",
-      code,
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: CLIENT_SECRET,
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: code,
       redirect_uri: REDIRECT_URI,
     });
 

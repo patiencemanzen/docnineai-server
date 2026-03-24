@@ -68,6 +68,7 @@ import {
 } from "../../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
+import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 
 const router = Router();
 router.use(protect, apiLimiter);
@@ -192,11 +193,11 @@ router.get(
   wrap(ctrl.getProjectChangeLog),
 );
 // Allow both GET and POST for PDF/YAML to support optional data from frontend
-router.get("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
-router.post("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
-router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
-router.post("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
-router.post("/:id/export/notion", validateMongoId, wrap(ctrl.exportNotion));
+router.get("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.post("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.get("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
+router.post("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
+router.post("/:id/export/notion", validateMongoId, autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
 
 // Google Docs export
 router.get(
@@ -217,6 +218,7 @@ router.delete(
 router.post(
   "/:id/export/google-docs",
   validateMongoId,
+  autoLog("EXPORT_GOOGLE_DOCS"),
   wrap(ctrl.exportGoogleDocs),
 );
 

@@ -15,6 +15,7 @@ import {
   signupLimiter,
 } from "../../../middleware/rateLimiter.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
+import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 
 const router = Router();
 
@@ -24,9 +25,25 @@ router.post(
   signupLimiter,
   rules.signup,
   validate,
+  autoLog("AUTH_SIGNUP", (_req, body) => ({
+    userId:     body.data?.user?._id,
+    actorName:  body.data?.user?.name  ?? "",
+    actorEmail: body.data?.user?.email ?? "",
+  })),
   wrap(ctrl.signup),
 );
-router.post("/login", authLimiter, rules.login, validate, wrap(ctrl.login));
+router.post(
+  "/login",
+  authLimiter,
+  rules.login,
+  validate,
+  autoLog("AUTH_LOGIN", (_req, body) => ({
+    userId:     body.data?.user?._id,
+    actorName:  body.data?.user?.name  ?? "",
+    actorEmail: body.data?.user?.email ?? "",
+  })),
+  wrap(ctrl.login),
+);
 router.post(
   "/verify-email",
   rules.verifyEmail,
@@ -90,7 +107,7 @@ router.post("/webhook/rotate", protect, wrap(ctrl.rotateWebhookSecret));
 router.patch("/webhook", protect, wrap(ctrl.updateWebhookSettings));
 
 // ── Protected ─────────────────────────────────────────────────
-router.post("/logout", protect, wrap(ctrl.logout));
+router.post("/logout", protect, autoLog("AUTH_LOGOUT"), wrap(ctrl.logout));
 router.get("/me", protect, wrap(ctrl.getMe));
 router.patch(
   "/profile",
@@ -104,6 +121,7 @@ router.post(
   protect,
   rules.changePassword,
   validate,
+  autoLog("AUTH_PASSWORD_CHANGED"),
   wrap(ctrl.changePassword),
 );
 

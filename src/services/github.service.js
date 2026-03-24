@@ -14,6 +14,33 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
 
+// ── Download concurrency semaphore ────────────────────────────
+// 10 concurrent requests eliminates the ~30s sequential download
+// penalty for 100-file repos while staying well within GitHub API
+// rate limits (5,000 authenticated requests per hour).
+const DOWNLOAD_CONCURRENCY = 10;
+let _dlActive = 0;
+const _dlQueue = [];
+
+function acquireDownloadSlot() {
+  return new Promise((resolve) => {
+    if (_dlActive < DOWNLOAD_CONCURRENCY) {
+      _dlActive++;
+      resolve();
+    } else {
+      _dlQueue.push(resolve);
+    }
+  });
+}
+
+function releaseDownloadSlot() {
+  _dlActive--;
+  if (_dlQueue.length > 0) {
+    _dlActive++;
+    _dlQueue.shift()();
+  }
+}
+
 function ghHeaders(token = null) {
   // Use provided token first, then fall back to environment variable
   const auth_token = token || process.env.GITHUB_TOKEN;
@@ -201,11 +228,19 @@ export async function fetchRepoFiles(repoUrl, token = null) {
 
   console.log(`📂 Fetching ${eligible.length} files from ${owner}/${repo}…`);
 
-  const files = [];
-  for (const file of eligible) {
-    const content = await getFileContent(owner, repo, file.path, token);
-    if (content.trim()) files.push({ path: file.path, content });
-  }
+  const files = (
+    await Promise.all(
+      eligible.map(async (file) => {
+        await acquireDownloadSlot();
+        try {
+          const content = await getFileContent(owner, repo, file.path, token);
+          return content.trim() ? { path: file.path, content } : null;
+        } finally {
+          releaseDownloadSlot();
+        }
+      }),
+    )
+  ).filter(Boolean);
   return { meta, files, owner, repo };
 }
 
@@ -232,14 +267,24 @@ export async function fetchRepoFilesWithProgress(
 
   notify(`Downloading ${eligible.length} source files…`);
 
-  const files = [];
-  for (const [i, file] of eligible.entries()) {
-    const content = await getFileContent(owner, repo, file.path, token);
-    if (content.trim()) files.push({ path: file.path, content });
-    if ((i + 1) % 20 === 0 || i === eligible.length - 1) {
-      notify(`Downloaded ${i + 1} / ${eligible.length} files…`);
-    }
-  }
+  let downloaded = 0;
+  const files = (
+    await Promise.all(
+      eligible.map(async (file) => {
+        await acquireDownloadSlot();
+        try {
+          const content = await getFileContent(owner, repo, file.path, token);
+          downloaded++;
+          if (downloaded % 20 === 0 || downloaded === eligible.length) {
+            notify(`Downloaded ${downloaded} / ${eligible.length} files…`);
+          }
+          return content.trim() ? { path: file.path, content } : null;
+        } finally {
+          releaseDownloadSlot();
+        }
+      }),
+    )
+  ).filter(Boolean);
 
   return { meta, files, owner, repo };
 }

@@ -13,6 +13,7 @@
 import bcrypt from "bcryptjs";
 import { Portal } from "../../../models/Portal.js";
 import { Project } from "../../../models/Project.js";
+import ActivityLogService from "../../../services/activity-log.service.js";
 
 // ── Section keys and their display labels ─────────────────────
 export const SECTION_KEYS = [
@@ -152,6 +153,12 @@ export async function updatePortal(projectId, userId, body) {
   }
 
   await portal.save();
+  ActivityLogService.log({
+    userId,
+    action: "PORTAL_SETTINGS_UPDATED",
+    projectId,
+    metadata: { slug: portal.slug },
+  });
   return portal.toObject();
 }
 
@@ -165,10 +172,22 @@ export async function togglePublish(projectId, userId) {
   if (!portal) {
     const slug = await generateUniqueSlug(project.repoOwner, project.repoName);
     portal = await Portal.create({ projectId, slug, isPublished: true });
+    ActivityLogService.log({
+      userId,
+      action: "PORTAL_PUBLISHED",
+      projectId,
+      metadata: { slug: portal.slug },
+    });
     return portal.toObject();
   }
   portal.isPublished = !portal.isPublished;
   await portal.save();
+  ActivityLogService.log({
+    userId,
+    action: portal.isPublished ? "PORTAL_PUBLISHED" : "PORTAL_UNPUBLISHED",
+    projectId,
+    metadata: { slug: portal.slug },
+  });
   return portal.toObject();
 }
 

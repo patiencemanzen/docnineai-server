@@ -15,12 +15,7 @@
 //     msg, detail, ts, duration? }
 // ===================================================================
 
-import {
-  fetchRepoFilesWithProgress,
-  getCommitSha,
-  getFileTreeWithSha,
-  parseRepoUrl,
-} from "./github.service.js";
+import { getAdapter, detectProvider } from "../adapters/provider.adapter.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
 import { apiExtractorAgent } from "../agents/api-extractor.agent.js";
@@ -352,13 +347,14 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     );
   } else {
     // Git-based projects — fetch from provider
-    const provider = authContext.provider || "github";
+    const provider = authContext.provider || detectProvider(repoUrl);
+    const adapter = getAdapter(provider);
     emit("fetch", "running", `Connecting to ${provider}…`);
     const fetchStart = Date.now();
 
     try {
       const fetched = await Promise.race([
-        fetchRepoFilesWithProgress(repoUrl, (msg) =>
+        adapter.fetchRepoFilesWithProgress(repoUrl, (msg) =>
           emit("fetch", "running", msg),
         authContext.token),
         new Promise((_, reject) =>
@@ -392,9 +388,10 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   let treeWithSha = repoUrl.fileTree || [];
 
   if (!isPrefetched) {
+    const adapter = getAdapter(authContext.provider || detectProvider(repoUrl));
     [currentCommitSha, treeWithSha] = await Promise.all([
-      getCommitSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => null),
-      getFileTreeWithSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => []),
+      adapter.getCommitSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => null),
+      adapter.getFileTreeWithSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => []),
     ]);
   }
 

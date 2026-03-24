@@ -38,6 +38,7 @@
 import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../../models/Project.js";
+import ActivityLogService from "../../../services/activity-log.service.js";
 import { DocumentVersion, SECTIONS } from "../../../models/DocumentVersion.js";
 import { ProjectShare } from "../../../models/ProjectShare.js";
 import { User } from "../../../models/User.js";
@@ -398,7 +399,7 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
  */
 export async function recoverOrphanedJobs() {
   try {
-    const { jobs, vercelTimeoutJobs, getStaleJobs } =
+    const { jobs, isVercelTimedOut, getStaleJobs } =
       await import("../../../services/job-registry.service.js");
 
     const orphans = await Project.find({
@@ -423,7 +424,7 @@ export async function recoverOrphanedJobs() {
       }
 
       if (p.jobId) {
-        const isVercelTimeout = vercelTimeoutJobs.has(p.jobId);
+        const isVercelTimeout = await isVercelTimedOut(p.jobId);
         const msg = isVercelTimeout ? TIMEOUT_RECOVERY_MSG : RECOVERY_MSG;
         recoverLostJob(p.jobId, msg);
         recovered++;
@@ -514,8 +515,8 @@ export async function createProject({ userId, repoUrl }) {
     // can authenticate against the GitLab API.
     let providerToken = null;
     if (provider === "gitlab") {
-      const user = await User.findById(userId).select("+gitlab.accessToken");
-      if (!user?.gitlab?.accessToken) {
+      const user = await User.findById(userId).select("+gitlabTokenEncrypted");
+      if (!user?.gitlabTokenEncrypted) {
         console.warn("[createProject] GitLab token not found", { userId });
         throw domainError(
           "GitLab account not connected. Connect via Settings → GitLab.",
@@ -527,7 +528,7 @@ export async function createProject({ userId, repoUrl }) {
       // pipeline can use it without another DB round-trip.
       const { encrypt, decrypt } =
         await import("../../../utils/crypto.util.js");
-      providerToken = encrypt(decrypt(user.gitlab.accessToken));
+      providerToken = encrypt(decrypt(user.gitlabTokenEncrypted));
       console.log("[createProject] GitLab token prepared for project");
     }
 
@@ -551,6 +552,25 @@ export async function createProject({ userId, repoUrl }) {
         await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.azureDevOpsTokenEncrypted));
       console.log("[createProject] Azure DevOps token prepared for project");
+    }
+
+    // For Bitbucket: look up the user's stored access token
+    if (provider === "bitbucket") {
+      const user = await User.findById(userId).select(
+        "+bitbucketTokenEncrypted",
+      );
+      if (!user?.bitbucketTokenEncrypted) {
+        console.warn("[createProject] Bitbucket token not found", { userId });
+        throw domainError(
+          "Bitbucket account not connected. Connect via Settings → Bitbucket.",
+          "BITBUCKET_NOT_CONNECTED",
+          400,
+        );
+      }
+      const { encrypt, decrypt } =
+        await import("../../../utils/crypto.util.js");
+      providerToken = encrypt(decrypt(user.bitbucketTokenEncrypted));
+      console.log("[createProject] Bitbucket token prepared for project");
     }
 
     // For GitHub: look up the user's stored access token from GitHubToken collection
@@ -602,6 +622,14 @@ export async function createProject({ userId, repoUrl }) {
     });
 
     registerJob(jobId);
+
+    ActivityLogService.log({
+      userId,
+      action: "PROJECT_CREATED",
+      projectId: project._id,
+      projectName: `${owner}/${repoName}`,
+      metadata: { provider, owner, repoName, repoUrl: normalised },
+    });
 
     // Log project creation to changelog
     try {
@@ -1262,6 +1290,14 @@ async function runPipeline({ project, normalised, jobId }) {
   }
 
   try {
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_STARTED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: { jobId, provider: project.provider },
+    });
+
     // On Vercel, wrap orchestrate with a timeout detector (55s for safety margin)
     let result;
     if (isVercel) {
@@ -1286,6 +1322,13 @@ async function runPipeline({ project, normalised, jobId }) {
       await Project.findByIdAndUpdate(project._id, {
         status: "error",
         errorMessage: result.error || "Unknown pipeline error",
+      });
+      ActivityLogService.log({
+        userId: project.userId,
+        action: "PIPELINE_FAILED",
+        projectId: project._id,
+        projectName: `${project.repoOwner}/${project.repoName}`,
+        metadata: { jobId, error: result.error || "Unknown pipeline error" },
       });
       failJob(jobId, new Error(result.error || "Unknown pipeline error"));
       return;
@@ -1314,6 +1357,18 @@ async function runPipeline({ project, normalised, jobId }) {
       );
     }
 
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_COMPLETED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: {
+        jobId,
+        stats: result.stats,
+        agentErrorCount: result.agentErrors?.length ?? 0,
+      },
+    });
+
     finishJob(jobId, {
       success: true,
       stats: result.stats,
@@ -1337,18 +1392,23 @@ async function runPipeline({ project, normalised, jobId }) {
   } catch (err) {
     // Detect Vercel timeout scenario
     if (err.message === "VERCEL_HTTP_TIMEOUT") {
-      console.warn(
-        `[pipeline:${jobId}] Vercel 55s timeout detected, but pipeline may still be running.`,
-      );
+      console.warn(`[pipeline:${jobId}] Vercel 55s timeout — marking project as error (retryable).`);
       const { flagVercelTimeout } =
         await import("../../../services/job-registry.service.js");
       flagVercelTimeout(jobId);
-      // Don't mark project as error yet — it might finish
-      // Update project metadata to indicate timeout occurred
       await Project.findByIdAndUpdate(project._id, {
+        status: "error",
+        errorMessage: "Pipeline timed out. Click retry to continue.",
         "meta.vercelTimedOut": true,
         "meta.vercelTimeoutAt": new Date(),
       }).catch(() => {});
+      ActivityLogService.log({
+        userId: project.userId,
+        action: "PIPELINE_TIMEOUT",
+        projectId: project._id,
+        projectName: `${project.repoOwner}/${project.repoName}`,
+        metadata: { jobId },
+      });
       return;
     }
 
@@ -1357,6 +1417,13 @@ async function runPipeline({ project, normalised, jobId }) {
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
       errorMessage: err.message,
+    });
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_FAILED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: { jobId, error: err.message },
     });
     failJob(jobId, err);
   }

@@ -209,38 +209,42 @@ export async function getCommitSha(owner, repo, branch, accessToken) {
 
 /**
  * Fetch the recursive file tree with per-file blob SHAs.
- * Bitbucket API requires paginated requests.
+ * Bitbucket's /src endpoint only lists one directory level at a time,
+ * so we recursively traverse into sub-directories.
  */
 export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
   const all = [];
-  let page = 1;
 
-  while (true) {
-    const { data, headers: res } = await axios.get(
-      `${BB_API}/repositories/${owner}/${repo}/src/${branch}/`,
-      {
+  async function listDir(dirPath) {
+    let url = `${BB_API}/repositories/${owner}/${repo}/src/${branch}/${dirPath}`;
+
+    while (url) {
+      const { data } = await axios.get(url, {
         headers: bbHeaders(accessToken),
-        params: {
-          pagelen: 100,
-          page,
-          recursive: true,
-        },
-      },
-    );
+        params: { pagelen: 100 },
+      });
 
-    if (!data.values) break;
+      if (!data.values) break;
 
-    all.push(...data.values.filter((i) => i.type === "commit_file"));
+      for (const item of data.values) {
+        if (item.type === "commit_file") {
+          all.push(item);
+        } else if (item.type === "commit_directory") {
+          await listDir(item.path + "/");
+        }
+      }
 
-    if (!data.pagelen || data.values.length < data.pagelen) break;
-    page++;
+      url = data.next || null;
+    }
   }
+
+  await listDir("");
 
   return all
     .filter((i) => !SKIP_EXT.test(i.path))
     .map((i) => ({
       path: i.path,
-      sha: i.commit.hash.substring(0, 40), // Bitbucket returns full hash
+      sha: i.commit?.hash?.substring(0, 40) || "",
       size: i.size || 0,
     }));
 }
