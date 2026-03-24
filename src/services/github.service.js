@@ -1,12 +1,5 @@
 // =============================================================
 // GitHub API client.
-//
-// v3.1 additions:
-//   getCommitSha        — resolve branch name → git SHA
-//   getFileTreeWithSha  — full tree with per-file blob SHAs
-//   computeFileDiff     — compare stored fileManifest against a
-//                         fresh tree to find added/modified/removed
-//                         files without using the compare API
 // =============================================================
 
 import axios from "axios";
@@ -21,17 +14,43 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
 
-function ghHeaders() {
+// ── Download concurrency semaphore ────────────────────────────
+// 10 concurrent requests eliminates the ~30s sequential download
+// penalty for 100-file repos while staying well within GitHub API
+// rate limits (5,000 authenticated requests per hour).
+const DOWNLOAD_CONCURRENCY = 10;
+let _dlActive = 0;
+const _dlQueue = [];
+
+function acquireDownloadSlot() {
+  return new Promise((resolve) => {
+    if (_dlActive < DOWNLOAD_CONCURRENCY) {
+      _dlActive++;
+      resolve();
+    } else {
+      _dlQueue.push(resolve);
+    }
+  });
+}
+
+function releaseDownloadSlot() {
+  _dlActive--;
+  if (_dlQueue.length > 0) {
+    _dlActive++;
+    _dlQueue.shift()();
+  }
+}
+
+function ghHeaders(token = null) {
+  // Use provided token first, then fall back to environment variable
+  const auth_token = token || process.env.GITHUB_TOKEN;
   return {
     Accept: "application/vnd.github+json",
-    ...(process.env.GITHUB_TOKEN
-      ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
-      : {}),
+    ...(auth_token ? { Authorization: `Bearer ${auth_token}` } : {}),
   };
 }
 
 // ── URL parsing ───────────────────────────────────────────────
-
 export function parseRepoUrl(url) {
   const match = url.match(/github\.com\/([^/]+)\/([^/?.]+)/);
   if (!match) throw new Error(`Invalid GitHub URL: ${url}`);
@@ -39,10 +58,9 @@ export function parseRepoUrl(url) {
 }
 
 // ── Repo metadata ─────────────────────────────────────────────
-
-export async function getRepoMeta(owner, repo) {
+export async function getRepoMeta(owner, repo, token = null) {
   const { data } = await axios.get(`${GH_API}/repos/${owner}/${repo}`, {
-    headers: ghHeaders(),
+    headers: ghHeaders(token),
   });
   return {
     name: data.name,
@@ -59,20 +77,20 @@ export async function getRepoMeta(owner, repo) {
 // ── Commit SHA resolution ─────────────────────────────────────
 // Returns the git commit SHA for the HEAD of a branch.
 // This is the canonical identifier we store as lastDocumentedCommit.
-export async function getCommitSha(owner, repo, branch) {
+export async function getCommitSha(owner, repo, branch, token = null) {
   const { data } = await axios.get(
     `${GH_API}/repos/${owner}/${repo}/commits/${branch}`,
-    { headers: ghHeaders() },
+    { headers: ghHeaders(token) },
   );
   return data.sha;
 }
 
 // ── File tree (original — path + size only) ───────────────────
 
-export async function getFileTree(owner, repo, branch) {
+export async function getFileTree(owner, repo, branch, token = null) {
   const { data } = await axios.get(
     `${GH_API}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    { headers: ghHeaders() },
+    { headers: ghHeaders(token) },
   );
   if (data.truncated) {
     console.warn(
@@ -89,10 +107,10 @@ export async function getFileTree(owner, repo, branch) {
 // These SHAs are stable — they only change when file content changes.
 // This is how we detect what changed between two pipeline runs
 // without needing the GitHub compare API.
-export async function getFileTreeWithSha(owner, repo, branch) {
+export async function getFileTreeWithSha(owner, repo, branch, token = null) {
   const { data } = await axios.get(
     `${GH_API}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
-    { headers: ghHeaders() },
+    { headers: ghHeaders(token) },
   );
   if (data.truncated) {
     console.warn("-- Tree truncated — some files may be missed in diff.");
@@ -113,8 +131,14 @@ export async function getFileTreeWithSha(owner, repo, branch) {
 //   unchanged — files with matching SHAs (safe to skip)
 //
 // SKIP_EXT files are filtered out — agents don't process them anyway.
-export async function computeFileDiff(owner, repo, branch, storedManifest) {
-  const currentTree = await getFileTreeWithSha(owner, repo, branch);
+export async function computeFileDiff(
+  owner,
+  repo,
+  branch,
+  storedManifest,
+  token = null,
+) {
+  const currentTree = await getFileTreeWithSha(owner, repo, branch, token);
   const eligible = currentTree.filter(
     (f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024,
   );
@@ -152,11 +176,11 @@ export async function computeFileDiff(owner, repo, branch, storedManifest) {
 
 // ── Individual file content ───────────────────────────────────
 
-export async function getFileContent(owner, repo, filePath) {
+export async function getFileContent(owner, repo, filePath, token = null) {
   try {
     const { data } = await axios.get(
       `${GH_API}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`,
-      { headers: ghHeaders() },
+      { headers: ghHeaders(token) },
     );
     if (data.encoding === "base64") {
       return Buffer.from(data.content, "base64").toString("utf-8");
@@ -170,14 +194,20 @@ export async function getFileContent(owner, repo, filePath) {
 
 // ── Batch-fetch file contents from a list of paths ────────────
 // Used by incremental sync to fetch only changed files.
-export async function fetchFileContents(owner, repo, filePaths, onProgress) {
+export async function fetchFileContents(
+  owner,
+  repo,
+  filePaths,
+  onProgress,
+  token = null,
+) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
   const files = [];
 
   for (const [i, path] of filePaths.entries()) {
-    const content = await getFileContent(owner, repo, path);
+    const content = await getFileContent(owner, repo, path, token);
     if (content.trim()) files.push({ path, content });
     if ((i + 1) % 10 === 0 || i === filePaths.length - 1) {
       notify(`Fetching changed files… ${i + 1}/${filePaths.length}`);
@@ -187,11 +217,10 @@ export async function fetchFileContents(owner, repo, filePaths, onProgress) {
 }
 
 // ── Full repo fetch (original — used for full pipeline runs) ──
-
-export async function fetchRepoFiles(repoUrl) {
+export async function fetchRepoFiles(repoUrl, token = null) {
   const { owner, repo } = parseRepoUrl(repoUrl);
-  const meta = await getRepoMeta(owner, repo);
-  const allFiles = await getFileTree(owner, repo, meta.defaultBranch);
+  const meta = await getRepoMeta(owner, repo, token);
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, token);
 
   const eligible = allFiles
     .filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024)
@@ -199,27 +228,38 @@ export async function fetchRepoFiles(repoUrl) {
 
   console.log(`📂 Fetching ${eligible.length} files from ${owner}/${repo}…`);
 
-  const files = [];
-  for (const file of eligible) {
-    const content = await getFileContent(owner, repo, file.path);
-    if (content.trim()) files.push({ path: file.path, content });
-  }
+  const files = (
+    await Promise.all(
+      eligible.map(async (file) => {
+        await acquireDownloadSlot();
+        try {
+          const content = await getFileContent(owner, repo, file.path, token);
+          return content.trim() ? { path: file.path, content } : null;
+        } finally {
+          releaseDownloadSlot();
+        }
+      }),
+    )
+  ).filter(Boolean);
   return { meta, files, owner, repo };
 }
 
 // ── Full repo fetch with progress events ─────────────────────
-
-export async function fetchRepoFilesWithProgress(repoUrl, onProgress) {
+export async function fetchRepoFilesWithProgress(
+  repoUrl,
+  onProgress,
+  token = null,
+) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
 
   const { owner, repo } = parseRepoUrl(repoUrl);
   notify(`Reading repo info for ${owner}/${repo}…`);
-  const meta = await getRepoMeta(owner, repo);
+  const meta = await getRepoMeta(owner, repo, token);
 
   notify(`Reading file tree on branch "${meta.defaultBranch}"…`);
-  const allFiles = await getFileTree(owner, repo, meta.defaultBranch);
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, token);
 
   const eligible = allFiles
     .filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024)
@@ -227,14 +267,24 @@ export async function fetchRepoFilesWithProgress(repoUrl, onProgress) {
 
   notify(`Downloading ${eligible.length} source files…`);
 
-  const files = [];
-  for (const [i, file] of eligible.entries()) {
-    const content = await getFileContent(owner, repo, file.path);
-    if (content.trim()) files.push({ path: file.path, content });
-    if ((i + 1) % 20 === 0 || i === eligible.length - 1) {
-      notify(`Downloaded ${i + 1} / ${eligible.length} files…`);
-    }
-  }
+  let downloaded = 0;
+  const files = (
+    await Promise.all(
+      eligible.map(async (file) => {
+        await acquireDownloadSlot();
+        try {
+          const content = await getFileContent(owner, repo, file.path, token);
+          downloaded++;
+          if (downloaded % 20 === 0 || downloaded === eligible.length) {
+            notify(`Downloaded ${downloaded} / ${eligible.length} files…`);
+          }
+          return content.trim() ? { path: file.path, content } : null;
+        } finally {
+          releaseDownloadSlot();
+        }
+      }),
+    )
+  ).filter(Boolean);
 
   return { meta, files, owner, repo };
 }

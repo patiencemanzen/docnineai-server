@@ -54,10 +54,12 @@ import * as ctrl from "../../controllers/project/project.controller.js";
 import * as attachmentCtrl from "../../controllers/project/attachment.controller.js";
 import * as shareCtrl from "../../controllers/project/share.controller.js";
 import * as portalCtrl from "../../controllers/portal/portal.controller.js";
+import { MCPController } from "../../controllers/project/mcp.controller.js";
 import zipRoutes from "./zip-upload.routes.js";
 import apispecRoutes from "../apispec/apispec.routes.js";
 import mcpRoutes from "./mcp.routes.js";
 import { protect } from "../../../middleware/auth.middleware.js";
+import { authenticateAPIToken } from "../../../middleware/token-auth.middleware.js";
 import { rules, validate } from "../../../middleware/validate.middleware.js";
 import { apiLimiter } from "../../../middleware/rateLimiter.middleware.js";
 import {
@@ -66,6 +68,7 @@ import {
 } from "../../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
+import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 
 const router = Router();
 router.use(protect, apiLimiter);
@@ -190,11 +193,11 @@ router.get(
   wrap(ctrl.getProjectChangeLog),
 );
 // Allow both GET and POST for PDF/YAML to support optional data from frontend
-router.get("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
-router.post("/:id/export/pdf", validateMongoId, wrap(ctrl.exportPdf));
-router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
-router.post("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
-router.post("/:id/export/notion", validateMongoId, wrap(ctrl.exportNotion));
+router.get("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.post("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.get("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
+router.post("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
+router.post("/:id/export/notion", validateMongoId, autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
 
 // Google Docs export
 router.get(
@@ -215,6 +218,7 @@ router.delete(
 router.post(
   "/:id/export/google-docs",
   validateMongoId,
+  autoLog("EXPORT_GOOGLE_DOCS"),
   wrap(ctrl.exportGoogleDocs),
 );
 
@@ -356,11 +360,28 @@ router.patch(
 router.use("/:id/apispec", validateMongoId, apispecRoutes);
 
 // ── MCP Server ────────────────────────────────────────────────
-// GET    /projects/:id/mcp/health       — health check
-// GET    /projects/:id/mcp/info         — get MCP server info
-// GET    /projects/:id/mcp/tools        — list available tools
-// POST   /projects/:id/mcp/call         — call tool (generic)
-// POST   /projects/:id/mcp/:tool        — call specific tool
+// GET    /projects/mcp/list_projects   — list all user projects (MCP)
+// GET    /projects/:id/mcp/health      — health check
+// GET    /projects/:id/mcp/info        — get MCP server info
+// GET    /projects/:id/mcp/tools       — list available tools
+// POST   /projects/:id/mcp/call        — call tool (generic)
+// POST   /projects/:id/mcp/:tool       — call specific tool
+
+// Special route for list_projects (no project ID needed)
+router.post(
+  "/mcp/list_projects",
+  authenticateAPIToken,
+  wrap(async (req, res) => {
+    const userId = req.tokenAuth?.userId || req.user?.userId;
+    const result = await MCPController.invokeTool(
+      "list_projects",
+      {},
+      null,
+      userId,
+    );
+    res.json(result);
+  }),
+);
 
 router.use("/:id/mcp", validateMongoId, mcpRoutes);
 

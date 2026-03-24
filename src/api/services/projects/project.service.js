@@ -38,6 +38,7 @@
 import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../../models/Project.js";
+import ActivityLogService from "../../../services/activity-log.service.js";
 import { DocumentVersion, SECTIONS } from "../../../models/DocumentVersion.js";
 import { ProjectShare } from "../../../models/ProjectShare.js";
 import { User } from "../../../models/User.js";
@@ -275,18 +276,38 @@ function buildManifestFromTree(tree, projectMap) {
 /**
  * Build the SSE progress handler.
  * Pushes events to the in-memory job registry AND persists
- * the last 200 events to MongoDB (capped slice).
+ * the last 200 events to MongoDB (capped slice) for recovery.
+ *
+ * IMPROVED: Adds checkpoint tracking to detect progress stalls.
  */
 function makeProgressHandler(projectId, jobId) {
+  let lastCheckpointTime = Date.now();
+
   return async (event) => {
     // Always push to in-memory registry (instant SSE delivery)
     pushEvent(jobId, event);
+
+    // Track checkpoint for stall detection
+    if (
+      event.status === "done" ||
+      event.status === "error" ||
+      event.status === "running"
+    ) {
+      lastCheckpointTime = Date.now();
+    }
 
     // Persist to DB — non-critical, swallow errors
     try {
       await Project.updateOne(
         { _id: projectId },
-        { $push: { events: { $each: [event], $slice: -200 } } },
+        {
+          $push: {
+            events: { $each: [event], $slice: -200 }, // Keep last 200 events
+          },
+          // Update metadata for monitoring
+          "meta.lastProgressAt": new Date(),
+          "meta.lastProgressStep": event.step,
+        },
       );
     } catch {
       /* non-critical — SSE still delivered via in-memory registry */
@@ -367,28 +388,50 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
 // ─── Startup Recovery ─────────────────────────────────────────────
 
 /**
+ * Startup Recovery (Improved)
  * Called once at server startup.
  * Finds projects stuck in "running" or "queued" state (server crash),
- * marks them as "error", and registers synthetic lost jobs so that
- * SSE clients connecting after a restart receive a proper error event.
+ * marks them as "error", and registers synthetic lost jobs.
+ *
+ * Also checks for Vercel-timeout scenarios where the pipeline timed out
+ * but the backend job might still be running. For those, uses a more
+ * lenient recovery message to avoid false positives.
  */
 export async function recoverOrphanedJobs() {
   try {
+    const { jobs, isVercelTimedOut, getStaleJobs } =
+      await import("../../../services/job-registry.service.js");
+
     const orphans = await Project.find({
       status: { $in: ["running", "queued"] },
-    }).select("_id jobId status repoName");
+    }).select("_id jobId status repoName createdAt");
 
     if (orphans.length === 0) return;
 
-    const { jobs } = await import("../../../services/job-registry.service.js");
-
+    const { staleJobs } = getStaleJobs();
     const RECOVERY_MSG = "Pipeline was interrupted. Please retry.";
+    const TIMEOUT_RECOVERY_MSG =
+      "Pipeline hit the 60s timeout on Vercel. It may still be running in the background. Please retry.";
+
     const orphanIds = [];
+    let recovered = 0;
 
     for (const p of orphans) {
       // Skip if already registered — genuine in-flight pipeline
-      if (p.jobId && jobs.has(p.jobId)) continue;
-      if (p.jobId) recoverLostJob(p.jobId, RECOVERY_MSG);
+      if (p.jobId && jobs.has(p.jobId)) {
+        console.log(`[recovery] Job ${p.jobId} still in memory, not orphaned`);
+        continue;
+      }
+
+      if (p.jobId) {
+        const isVercelTimeout = await isVercelTimedOut(p.jobId);
+        const msg = isVercelTimeout ? TIMEOUT_RECOVERY_MSG : RECOVERY_MSG;
+        recoverLostJob(p.jobId, msg);
+        recovered++;
+        console.log(
+          `[recovery] Registered lost job ${p.jobId} ${isVercelTimeout ? "(Vercel timeout)" : "(server restart)"}`,
+        );
+      }
       orphanIds.push(p._id);
     }
 
@@ -398,13 +441,18 @@ export async function recoverOrphanedJobs() {
         {
           status: "error",
           errorMessage: RECOVERY_MSG,
+          "meta.recoveredAt": new Date(),
         },
       );
+
       console.log(
-        `[recovery] Marked ${orphanIds.length} orphaned project(s) as error.`,
+        `[recovery] Marked ${orphanIds.length} orphaned project(s) as error (recovered: ${recovered}).`,
         orphans
           .filter((p) => orphanIds.some((id) => id.equals(p._id)))
-          .map((p) => `${p.repoName} (${p.jobId})`)
+          .map(
+            (p) =>
+              `${p.repoName} (${p.jobId}) · age: ${Date.now() - p.createdAt.getTime()}ms`,
+          )
           .join(", "),
       );
     }
@@ -467,8 +515,8 @@ export async function createProject({ userId, repoUrl }) {
     // can authenticate against the GitLab API.
     let providerToken = null;
     if (provider === "gitlab") {
-      const user = await User.findById(userId).select("+gitlab.accessToken");
-      if (!user?.gitlab?.accessToken) {
+      const user = await User.findById(userId).select("+gitlabTokenEncrypted");
+      if (!user?.gitlabTokenEncrypted) {
         console.warn("[createProject] GitLab token not found", { userId });
         throw domainError(
           "GitLab account not connected. Connect via Settings → GitLab.",
@@ -480,7 +528,7 @@ export async function createProject({ userId, repoUrl }) {
       // pipeline can use it without another DB round-trip.
       const { encrypt, decrypt } =
         await import("../../../utils/crypto.util.js");
-      providerToken = encrypt(decrypt(user.gitlab.accessToken));
+      providerToken = encrypt(decrypt(user.gitlabTokenEncrypted));
       console.log("[createProject] GitLab token prepared for project");
     }
 
@@ -504,6 +552,49 @@ export async function createProject({ userId, repoUrl }) {
         await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.azureDevOpsTokenEncrypted));
       console.log("[createProject] Azure DevOps token prepared for project");
+    }
+
+    // For Bitbucket: look up the user's stored access token
+    if (provider === "bitbucket") {
+      const user = await User.findById(userId).select(
+        "+bitbucketTokenEncrypted",
+      );
+      if (!user?.bitbucketTokenEncrypted) {
+        console.warn("[createProject] Bitbucket token not found", { userId });
+        throw domainError(
+          "Bitbucket account not connected. Connect via Settings → Bitbucket.",
+          "BITBUCKET_NOT_CONNECTED",
+          400,
+        );
+      }
+      const { encrypt, decrypt } =
+        await import("../../../utils/crypto.util.js");
+      providerToken = encrypt(decrypt(user.bitbucketTokenEncrypted));
+      console.log("[createProject] Bitbucket token prepared for project");
+    }
+
+    // For GitHub: look up the user's stored access token from GitHubToken collection
+    if (provider === "github") {
+      const { GitHubToken } =
+        await import("../../../models/GitHubToken.js");
+      const githubToken = await GitHubToken.findOne({ userId }).select(
+        "+accessTokenEncrypted",
+      );
+      if (githubToken?.accessTokenEncrypted) {
+        // Decrypt once here; re-encrypt and store on the project so the
+        // pipeline can use it without another DB round-trip.
+        const { encrypt, decrypt } =
+          await import("../../../utils/crypto.util.js");
+        providerToken = encrypt(decrypt(githubToken.accessTokenEncrypted));
+        console.log("[createProject] GitHub token prepared for project");
+      } else {
+        console.warn("[createProject] GitHub token not found for user", {
+          userId,
+        });
+        // GitHub token is optional — public repos can be accessed without it
+        // but rate limits are much lower (60 req/hour vs 5000 req/hour with token)
+        console.log("[createProject] Proceeding without GitHub token (rate limits will apply)");
+      }
     }
 
     const jobId = randomUUID();
@@ -531,6 +622,14 @@ export async function createProject({ userId, repoUrl }) {
     });
 
     registerJob(jobId);
+
+    ActivityLogService.log({
+      userId,
+      action: "PROJECT_CREATED",
+      projectId: project._id,
+      projectName: `${owner}/${repoName}`,
+      metadata: { provider, owner, repoName, repoUrl: normalised },
+    });
 
     // Log project creation to changelog
     try {
@@ -763,6 +862,35 @@ export async function deleteProject({ projectId, userId }) {
  */
 export async function updateProject({ projectId, userId, updates }) {
   const project = await assertOwnership(projectId, userId);
+  let didUpdate = false;
+
+  if (typeof updates?.name === "string") {
+    const name = updates.name.trim();
+    if (!name) {
+      throw domainError(
+        "Project name is required.",
+        "INVALID_PROJECT_NAME",
+        422,
+      );
+    }
+    if (name.length > 80) {
+      throw domainError(
+        "Project name must be 80 characters or fewer.",
+        "INVALID_PROJECT_NAME",
+        422,
+      );
+    }
+    project.meta = project.meta || {};
+    project.meta.name = name;
+    didUpdate = true;
+  }
+
+  if (typeof updates?.description === "string") {
+    const description = updates.description.trim();
+    project.meta = project.meta || {};
+    project.meta.description = description.length ? description : null;
+    didUpdate = true;
+  }
 
   if (updates.status === "archived") {
     if (project.status === "running" || project.status === "queued")
@@ -774,6 +902,10 @@ export async function updateProject({ projectId, userId, updates }) {
 
     project.status = "archived";
     project.archivedAt = new Date();
+    didUpdate = true;
+  }
+
+  if (didUpdate) {
     await project.save();
   }
 
@@ -1134,17 +1266,69 @@ export async function restoreVersion({ projectId, userId, versionId }) {
  * Called by createProject and retryProject.
  * Persists the complete result to MongoDB and finishes the job.
  */
+/**
+ * Run the full pipeline asynchronously.
+ * On Vercel, if the HTTP request is going to timeout (60s), we don't want
+ * to leave the job in limbo. Instead, we detect timeout and flag it so that
+ * retry works properly. The job continues in the background.
+ */
 async function runPipeline({ project, normalised, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
+  const isVercel =
+    !!process.env.VERCEL && process.env.NODE_ENV === "production";
+
+  // Decrypt the provider token if it exists (GitHub, GitLab, or Azure DevOps)
+  let providerTokenDecrypted = null;
+  if (project.providerToken) {
+    const { decrypt } = await import("../../../utils/crypto.util.js");
+    try {
+      providerTokenDecrypted = decrypt(project.providerToken);
+    } catch (err) {
+      console.warn("[runPipeline] Failed to decrypt provider token:", err.message);
+    }
+  }
 
   try {
-    const result = await orchestrate(normalised, onProgress);
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_STARTED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: { jobId, provider: project.provider },
+    });
+
+    // On Vercel, wrap orchestrate with a timeout detector (55s for safety margin)
+    let result;
+    if (isVercel) {
+      result = await Promise.race([
+        orchestrate(normalised, onProgress, {
+          provider: project.provider,
+          token: providerTokenDecrypted,
+        }),
+        new Promise(
+          (_, reject) =>
+            setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000), // 55s timeout on Vercel
+        ),
+      ]);
+    } else {
+      result = await orchestrate(normalised, onProgress, {
+        provider: project.provider,
+        token: providerTokenDecrypted,
+      });
+    }
 
     if (!result.success) {
       await Project.findByIdAndUpdate(project._id, {
         status: "error",
         errorMessage: result.error || "Unknown pipeline error",
+      });
+      ActivityLogService.log({
+        userId: project.userId,
+        action: "PIPELINE_FAILED",
+        projectId: project._id,
+        projectName: `${project.repoOwner}/${project.repoName}`,
+        metadata: { jobId, error: result.error || "Unknown pipeline error" },
       });
       failJob(jobId, new Error(result.error || "Unknown pipeline error"));
       return;
@@ -1173,6 +1357,18 @@ async function runPipeline({ project, normalised, jobId }) {
       );
     }
 
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_COMPLETED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: {
+        jobId,
+        stats: result.stats,
+        agentErrorCount: result.agentErrors?.length ?? 0,
+      },
+    });
+
     finishJob(jobId, {
       success: true,
       stats: result.stats,
@@ -1180,11 +1376,54 @@ async function runPipeline({ project, normalised, jobId }) {
       agentErrors: result.agentErrors,
       routing: result.routing,
     });
+
+    // ── Trigger Slack Security Alerts ──────────────────────────────
+    // After pipeline completes, send alerts to Slack if configured
+    try {
+      const { triggerSecurityAlerts } =
+        await import("../../../services/slack-webhook.service.js");
+      await triggerSecurityAlerts(project._id, result.security);
+    } catch (err) {
+      console.warn(
+        `[pipeline:${jobId}] Slack alert trigger failed (non-fatal):`,
+        err.message,
+      );
+    }
   } catch (err) {
+    // Detect Vercel timeout scenario
+    if (err.message === "VERCEL_HTTP_TIMEOUT") {
+      console.warn(`[pipeline:${jobId}] Vercel 55s timeout — marking project as error (retryable).`);
+      const { flagVercelTimeout } =
+        await import("../../../services/job-registry.service.js");
+      flagVercelTimeout(jobId);
+      await Project.findByIdAndUpdate(project._id, {
+        status: "error",
+        errorMessage: "Pipeline timed out. Click retry to continue.",
+        "meta.vercelTimedOut": true,
+        "meta.vercelTimeoutAt": new Date(),
+      }).catch(() => {});
+      ActivityLogService.log({
+        userId: project.userId,
+        action: "PIPELINE_TIMEOUT",
+        projectId: project._id,
+        projectName: `${project.repoOwner}/${project.repoName}`,
+        metadata: { jobId },
+      });
+      return;
+    }
+
+    // Real error — mark as failed
     console.error(`[pipeline:${jobId}] Fatal error:`, err);
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
       errorMessage: err.message,
+    });
+    ActivityLogService.log({
+      userId: project.userId,
+      action: "PIPELINE_FAILED",
+      projectId: project._id,
+      projectName: `${project.repoOwner}/${project.repoName}`,
+      metadata: { jobId, error: err.message },
     });
     failJob(jobId, err);
   }
@@ -1199,6 +1438,17 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   const incrementalSync = await getIncrementalSync();
   const onProgress = makeProgressHandler(project._id, jobId);
 
+  // Decrypt the provider token if it exists
+  let providerTokenDecrypted = null;
+  if (project.providerToken) {
+    const { decrypt } = await import("../../../utils/crypto.util.js");
+    try {
+      providerTokenDecrypted = decrypt(project.providerToken);
+    } catch (err) {
+      console.warn("[runSync] Failed to decrypt provider token:", err.message);
+    }
+  }
+
   console.log(
     `[sync:${jobId}] 🚀 runSync async execution starting immediately · job should be in memory now`,
   );
@@ -1211,6 +1461,8 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     const syncResult = await incrementalSync(project, onProgress, {
       forceFullRun,
       webhookChangedFiles,
+      provider: project.provider,
+      token: providerTokenDecrypted,
     });
 
     console.log(`[sync:${jobId}] Sync result: `, {

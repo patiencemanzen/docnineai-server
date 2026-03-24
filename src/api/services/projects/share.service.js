@@ -18,6 +18,7 @@ import { ProjectShare } from "../../../models/ProjectShare.js";
 import { User } from "../../../models/User.js";
 import { sendProjectInviteEmail } from "../../../config/email.js";
 import { syncTeamSeatsAndBilling } from "../../../services/billing.service.js";
+import ActivityLogService from "../../../services/activity-log.service.js";
 
 // ─────────────────────────────────────────────────────────────
 // Internal helpers
@@ -141,6 +142,16 @@ export async function inviteUsers(projectId, ownerId, invites) {
     });
 
     results.push({ email: lc, status: "invited", share: _serialize(share) });
+
+    ActivityLogService.log({
+      userId: ownerId,
+      action: "SHARE_INVITE_SENT",
+      projectId,
+      projectName: project.meta?.name || project.repoName,
+      resourceId: share._id.toString(),
+      resourceType: "share",
+      metadata: { inviteeEmail: lc, role },
+    });
   }
 
   return results;
@@ -178,6 +189,16 @@ export async function changeRole(projectId, shareId, ownerId, newRole) {
 
   share.role = newRole;
   await share.save();
+
+  ActivityLogService.log({
+    userId: ownerId,
+    action: "SHARE_ROLE_CHANGED",
+    projectId,
+    resourceId: shareId.toString(),
+    resourceType: "share",
+    metadata: { inviteeEmail: share.inviteeEmail, newRole },
+  });
+
   return _serialize(share);
 }
 
@@ -192,6 +213,15 @@ export async function revokeAccess(projectId, shareId, ownerId) {
 
   share.status = "revoked";
   await share.save();
+
+  ActivityLogService.log({
+    userId: ownerId,
+    action: "SHARE_MEMBER_REMOVED",
+    projectId,
+    resourceId: shareId.toString(),
+    resourceType: "share",
+    metadata: { inviteeEmail: share.inviteeEmail },
+  });
 
   // Sync Team plan billing if owner is on Team plan (seat count decreased)
   await syncTeamSeatsAndBilling(projectId, ownerId);
@@ -262,6 +292,15 @@ export async function acceptInvite(token, userId) {
   if (userId) share.inviteeUserId = userId;
   share.token = randomUUID(); // invalidate token after use
   await share.save();
+
+  ActivityLogService.log({
+    userId: userId ?? share.inviteeUserId,
+    action: "SHARE_INVITE_ACCEPTED",
+    projectId: share.projectId,
+    resourceId: share._id.toString(),
+    resourceType: "share",
+    metadata: { inviteeEmail: share.inviteeEmail, role: share.role },
+  });
 
   // Sync Team plan billing if owner is on Team plan
   const project = await Project.findById(share.projectId).select("userId");

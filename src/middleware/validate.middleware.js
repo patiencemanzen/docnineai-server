@@ -65,13 +65,22 @@ const passwordField = (field = "password") =>
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters");
 
+const SUPPORTED_HOSTS = ["github.com", "gitlab.com", "bitbucket.org", "dev.azure.com"];
+
 const repoUrlField = () =>
   body("repoUrl")
     .trim()
     .notEmpty()
     .withMessage("repoUrl is required")
-    .contains("github.com")
-    .withMessage("repoUrl must be a GitHub repository URL");
+    .custom((value) => {
+      const lower = value.toLowerCase();
+      if (!SUPPORTED_HOSTS.some((h) => lower.includes(h))) {
+        throw new Error(
+          `repoUrl must be from a supported provider: ${SUPPORTED_HOSTS.join(", ")}`,
+        );
+      }
+      return true;
+    });
 
 // ── Rule sets — one per endpoint ──────────────────────────────
 export const rules = {
@@ -142,6 +151,19 @@ export const rules = {
    * Do NOT add a param("id") rule here.
    */
   updateProject: [
+    body("name")
+      .optional()
+      .trim()
+      .notEmpty()
+      .withMessage("Name is required")
+      .isLength({ max: 80 })
+      .withMessage("Name must be 80 characters or fewer"),
+    body("description")
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ max: 500 })
+      .withMessage("Description must be 500 characters or fewer"),
     body("status")
       .optional()
       .isIn(["archived"])

@@ -15,18 +15,18 @@
 //     msg, detail, ts, duration? }
 // ===================================================================
 
-import {
-  fetchRepoFilesWithProgress,
-  getCommitSha,
-  getFileTreeWithSha,
-  parseRepoUrl,
-} from "./github.service.js";
+import { getAdapter, detectProvider } from "../adapters/provider.adapter.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
 import { apiExtractorAgent } from "../agents/api-extractor.agent.js";
 import { schemaAnalyserAgent } from "../agents/schema-analyser.agent.js";
 import { componentMapperAgent } from "../agents/component-mapper.agent.js";
-import { docWriterAgent } from "../agents/doc-writer.agent.js";
+import {
+  docWriterAgent,
+  buildApiReference,
+  buildSchemaDocs,
+  buildComponentIndex,
+} from "../agents/doc-writer.agent.js";
 import { securityAuditorAgent } from "../agents/security-auditor.agent.js";
 import { createChatSession, getSuggestedQuestions } from "./chat.service.js";
 import { updateFileManifest } from "./diff.service.js";
@@ -34,18 +34,38 @@ import { updateFileManifest } from "./diff.service.js";
 // ─── Timeouts (ms) ────────────────────────────────────────────────
 // Each agent has an independent timeout so one slow agent can't
 // stall the entire pipeline indefinitely.
-// Increased for large projects (100+ files, thousands of LOC)
+//
+// IMPORTANT: On Vercel (serverless), requests timeout at 60s (Pro) / 900s (Enterprise).
+// We detect environment and use conservative timeouts to avoid function termination.
+// Users can retry if a large project is interrupted.
 
-const TIMEOUTS = {
-  fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
-  scan: 240_000, // Repo Scanner — LLM batches over all files (doubled for large codebases)
-  api: 180_000, // API Extractor (doubled - many endpoints to extract)
-  schema: 180_000, // Schema Analyser (doubled - complex models and relationships)
-  components: 180_000, // Component Mapper (doubled - 90s -> 180s was failing)
-  security: 240_000, // Security Auditor (doubled - static + LLM analysis on large codebase)
-  write: 300_000, // Doc Writer (increased to 5min - multiple LLM calls for all documents)
-  chat: 30_000, // Chat session setup (doubled)
-};
+const isVercel = !!process.env.VERCEL;
+const isProduction = process.env.NODE_ENV === "production";
+
+// On Vercel (60s limit), use conservative timeouts that fit within 55s safety margin
+// On local/traditional servers, use extended timeouts for large projects
+const TIMEOUTS =
+  isVercel && isProduction
+    ? {
+        fetch: 15_000, // 15s - GitHub API is usually fast
+        scan: 30_000, // 30s - repo scanning with LLM preview
+        api: 15_000, // 15s - API extraction
+        schema: 15_000, // 15s - Schema analysis
+        components: 15_000, // 15s - Component mapping
+        security: 20_000, // 20s - Security audit
+        write: 25_000, // 25s - Doc writing (critical, needs time)
+        chat: 10_000, // 10s - Chat setup
+      }
+    : {
+        fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
+        scan: 240_000, // Repo Scanner — LLM batches over all files
+        api: 180_000, // API Extractor (doubled - many endpoints to extract)
+        schema: 180_000, // Schema Analyser (doubled - complex models)
+        components: 180_000, // Component Mapper (doubled - was failing at 90s)
+        security: 240_000, // Security Auditor (doubled - static + LLM analysis)
+        write: 300_000, // Doc Writer (5min - multiple LLM calls)
+        chat: 30_000, // Chat session setup
+      };
 
 // ─── Routing Thresholds ───────────────────────────────────────────
 // Agent 1 outputs drive intelligent routing decisions.
@@ -238,10 +258,12 @@ const FALLBACKS = {
   write: {
     readme: "# README\n\nDocumentation could not be generated.\n",
     internalDocs: "# Internal Docs\n\nDocumentation could not be generated.\n",
-    apiReference: "# API Reference\n\nNo data available.\n",
-    schemaDocs: "# Schema Docs\n\nNo data available.\n",
+    // Static sections are intentionally empty here so the orchestrator's
+    // pre-built static docs (from Phase 4.5) take precedence via ||.
+    apiReference: "",
+    schemaDocs: "",
     componentRef: "# Component Reference\n\nNo data available.\n",
-    componentIndex: "# Component Index\n\nNo data available.\n",
+    componentIndex: "",
     summary: {},
   },
 };
@@ -285,7 +307,7 @@ function buildPipelineReport(steps) {
 
 // ─── Orchestrator ─────────────────────────────────────────────────
 
-export async function orchestrate(repoUrl, onProgress) {
+export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const pipelineStart = Date.now();
   const pipelineSteps = []; // tracks each step for the pipeline report
   const agentErrors = []; // collects non-fatal errors across all agents
@@ -332,17 +354,19 @@ export async function orchestrate(repoUrl, onProgress) {
     );
   } else {
     // Git-based projects — fetch from provider
-    emit("fetch", "running", "Connecting to GitHub…");
+    const provider = authContext.provider || detectProvider(repoUrl);
+    const adapter = getAdapter(provider);
+    emit("fetch", "running", `Connecting to ${provider}…`);
     const fetchStart = Date.now();
 
     try {
       const fetched = await Promise.race([
-        fetchRepoFilesWithProgress(repoUrl, (msg) =>
+        adapter.fetchRepoFilesWithProgress(repoUrl, (msg) =>
           emit("fetch", "running", msg),
-        ),
+        authContext.token),
         new Promise((_, reject) =>
           setTimeout(
-            () => reject(new Error("GitHub fetch timed out")),
+            () => reject(new Error("Repository fetch timed out")),
             TIMEOUTS.fetch,
           ),
         ),
@@ -371,9 +395,10 @@ export async function orchestrate(repoUrl, onProgress) {
   let treeWithSha = repoUrl.fileTree || [];
 
   if (!isPrefetched) {
+    const adapter = getAdapter(authContext.provider || detectProvider(repoUrl));
     [currentCommitSha, treeWithSha] = await Promise.all([
-      getCommitSha(owner, repo, meta.defaultBranch).catch(() => null),
-      getFileTreeWithSha(owner, repo, meta.defaultBranch).catch(() => []),
+      adapter.getCommitSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => null),
+      adapter.getFileTreeWithSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => []),
     ]);
   }
 
@@ -676,6 +701,14 @@ export async function orchestrate(repoUrl, onProgress) {
     ].join(" · "),
   );
 
+  // ── PHASE 4.5: Pre-build static docs (zero LLM cost, instant) ──
+  // Build these BEFORE the doc writer runs so they survive even if
+  // the doc writer times out or throws.  Static docs only need the
+  // data that's already available from the parallel agents.
+  const staticApiReference = buildApiReference(endpoints ?? []);
+  const staticSchemaDocs = buildSchemaDocs(models ?? [], relationships ?? []);
+  const staticComponentIndex = buildComponentIndex(components ?? []);
+
   // ── PHASE 5: Agent 5 — Doc Writer (Sequential, needs all outputs) ──
   // Runs after all parallel agents because it consumes all their outputs.
   // Passes the richer data from improved agents: components (with responsibilities,
@@ -749,12 +782,16 @@ export async function orchestrate(repoUrl, onProgress) {
   const chatStart = Date.now();
 
   const docOutput = {
+    // LLM-generated sections: use doc writer output, fall back to FALLBACKS
     readme,
     internalDocs,
-    apiReference,
-    schemaDocs,
     componentRef,
-    componentIndex,
+    // Static sections: prefer doc writer output (identical content), but if the
+    // doc writer timed out we still have the pre-built static versions.
+    apiReference: apiReference || staticApiReference,
+    schemaDocs: schemaDocs || staticSchemaDocs,
+    componentIndex: componentIndex || staticComponentIndex,
+    // From security auditor (Phase 4)
     securityReport,
     remediationReport,
   };

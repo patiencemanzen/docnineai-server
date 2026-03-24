@@ -359,8 +359,8 @@ export async function fetchRepoFiles(repoUrl, accessToken) {
 /** Same as fetchRepoFiles with progress callbacks. */
 export async function fetchRepoFilesWithProgress(
   repoUrl,
-  accessToken,
   onProgress,
+  accessToken,
 ) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   onProgress?.(`Reading repo info for ${owner}/${repo}…`);

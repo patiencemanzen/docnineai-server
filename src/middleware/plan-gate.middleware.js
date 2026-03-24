@@ -97,7 +97,15 @@ export function requireFeature(featureKey) {
 
 /**
  * Check project creation limit.
- * Attaches req.planAllowed = true if under limit.
+ *
+ * Uses an atomic findOneAndUpdate to both CHECK and RESERVE a project slot in
+ * a single round-trip, eliminating the TOCTOU race where concurrent requests
+ * could all pass a countDocuments check before any project was saved.
+ *
+ * On success, sets req._projectSlotReserved = true so the downstream controller
+ * knows NOT to call PlanUsage.increment({ projectCount: 1 }) again.
+ * The controller MUST call PlanUsage.increment({ projectCount: -1 }) if project
+ * creation subsequently fails so the reserved slot is released.
  */
 export async function checkProjectLimit(req, res, next) {
   try {
@@ -108,21 +116,56 @@ export async function checkProjectLimit(req, res, next) {
 
     if (maxProjects === null) return next(); // unlimited
 
-    // Count real (non-archived) projects owned by this user — avoids stale cache issues
-    const projectCount = await Project.countDocuments({
-      userId: req.user.userId,
-      status: { $ne: "archived" },
-    });
+    // Plan explicitly forbids any projects.
+    if (maxProjects === 0) {
+      return fail(
+        res,
+        "PROJECT_LIMIT_REACHED",
+        `You've reached the ${maxProjects}-project limit on the ${planConfig.name} plan.`,
+        403,
+        { requiredPlan: "starter", limit: maxProjects },
+      );
+    }
 
-    if (projectCount < maxProjects) return next();
+    // Atomically check the current count AND reserve a slot in one operation:
+    //   • New user (no PlanUsage doc yet): upsert creates it with projectCount=1. ✓
+    //   • Existing user under limit: increments projectCount, returns updated doc. ✓
+    //   • At or over limit (projectCount >= maxProjects): filter doesn't match;
+    //     unique-key constraint suppresses the upsert → returns null → 403. ✓
+    //
+    // Two concurrent upserts for the same brand-new user produce an E11000 on the
+    // second one. We retry without upsert in that case — the doc now exists.
+    let reserved = null;
+    try {
+      reserved = await PlanUsage.findOneAndUpdate(
+        { userId: req.user.userId, projectCount: { $lt: maxProjects } },
+        { $inc: { projectCount: 1 } },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+    } catch (upsertErr) {
+      if (upsertErr.code !== 11000) throw upsertErr;
+      // Duplicate-key: a concurrent request created the doc first. Retry as plain update.
+      reserved = await PlanUsage.findOneAndUpdate(
+        { userId: req.user.userId, projectCount: { $lt: maxProjects } },
+        { $inc: { projectCount: 1 } },
+        { upsert: false, new: true },
+      );
+    }
 
-    return fail(
-      res,
-      "PROJECT_LIMIT_REACHED",
-      `You've reached the ${maxProjects}-project limit on the ${planConfig.name} plan.`,
-      403,
-      { requiredPlan: "starter", limit: maxProjects },
-    );
+    if (!reserved) {
+      return fail(
+        res,
+        "PROJECT_LIMIT_REACHED",
+        `You've reached the ${maxProjects}-project limit on the ${planConfig.name} plan.`,
+        403,
+        { requiredPlan: "starter", limit: maxProjects },
+      );
+    }
+
+    // Slot reserved atomically. Controller must NOT increment again on success,
+    // and MUST decrement if project creation fails.
+    req._projectSlotReserved = true;
+    return next();
   } catch (err) {
     next(err);
   }

@@ -2,17 +2,18 @@
 // Central API router
 //
 // Route map:
-//   /auth          — authentication & session management
-//   /github        — GitHub OAuth + repository access
-//   /gitlab        — GitLab OAuth + repository access
-//   /bitbucket     — Bitbucket OAuth + repository access
-//   /azure         — Azure DevOps OAuth + repository access
-//   /projects      — project CRUD + pipeline + SSE stream + exports
-//   /webhook       — user-level GitHub webhooks + billing webhooks
-//   /document      — legacy document processing (backward compatibility)
-//   /stream        — SSE streaming for jobs (backward compatibility)
-//   /chat          — chat service
-//   /export        — pdf & notion exports (backward compatibility)
+//   /auth            — authentication & session management
+//   /github          — GitHub OAuth + repository access
+//   /gitlab          — GitLab OAuth + repository access
+//   /bitbucket       — Bitbucket OAuth + repository access
+//   /azure           — Azure DevOps OAuth + repository access
+//   /projects        — project CRUD + pipeline + SSE stream + exports
+//   /webhook         — user-level GitHub webhooks + billing webhooks
+//   /document        — legacy document processing (backward compatibility)
+//   /stream          — SSE streaming for jobs (backward compatibility)
+//   /chat            — chat service
+//   /export          — pdf & notion exports (backward compatibility)
+//   /activity-logs   — user activity feed
 // ===================================================================
 
 import { Router } from "express";
@@ -26,6 +27,8 @@ import portalRoutes from "./portal/portal.routes.js";
 import billingRoutes from "./billing/billing.routes.js";
 import adminRoutes from "./admin/admin.routes.js";
 import cliRoutes from "./cli/cli.routes.js";
+import slackRoutes from "./slack/slack.routes.js";
+import activityLogRoutes from "./activity/activity-log.routes.js";
 import {
   handleWebhook,
   handleFlutterwaveWebhook,
@@ -42,9 +45,11 @@ router.use("/azure", azureRoutes);
 router.use("/projects", projectRoutes);
 router.use("/cli", cliRoutes);
 router.use("/api/cli", cliRoutes);
+router.use("/slack", slackRoutes); // Slack OAuth, commands, events
 router.use("/portal", portalRoutes); // public — no auth
 router.use("/billing", billingRoutes);
 router.use("/admin", adminRoutes);
+router.use("/activity-logs", activityLogRoutes);
 
 // ── Service Status & Lazy Loading ──────────────────────────────────
 

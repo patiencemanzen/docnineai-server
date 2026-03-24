@@ -769,74 +769,77 @@ export async function repoScannerAgent({ files, meta, emit }) {
     `${totalBatches} batch${totalBatches > 1 ? "es" : ""} · ${BATCH_SIZE} files each`,
   );
 
-  // ── 2. LLM classification in batches ──────────────────────────
+  // ── 2. LLM classification in batches (parallel) ─────────────
+  // All batches are submitted concurrently. The global semaphore in
+  // llm.js (MAX_CONCURRENT = 2) throttles actual API calls — we never
+  // block the event loop waiting for one batch before starting the next.
   const classifiedMap = new Map(); // path → classified object
   const batchErrors = [];
 
+  const batches = [];
   for (let i = 0; i < relevant.length; i += BATCH_SIZE) {
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const batch = relevant.slice(i, i + BATCH_SIZE);
-
-    notify(`Classifying files…`, `Batch ${batchNum} of ${totalBatches}`);
-
-    const userContent = batch
-      .map((f) => {
-        const snippet = f.content
-          .slice(0, SNIPPET_SIZE)
-          .replace(/\n/g, " ")
-          .trim();
-        const truncated = f.content.length > SNIPPET_SIZE ? " [truncated]" : "";
-        return `FILE: ${f.path}\nSNIPPET: ${snippet}${truncated}`;
-      })
-      .join("\n\n---\n\n");
-
-    try {
-      const raw = await llmCallWithRetry({
-        systemPrompt: SYSTEM_PROMPT,
-        userContent,
-      });
-      const parsed = safeParseJSON(raw);
-
-      if (!Array.isArray(parsed)) {
-        batchErrors.push({
-          batch: batchNum,
-          error: "Response was not a JSON array",
-        });
-        // Fall back to heuristics for this batch
-        batch.forEach((f) => {
-          const h = heuristicClassify(f);
-          classifiedMap.set(f.path, h);
-        });
-        continue;
-      }
-
-      for (const item of parsed) {
-        // Match returned path to the original batch file
-        const matchedFile = batch.find(
-          (f) =>
-            item.path === f.path ||
-            f.path.endsWith(item.path) ||
-            item.path.endsWith(f.path),
-        );
-        const fallbackPath = matchedFile?.path || item.path;
-        const validated = validateClassification(item, fallbackPath);
-        if (validated) classifiedMap.set(validated.path, validated);
-      }
-
-      // Any batch file not returned by LLM → heuristic fallback
-      for (const f of batch) {
-        if (!classifiedMap.has(f.path)) {
-          classifiedMap.set(f.path, heuristicClassify(f));
-        }
-      }
-    } catch (err) {
-      batchErrors.push({ batch: batchNum, error: err.message });
-      // Heuristic fallback for entire batch
-      batch.forEach((f) => {
-        classifiedMap.set(f.path, heuristicClassify(f));
-      });
-    }
+    batches.push({
+      batchNum: Math.floor(i / BATCH_SIZE) + 1,
+      batch: relevant.slice(i, i + BATCH_SIZE),
+    });
   }
+
+  await Promise.all(
+    batches.map(async ({ batchNum, batch }) => {
+      notify(`Classifying files…`, `Batch ${batchNum} of ${totalBatches}`);
+
+      const userContent = batch
+        .map((f) => {
+          const snippet = f.content
+            .slice(0, SNIPPET_SIZE)
+            .replace(/\n/g, " ")
+            .trim();
+          const truncated = f.content.length > SNIPPET_SIZE ? " [truncated]" : "";
+          return `FILE: ${f.path}\nSNIPPET: ${snippet}${truncated}`;
+        })
+        .join("\n\n---\n\n");
+
+      try {
+        const raw = await llmCallWithRetry({
+          systemPrompt: SYSTEM_PROMPT,
+          userContent,
+        });
+        const parsed = safeParseJSON(raw);
+
+        if (!Array.isArray(parsed)) {
+          batchErrors.push({
+            batch: batchNum,
+            error: "Response was not a JSON array",
+          });
+          batch.forEach((f) => classifiedMap.set(f.path, heuristicClassify(f)));
+          return;
+        }
+
+        for (const item of parsed) {
+          // Match returned path to the original batch file
+          const matchedFile = batch.find(
+            (f) =>
+              item.path === f.path ||
+              f.path.endsWith(item.path) ||
+              item.path.endsWith(f.path),
+          );
+          const fallbackPath = matchedFile?.path || item.path;
+          const validated = validateClassification(item, fallbackPath);
+          if (validated) classifiedMap.set(validated.path, validated);
+        }
+
+        // Any batch file not returned by LLM → heuristic fallback
+        for (const f of batch) {
+          if (!classifiedMap.has(f.path)) {
+            classifiedMap.set(f.path, heuristicClassify(f));
+          }
+        }
+      } catch (err) {
+        batchErrors.push({ batch: batchNum, error: err.message });
+        batch.forEach((f) => classifiedMap.set(f.path, heuristicClassify(f)));
+      }
+    }),
+  );
 
   // ── 3. Strip internal markers and finalise ────────────────────
   const classified = Array.from(classifiedMap.values()).map((c) => {

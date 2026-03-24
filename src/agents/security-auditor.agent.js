@@ -866,53 +866,66 @@ export async function securityAuditorAgent({ files, projectMap, emit }) {
 
   notify(`AI deep scan…`, `${highRiskFiles.length} high-risk files selected`);
 
-  // ── 4. LLM deep scan — high-risk files only ───────────────────
+  // ── 4. LLM deep scan — high-risk files only (parallel) ───────
+  // Flatten all file×chunk combinations into a single task list and run
+  // them all concurrently. The global LLM semaphore (MAX_CONCURRENT=2)
+  // in llm.js throttles the actual API calls without blocking the loop.
   const llmFindings = [];
   const llmErrors = [];
 
-  for (const [i, file] of highRiskFiles.entries()) {
-    notify(
-      `AI scanning…`,
-      `File ${i + 1} of ${highRiskFiles.length}: ${file.path.split("/").pop()}`,
-    );
-
-    // Use the first chunk — most files have the critical logic at the top
-    // For very large files, also scan the middle chunk (where business logic often lives)
+  const scanTasks = highRiskFiles.flatMap((file, i) => {
     const allChunks = chunkText(file.content, CHUNK_SIZE);
     const scanChunks =
       allChunks.length > 2
         ? [allChunks[0], allChunks[Math.floor(allChunks.length / 2)]]
         : [allChunks[0]];
+    return scanChunks.map((chunk, chunkIdx) => ({
+      file,
+      i,
+      chunk,
+      chunkIdx,
+      totalChunks: scanChunks.length,
+    }));
+  });
 
-    for (const [chunkIdx, chunk] of scanChunks.entries()) {
+  const taskResults = await Promise.all(
+    scanTasks.map(async ({ file, i, chunk, chunkIdx, totalChunks }) => {
+      notify(
+        `AI scanning…`,
+        `File ${i + 1} of ${highRiskFiles.length}: ${file.path.split("/").pop()}`,
+      );
       try {
         const raw = await llmCallWithRetry({
           systemPrompt: LLM_SYSTEM_PROMPT,
-          userContent: `FILE: ${file.path}\nCHUNK: ${chunkIdx + 1} of ${scanChunks.length}\n\n${chunk}`,
+          userContent: `FILE: ${file.path}\nCHUNK: ${chunkIdx + 1} of ${totalChunks}\n\n${chunk}`,
         });
         const parsed = safeParseJSON(raw);
 
         if (!Array.isArray(parsed)) {
-          llmErrors.push({
-            file: file.path,
-            chunk: chunkIdx,
-            error: "Response was not a JSON array",
-          });
-          continue;
+          return {
+            findings: [],
+            error: { file: file.path, chunk: chunkIdx, error: "Response was not a JSON array" },
+          };
         }
 
+        const findings = [];
         for (const finding of parsed) {
           const validated = validateLLMFinding(finding, file.path);
-          if (validated) llmFindings.push(validated);
+          if (validated) findings.push(validated);
         }
+        return { findings, error: null };
       } catch (err) {
-        llmErrors.push({
-          file: file.path,
-          chunk: chunkIdx,
-          error: err.message,
-        });
+        return {
+          findings: [],
+          error: { file: file.path, chunk: chunkIdx, error: err.message },
+        };
       }
-    }
+    }),
+  );
+
+  for (const { findings, error } of taskResults) {
+    llmFindings.push(...findings);
+    if (error) llmErrors.push(error);
   }
 
   const llmCountBySev = countBySeverity(llmFindings);

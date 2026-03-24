@@ -1,11 +1,10 @@
 // =============================================================
 // Thin HTTP layer.
-// v3.1 additions: sync, doc-editing, version history handlers.
 // =============================================================
 
 import * as projectService from "../../services/projects/project.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-import { jobs, streams } from "../../../services/job-registry.service.js";
+import { jobs, streams, hydrateJobFromRedis, hydrateJobFromDb } from "../../../services/job-registry.service.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
 import { PlanUsage } from "../../../models/PlanUsage.js";
 
@@ -17,6 +16,24 @@ let _getGoogleDocsOAuthUrl = null;
 let _getGoogleDocsConnectionStatus = null;
 let _disconnectGoogleDocs = null;
 let _genWorkflow = null;
+
+// ── Domain error handler ──────────────────────────────────────
+const DOMAIN_CODES = new Set([
+  "INVALID_REPO_URL",
+  "DUPLICATE_PROJECT",
+  "PROJECT_NOT_FOUND",
+  "PROJECT_RUNNING",
+  "PROJECT_ARCHIVED",
+  "PROJECT_NOT_READY",
+  "INVALID_SECTION",
+  "VERSION_NOT_FOUND",
+]);
+
+function handleErr(res, err, ctx) {
+  if (DOMAIN_CODES.has(err.code))
+    return fail(res, err.code, err.message, err.status || 400);
+  return serverError(res, err, ctx);
+}
 
 async function getExportToPDF() {
   if (_exportToPDF) return _exportToPDF;
@@ -71,24 +88,6 @@ async function getGenWorkflow() {
   return _genWorkflow;
 }
 
-// ── Domain error handler ──────────────────────────────────────
-const DOMAIN_CODES = new Set([
-  "INVALID_REPO_URL",
-  "DUPLICATE_PROJECT",
-  "PROJECT_NOT_FOUND",
-  "PROJECT_RUNNING",
-  "PROJECT_ARCHIVED",
-  "PROJECT_NOT_READY",
-  "INVALID_SECTION",
-  "VERSION_NOT_FOUND",
-]);
-
-function handleErr(res, err, ctx) {
-  if (DOMAIN_CODES.has(err.code))
-    return fail(res, err.code, err.message, err.status || 400);
-  return serverError(res, err, ctx);
-}
-
 // ─────────────────────────────────────────────────────────────
 // PROJECT CRUD
 // ─────────────────────────────────────────────────────────────
@@ -98,10 +97,10 @@ export async function createProject(req, res) {
       userId: req.user.userId,
       repoUrl: req.body.repoUrl,
     });
-    // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
-      () => {},
-    );
+    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    if (!req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    }
     return ok(
       res,
       { project, streamUrl: `/projects/${project._id}/stream` },
@@ -109,6 +108,10 @@ export async function createProject(req, res) {
       201,
     );
   } catch (err) {
+    // Release the reserved slot so the user isn't unfairly penalised.
+    if (req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    }
     return handleErr(res, err, "createProject");
   }
 }
@@ -119,12 +122,16 @@ export async function createFromScratchProject(req, res) {
       userId: req.user.userId,
       projectName: req.body.projectName,
     });
-    // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
-      () => {},
-    );
+    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    if (!req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    }
     return ok(res, { project }, "From-scratch project created.", 201);
   } catch (err) {
+    // Release the reserved slot so the user isn't unfairly penalised.
+    if (req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    }
     return handleErr(res, err, "createFromScratchProject");
   }
 }
@@ -214,9 +221,7 @@ export async function retryProject(req, res) {
 // ─────────────────────────────────────────────────────────────
 // INCREMENTAL SYNC
 // ─────────────────────────────────────────────────────────────
-
 /**
- * POST /projects/:id/sync
  * Check for new commits and re-document only what changed.
  * Uses forceFullRun=true query param to bypass incremental logic.
  */
@@ -242,13 +247,7 @@ export async function syncProject(req, res) {
 // ─────────────────────────────────────────────────────────────
 // SSE STREAM
 // ─────────────────────────────────────────────────────────────
-
-// ───────────────────────────────────────────────────────────────
-// PIPELINE EVENTS (persisted log)
-// ───────────────────────────────────────────────────────────────
-
 /**
- * GET /projects/:id/events
  * Returns the persisted pipeline event log for a project.
  * Events are stored per-project in MongoDB (last 200, select:false).
  */
@@ -286,96 +285,96 @@ export async function streamProject(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const jobId = project.jobId;
-
-  console.log(
-    `[stream] Project ${projectId} · jobId: ${jobId} · status: ${project.status}`,
-  );
-
   // ── Wait for job to be registered (up to 5 seconds) ────────
   // This handles serverless environments where webhook and stream
   // might run on different instances, or there's a slight delay in
   // job registration between instances.
+
+  const jobId = project.jobId;
   let job = jobs.get(jobId);
+
   if (!job && project.status === "running") {
-    console.log(`[stream] Job not yet registered, waiting (timeout 5s)…`);
     let waited = 0;
     while (!job && waited < 5000) {
       await new Promise((r) => setTimeout(r, 200));
       waited += 200;
       job = jobs.get(jobId);
     }
-    if (job) {
-      console.log(`[stream] Job registered after ${waited}ms`);
-    }
   }
 
+  /**
+   * Job not in memory. Resolution order:
+   * 1. done/error project   → serve synthetic result from DB and close.
+   * 2. Redis hit            → hydrate from Redis (events + status).
+   * 3. MongoDB events       → fallback hydration from Project.events.
+   * 4. Nothing              → pipeline is dead, send error/retry message.
+   *
+   * After hydration the code falls through to the normal streaming path.
+   */
   if (!job) {
-    // Job not in memory. Two cases:
-    //  1. Project is done/error — serve a synthetic result from DB (normal path
-    //     after recovery re-registration was skipped or a very old jobId).
-    //  2. Project is somehow still "running" — this should not happen after
-    //     recoverOrphanedJobs() runs at startup, but guard defensively.
-    const syntheticResult = {
-      success: project.status === "done",
-      output: project.effectiveOutput,
-      stats: project.stats,
-      security: project.security,
-      techStack: project.techStack,
-      meta: project.meta,
-      chat: project.chatSessionId ? { sessionId: project.chatSessionId } : null,
-      error: project.errorMessage || null,
-    };
-
     if (project.status === "done" || project.status === "error") {
-      console.log(
-        `[stream] Project ${projectId} in ${project.status} state, sending synthetic result`,
-      );
-      res.write(
-        `data: ${JSON.stringify({ step: "done", result: syntheticResult })}\n\n`,
-      );
-    } else {
-      // Still running but no in-memory job — server restarted mid-pipeline.
-      // Tell the client clearly and include a retry hint.
-      console.warn(
-        `[stream] Project ${projectId} still running but job not in memory (server restart?)`,
-      );
+      const syntheticResult = {
+        success: project.status === "done",
+        output: project.effectiveOutput,
+        stats: project.stats,
+        security: project.security,
+        techStack: project.techStack,
+        meta: project.meta,
+        chat: project.chatSessionId ? { sessionId: project.chatSessionId } : null,
+        error: project.errorMessage || null,
+      };
+      res.write(`data: ${JSON.stringify({ step: "done", result: syntheticResult })}\n\n`);
+      return res.end();
+    }
+
+    // Project is "running" — try Redis first, then MongoDB events fallback.
+    job = await hydrateJobFromRedis(jobId);
+
+    if (!job && project.events?.length) {
+      job = hydrateJobFromDb(jobId, project.events);
+    }
+
+    if (!job) {
+      // No events anywhere — pipeline is dead (server restart / Vercel kill).
+      const isLikelyVercelTimeout = project.meta?.vercelTimedOut === true;
+      const message = isLikelyVercelTimeout
+        ? "Pipeline was interrupted by Vercel's 60s HTTP timeout. It may still be running in the background. Please retry."
+        : "Pipeline was interrupted (server restart). Please retry this project.";
+
       res.write(
         `data: ${JSON.stringify({
           step: "error",
           status: "error",
-          msg: "Pipeline was interrupted (server restart). Please retry this project.",
+          msg: message,
+          vercelTimeout: isLikelyVercelTimeout,
           retryUrl: `/projects/${project._id}/retry`,
         })}\n\n`,
       );
+      return res.end();
     }
-    return res.end();
+    // Fall through to the normal streaming path below.
   }
 
-  console.log(
-    `[stream] Project ${projectId} · streaming ${job.events.length} buffered events`,
-  );
+  // ── Job exists and is running ──────────────────────────────
+  // Stream all buffered events first (for late-connecting clients)
   for (const e of job.events) {
     res.write(`data: ${JSON.stringify(e)}\n\n`);
   }
 
+  // If job is already done, close immediately
   if (job.status !== "running") {
-    console.log(
-      `[stream] Project ${projectId} · job ${job.status}, sending final result`,
-    );
     res.write(
       `data: ${JSON.stringify({ step: "done", result: job.result })}\n\n`,
     );
     return res.end();
   }
 
-  console.log(
-    `[stream] Project ${projectId} · job still running, subscribing to updates`,
-  );
+  // Register this client for future events
   const clients = streams.get(jobId) || new Set();
   clients.add(res);
   streams.set(jobId, clients);
 
+  // Heartbeat to keep connection alive (25s interval)
   const heartbeat = setInterval(() => {
     try {
       res.write(": heartbeat\n\n");
@@ -384,6 +383,7 @@ export async function streamProject(req, res) {
     }
   }, 25_000);
 
+  // Cleanup on disconnect
   req.on("close", () => {
     clearInterval(heartbeat);
     const s = streams.get(jobId);
@@ -394,9 +394,7 @@ export async function streamProject(req, res) {
 // ─────────────────────────────────────────────────────────────
 // DOCUMENT EDITING
 // ─────────────────────────────────────────────────────────────
-
 /**
- * PATCH /projects/:id/docs/:section
  * Save a user edit for one documentation section.
  */
 export async function editDocSection(req, res) {
@@ -431,7 +429,6 @@ export async function editDocSection(req, res) {
 }
 
 /**
- * DELETE /projects/:id/docs/:section/edit
  * Revert to AI-generated content (clear the user edit).
  */
 export async function revertDocSection(req, res) {
@@ -457,7 +454,6 @@ export async function revertDocSection(req, res) {
 }
 
 /**
- * POST /projects/:id/docs/:section/accept-ai
  * User accepts the new AI-generated content for a stale section.
  * Equivalent to revert but semantically clearer when invoked after a sync.
  */
@@ -486,7 +482,6 @@ export async function acceptAISection(req, res) {
 // ─────────────────────────────────────────────────────────────
 // VERSION HISTORY
 // ─────────────────────────────────────────────────────────────
-
 export async function listVersions(req, res) {
   const { section } = req.params;
   const { page = "1", limit = "20" } = req.query;
@@ -543,7 +538,6 @@ export async function restoreVersion(req, res) {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * GET /projects/:id/changelog
  * Returns the change log for a project (all user-facing edits, exports, etc)
  * Users can see what was changed and when.
  */
@@ -573,7 +567,6 @@ export async function getProjectChangeLog(req, res) {
 // ─────────────────────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────────────────────
-
 export async function exportPdf(req, res) {
   const exportToPDF = await getExportToPDF();
   if (!exportToPDF)
@@ -604,7 +597,8 @@ export async function exportPdf(req, res) {
     });
 
     // Log the export
-    const { logExport } = await import("../../../services/changelog.service.js");
+    const { logExport } =
+      await import("../../../services/changelog.service.js");
     await logExport(
       req.params.id,
       req.user.userId,
@@ -640,7 +634,8 @@ export async function exportYaml(req, res) {
     res.send(yml);
 
     // Log the export
-    const { logExport } = await import("../../../services/changelog.service.js");
+    const { logExport } =
+      await import("../../../services/changelog.service.js");
     await logExport(
       req.params.id,
       req.user.userId,
@@ -702,7 +697,8 @@ export async function exportNotion(req, res) {
     });
 
     // Log the export
-    const { logExport } = await import("../../../services/changelog.service.js");
+    const { logExport } =
+      await import("../../../services/changelog.service.js");
     await logExport(
       req.params.id,
       req.user.userId,
@@ -717,9 +713,12 @@ export async function exportNotion(req, res) {
   }
 }
 
-// ── GET /projects/:id/export/google-docs/connect ──────────────
+// ─────────────────────────────────────────────────────────────
+// Google Docs
+// ─────────────────────────────────────────────────────────────
 export async function googleDocsConnect(req, res) {
   await getGoogleDocsExport(); // load module to populate _getGoogleDocsOAuthUrl
+
   if (!_getGoogleDocsOAuthUrl)
     return fail(
       res,
@@ -728,7 +727,6 @@ export async function googleDocsConnect(req, res) {
       503,
     );
   try {
-    // Verify the user owns this project (access control)
     await projectService.getProjectById({
       projectId: req.params.id,
       userId: req.user.userId,
@@ -740,7 +738,6 @@ export async function googleDocsConnect(req, res) {
   }
 }
 
-// ── GET /projects/:id/export/google-docs/status ───────────────
 export async function googleDocsStatus(req, res) {
   await getGoogleDocsExport();
   if (!_getGoogleDocsConnectionStatus) return ok(res, { connected: false });
@@ -752,7 +749,6 @@ export async function googleDocsStatus(req, res) {
   }
 }
 
-// ── DELETE /projects/:id/export/google-docs ───────────────────
 export async function googleDocsDisconnect(req, res) {
   await getGoogleDocsExport();
   if (!_disconnectGoogleDocs) return ok(res, null, "Not connected.");
@@ -764,7 +760,6 @@ export async function googleDocsDisconnect(req, res) {
   }
 }
 
-// ── POST /projects/:id/export/google-docs ─────────────────────
 export async function exportGoogleDocs(req, res) {
   const exportToGoogleDocs = await getGoogleDocsExport();
   if (!exportToGoogleDocs)
@@ -796,7 +791,8 @@ export async function exportGoogleDocs(req, res) {
     });
 
     // Log the export
-    const { logExport } = await import("../../../services/changelog.service.js");
+    const { logExport } =
+      await import("../../../services/changelog.service.js");
     await logExport(
       req.params.id,
       req.user.userId,
@@ -823,15 +819,6 @@ export async function exportGoogleDocs(req, res) {
 // ─────────────────────────────────────────────────────────────
 // CHAT (streaming SSE)
 // ─────────────────────────────────────────────────────────────
-
-/**
- * POST /projects/:id/chat
- * Streams LLM tokens via SSE. NOT wrapped — it owns the response lifecycle.
- * Event shapes:
- *   data: { type: "token",  token: "..." }
- *   data: { type: "done",   historyLength: N }
- *   data: { type: "error",  message: "..." }
- */
 export async function chatHandler(req, res) {
   const { message } = req.body;
   if (!message?.trim()) {
@@ -915,7 +902,6 @@ export async function chatHandler(req, res) {
 }
 
 /**
- * DELETE /projects/:id/chat
  * Clears the in-memory conversation history for this project's session.
  */
 export async function resetChat(req, res) {
@@ -940,12 +926,6 @@ export async function resetChat(req, res) {
 // ─────────────────────────────────────────────────────────────
 // CUSTOM TABS
 // ─────────────────────────────────────────────────────────────
-
-/**
- * POST /projects/:id/custom-tabs
- * Create a new custom tab.
- * Body: { name, description?, content? }
- */
 export async function createCustomTab(req, res) {
   const { name, description, content } = req.body;
 
@@ -972,11 +952,6 @@ export async function createCustomTab(req, res) {
   }
 }
 
-/**
- * PATCH /projects/:id/custom-tabs/:tabId
- * Update a custom tab (name, description, content).
- * Body: { name?, description?, content? }
- */
 export async function updateCustomTab(req, res) {
   const { tabId } = req.params;
   const { name, description, content } = req.body;
@@ -1000,10 +975,6 @@ export async function updateCustomTab(req, res) {
   }
 }
 
-/**
- * DELETE /projects/:id/custom-tabs/:tabId
- * Delete a custom tab.
- */
 export async function deleteCustomTab(req, res) {
   const { tabId } = req.params;
 
@@ -1023,10 +994,6 @@ export async function deleteCustomTab(req, res) {
   }
 }
 
-/**
- * GET /projects/:id/custom-tabs
- * List all custom tabs for a project.
- */
 export async function listCustomTabs(req, res) {
   try {
     const result = await projectService.listCustomTabs({
@@ -1039,11 +1006,6 @@ export async function listCustomTabs(req, res) {
   }
 }
 
-/**
- * PATCH /projects/:id/custom-tabs/reorder
- * Reorder all custom tabs.
- * Body: { orders: [{ tabId, order }, ...] }
- */
 export async function reorderCustomTabs(req, res) {
   const { orders } = req.body;
 

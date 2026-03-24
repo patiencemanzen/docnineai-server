@@ -78,10 +78,10 @@ export async function uploadZipProject(req, res) {
     // Save project to get ID
     await project.save();
 
-    // Track usage for plan gate checks
-    await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(
-      () => {},
-    );
+    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    if (!req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
+    }
 
     // Register job and start pipeline
     const jobId = randomUUID();
@@ -120,6 +120,10 @@ export async function uploadZipProject(req, res) {
       202,
     );
   } catch (err) {
+    // Release the reserved slot so the user isn't penalised for a failed upload.
+    if (req._projectSlotReserved) {
+      await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
+    }
     if (err.message?.includes("ZIP")) {
       return fail(res, "INVALID_ZIP", zipService.formatZipError(err), 400);
     }

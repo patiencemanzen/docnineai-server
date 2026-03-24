@@ -75,32 +75,49 @@ function estimateTokens(systemPrompt, userContent) {
   return Math.ceil((systemPrompt.length + userContent.length) / 3.5);
 }
 
-// ── Global sequential queue ───────────────────────────────────
-// Prevents concurrent calls from racing to the same token bucket
-let queuePromise = Promise.resolve();
+// ── Concurrency semaphore ─────────────────────────────────────
+// Allows up to MAX_CONCURRENT calls at once while still funnelling
+// each through the global TPM tracker inside executeCall().
+// Replaces the old fully-serial queuePromise chain that forced all
+// agents to wait in a single line — causing 37+ minute waits at
+// 5,000 TPM.  2 concurrent × ~1,800 tokens = 3,600 TPM peak burst,
+// which stays safely under the 5,000 limit; the per-call TPM gate
+// inside executeCall handles any remaining headroom logic.
+const MAX_CONCURRENT = 2;
+let _active = 0;
+const _pending = [];
 
-export async function llmCall({ systemPrompt, userContent, temperature = 0 }) {
-  // Chain onto the global queue — each call waits for the previous to finish
-  const result = new Promise((resolve, reject) => {
-    queuePromise = queuePromise.then(() =>
-      executeCall({ systemPrompt, userContent, temperature })
-        .then(resolve)
-        .catch(reject),
-    );
+function _acquire() {
+  return new Promise((resolve) => {
+    if (_active < MAX_CONCURRENT) {
+      _active++;
+      resolve();
+    } else {
+      _pending.push(resolve);
+    }
   });
-
-  return result;
 }
 
-async function executeCall({ systemPrompt, userContent, temperature }) {
+function _release() {
+  _active--;
+  if (_pending.length > 0) {
+    _active++;
+    _pending.shift()();
+  }
+}
+
+export async function llmCall({ systemPrompt, userContent, temperature = 0 }) {
+  // Pre-compute token estimate so both the TPM gate and executeCall share it.
   const estimatedInput = estimateTokens(systemPrompt, userContent);
-  const estimatedTotal = estimatedInput + 512; // assume ~512 output tokens
+  const estimatedTotal = estimatedInput + 512;
 
   if (estimatedInput > 4000) {
     console.warn(`Request ~${estimatedInput} tokens — trimming recommended`);
   }
 
-  // Wait if adding this call would exceed TPM window
+  // Wait for TPM headroom BEFORE acquiring a concurrency slot.
+  // This prevents a rate-limit stall from tying up a semaphore slot for up to
+  // 62 seconds and blocking every other caller ("stall the entire queue" bug).
   let waited = false;
   while (tokensUsedInWindow() + estimatedTotal > TPM_LIMIT) {
     const waitMs = msUntilCapacity(estimatedTotal) || 5000;
@@ -113,7 +130,16 @@ async function executeCall({ systemPrompt, userContent, temperature }) {
     await sleep(waitMs);
   }
 
-  // Make the call
+  await _acquire();
+  try {
+    return await executeCall({ systemPrompt, userContent, temperature, estimatedTotal });
+  } finally {
+    _release();
+  }
+}
+
+async function executeCall({ systemPrompt, userContent, temperature, estimatedTotal }) {
+  // estimatedTotal is pre-computed by the caller (llmCall) before slot acquisition.
   const response = await client.chat.completions.create({
     model: MODEL,
     messages: [
