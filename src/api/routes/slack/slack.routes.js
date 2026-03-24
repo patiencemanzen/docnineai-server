@@ -54,16 +54,9 @@ router.post("/commands", handleSlashCommand);
 
 /**
  * Handle Slack events and URL verification
+ * Body parsing + rawBody capture handled in app.js middleware
  */
-router.post(
-  "/events",
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf.toString("utf8");
-    },
-  }),
-  handleSlackEvent,
-);
+router.post("/events", handleSlackEvent);
 
 // ── Configuration ──────────────────────────────────────────────
 // Protected endpoints — auth required

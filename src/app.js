@@ -87,15 +87,23 @@ app.use(
 // The /webhook/github prefix covers both GitHub and Flutterwave webhooks,
 app.use("/webhook/github", express.raw({ type: "*/*", limit: "10mb" }));
 
-// Slack commands come as form-encoded, not JSON — use urlencoded parser
-// This must come BEFORE the JSON parser to avoid stream consumption issues
+// Slack commands come as form-encoded, not JSON — use urlencoded parser.
+// Both parsers capture rawBody so Slack signature verification works.
+// This must come BEFORE the JSON parser to avoid stream consumption issues.
 app.use(
   "/slack/commands",
-  express.urlencoded({ extended: true, limit: "10mb" })
+  express.urlencoded({
+    extended: true,
+    limit: "10mb",
+    verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
+  })
 );
 app.use(
   "/slack/events",
-  express.json({ limit: "10mb" })
+  express.json({
+    limit: "10mb",
+    verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
+  })
 );
 
 const jsonParser = express.json({

@@ -241,7 +241,7 @@ export async function handleSlackCallback(req, res) {
     integration = await SlackIntegration.findOne({
       oauthState: state,
     });
-    if (!integration || Math.random() > 0.99) {
+    if (!integration) {
       // CSRF check — don't return exact reason for security
       return fail(res, "INVALID_STATE", "Invalid OAuth state", 403);
     }
@@ -434,10 +434,10 @@ async function handleCommandAsync(
   user_id,
   team_id,
 ) {
-  try {
-    const projectId = integration.projectId;
-    const userId = integration.userId;
+  const projectId = integration.projectId;
+  const userId = integration.userId;
 
+  try {
     // Re-verify integration and project access
     // Prevents querying a project the owner no longer owns
     try {
@@ -454,13 +454,22 @@ async function handleCommandAsync(
     const { getMcpService } = await import("../../../services/mcp.service.js");
     const mcp = await getMcpService({ userId });
 
+    // ── Parse subcommand from text ──────────────────────────────
+    // Slack sends a single /docnine command. The first word of `text`
+    // is the subcommand: ask, audit, security, diff, docs.
+    // e.g. "/docnine ask how does auth work?" → sub="ask", rest="how does auth work?"
+    const trimmed = (text || "").trim();
+    const spaceIdx = trimmed.indexOf(" ");
+    const subcommand = spaceIdx === -1
+      ? trimmed.toLowerCase()
+      : trimmed.slice(0, spaceIdx).toLowerCase();
+    const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
+
     let response;
 
-    switch (command) {
-      case "/docnine":
-      case "/docnine-ask": {
-        // /docnine ask [question]
-        const question = text.trim();
+    switch (subcommand) {
+      case "ask": {
+        const question = rest;
         if (!question) {
           sendSlashCommandResponse(userId, projectId, response_url, {
             response_type: "ephemeral",
@@ -498,8 +507,7 @@ async function handleCommandAsync(
         break;
       }
 
-      case "/docnine-audit": {
-        // /docnine audit
+      case "audit": {
         const audit = await mcp.get_security_audit({ projectId });
 
         response = {
@@ -549,8 +557,7 @@ async function handleCommandAsync(
         break;
       }
 
-      case "/docnine-security": {
-        // /docnine security — show critical/high findings
+      case "security": {
         const critical = await mcp.get_critical_findings({ projectId });
         const score = await mcp.get_security_score({ projectId });
 
@@ -588,8 +595,7 @@ async function handleCommandAsync(
         break;
       }
 
-      case "/docnine-diff": {
-        // /docnine diff — show documentation changes
+      case "diff": {
         const diff = await mcp.get_diff({ projectId });
 
         const blocks = [
@@ -632,9 +638,8 @@ async function handleCommandAsync(
         break;
       }
 
-      case "/docnine-docs": {
-        // /docnine docs [topic]
-        const topic = text.trim();
+      case "docs": {
+        const topic = rest;
         if (!topic) {
           sendSlashCommandResponse(userId, projectId, response_url, {
             response_type: "ephemeral",
@@ -670,10 +675,38 @@ async function handleCommandAsync(
         break;
       }
 
+      case "help":
+      case "": {
+        response = {
+          response_type: "ephemeral",
+          blocks: [
+            {
+              type: "header",
+              text: { type: "plain_text", text: "Docnine Commands" },
+            },
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text: [
+                  "`/docnine ask [question]` — Ask about this codebase",
+                  "`/docnine audit` — Run a security audit",
+                  "`/docnine security` — Show critical/high findings",
+                  "`/docnine diff` — Show documentation changes",
+                  "`/docnine docs [topic]` — Search documentation",
+                  "`/docnine help` — Show this help message",
+                ].join("\n"),
+              },
+            },
+          ],
+        };
+        break;
+      }
+
       default: {
         response = {
           response_type: "ephemeral",
-          text: "Unknown command. Available commands: `/docnine ask`, `/docnine audit`, `/docnine security`, `/docnine diff`, `/docnine docs`",
+          text: `Unknown subcommand \`${subcommand}\`. Type \`/docnine help\` for available commands.`,
         };
       }
     }
