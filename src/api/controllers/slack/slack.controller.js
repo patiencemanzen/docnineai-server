@@ -93,6 +93,7 @@ export async function setCustomSlackCredentials(req, res) {
         configured: true,
         isCustomApp: true,
         clientIdLast4: slackClientId.slice(-4),
+        signingSecretLast4: slackSigningSecret.slice(-4),
       },
       "Custom Slack credentials saved successfully",
       201
@@ -803,6 +804,25 @@ export async function getSlackConfig(req, res) {
       !integration.workspaceName ||
       !integration.botTokenEncrypted
     ) {
+      // Credentials saved but OAuth not yet completed — tell the UI
+      if (integration?.isCustomApp && integration?.slackClientIdEncrypted) {
+        let clientIdLast4 = "";
+        let signingSecretLast4 = "";
+        try {
+          const clientId = await integration.getDecryptedClientId();
+          clientIdLast4 = clientId ? clientId.slice(-4) : "";
+        } catch { /* decryption failed — still show pending state */ }
+        try {
+          const signingSecret = await integration.getDecryptedSigningSecret();
+          signingSecretLast4 = signingSecret ? signingSecret.slice(-4) : "";
+        } catch { /* decryption failed */ }
+        return ok(res, {
+          configured: false,
+          pendingCustomApp: true,
+          clientIdLast4,
+          signingSecretLast4,
+        });
+      }
       return ok(res, { configured: false });
     }
 
