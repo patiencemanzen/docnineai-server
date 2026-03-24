@@ -21,7 +21,12 @@ import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
 import { apiExtractorAgent } from "../agents/api-extractor.agent.js";
 import { schemaAnalyserAgent } from "../agents/schema-analyser.agent.js";
 import { componentMapperAgent } from "../agents/component-mapper.agent.js";
-import { docWriterAgent } from "../agents/doc-writer.agent.js";
+import {
+  docWriterAgent,
+  buildApiReference,
+  buildSchemaDocs,
+  buildComponentIndex,
+} from "../agents/doc-writer.agent.js";
 import { securityAuditorAgent } from "../agents/security-auditor.agent.js";
 import { createChatSession, getSuggestedQuestions } from "./chat.service.js";
 import { updateFileManifest } from "./diff.service.js";
@@ -253,10 +258,12 @@ const FALLBACKS = {
   write: {
     readme: "# README\n\nDocumentation could not be generated.\n",
     internalDocs: "# Internal Docs\n\nDocumentation could not be generated.\n",
-    apiReference: "# API Reference\n\nNo data available.\n",
-    schemaDocs: "# Schema Docs\n\nNo data available.\n",
+    // Static sections are intentionally empty here so the orchestrator's
+    // pre-built static docs (from Phase 4.5) take precedence via ||.
+    apiReference: "",
+    schemaDocs: "",
     componentRef: "# Component Reference\n\nNo data available.\n",
-    componentIndex: "# Component Index\n\nNo data available.\n",
+    componentIndex: "",
     summary: {},
   },
 };
@@ -694,6 +701,14 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     ].join(" · "),
   );
 
+  // ── PHASE 4.5: Pre-build static docs (zero LLM cost, instant) ──
+  // Build these BEFORE the doc writer runs so they survive even if
+  // the doc writer times out or throws.  Static docs only need the
+  // data that's already available from the parallel agents.
+  const staticApiReference = buildApiReference(endpoints ?? []);
+  const staticSchemaDocs = buildSchemaDocs(models ?? [], relationships ?? []);
+  const staticComponentIndex = buildComponentIndex(components ?? []);
+
   // ── PHASE 5: Agent 5 — Doc Writer (Sequential, needs all outputs) ──
   // Runs after all parallel agents because it consumes all their outputs.
   // Passes the richer data from improved agents: components (with responsibilities,
@@ -767,12 +782,16 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const chatStart = Date.now();
 
   const docOutput = {
+    // LLM-generated sections: use doc writer output, fall back to FALLBACKS
     readme,
     internalDocs,
-    apiReference,
-    schemaDocs,
     componentRef,
-    componentIndex,
+    // Static sections: prefer doc writer output (identical content), but if the
+    // doc writer timed out we still have the pre-built static versions.
+    apiReference: apiReference || staticApiReference,
+    schemaDocs: schemaDocs || staticSchemaDocs,
+    componentIndex: componentIndex || staticComponentIndex,
+    // From security auditor (Phase 4)
     securityReport,
     remediationReport,
   };

@@ -287,7 +287,7 @@ function buildComponentRefContext(components) {
  * Build a rich API reference from the improved Agent 2 schema.
  * Fully static — no LLM cost.
  */
-function buildApiReference(endpoints) {
+export function buildApiReference(endpoints) {
   if (!endpoints?.length)
     return "# API Reference\n\nNo API endpoints detected.\n";
 
@@ -408,7 +408,7 @@ function buildApiReference(endpoints) {
  * Build schema documentation from model and relationship data.
  * Fully static — no LLM cost.
  */
-function buildSchemaDocs(models, relationships) {
+export function buildSchemaDocs(models, relationships) {
   if (!models?.length) return "# Data Models\n\nNo data models detected.\n";
 
   let md = "# Data Models\n\n";
@@ -488,7 +488,7 @@ function buildSchemaDocs(models, relationships) {
  * Build a component reference index statically.
  * Used as a fallback or supplement to the LLM-written version.
  */
-function buildComponentIndex(components) {
+export function buildComponentIndex(components) {
   if (!components?.length)
     return "# Component Index\n\nNo components documented.\n";
 
@@ -656,77 +656,77 @@ export async function docWriterAgent({
     repo,
   });
 
-  // ── 1. README.md ──────────────────────────────────────────────
-  const readmeCtx = buildReadmeContext({
-    meta,
-    techStack,
-    endpoints,
-    models,
-    components,
-    structure,
-    owner,
-    repo,
-  });
-
-  const readmeCtxLength = readmeCtx.length;
-  const readmeEstimatedTokens = Math.ceil(readmeCtxLength / 4);
-  console.log(
-    `[doc-writer:readme] Prepared context: ${readmeCtxLength} chars (~${readmeEstimatedTokens} tokens)`,
+  // ── 1. Static docs FIRST (zero LLM cost, instant) ────────────
+  // Build these before any LLM calls so they're available even if
+  // we timeout later during LLM generation.
+  notify(
+    "Building static documentation…",
+    `${endpoints?.length || 0} endpoints · ${models?.length || 0} models · ${components?.length || 0} components`,
   );
-  notify("Writing README.md…", `~${readmeEstimatedTokens} input tokens`);
+  docs.apiReference = buildApiReference(endpoints || []);
+  docs.schemaDocs = buildSchemaDocs(models || [], relationships || []);
+  docs.componentIndex = buildComponentIndex(components || []);
 
-  try {
-    console.log(`[doc-writer:readme] Calling LLM for README generation…`);
-    const raw = await llmCallWithRetry({
-      systemPrompt: README_SYSTEM_PROMPT,
-      userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
-      temperature: 0.2,
-    });
-    console.log(`[doc-writer:readme] LLM returned: ${raw?.length || 0} chars`);
-    docs.readme = validateMarkdown(raw, "README.md");
-    console.log(`[doc-writer:readme] README validation passed`);
-  } catch (err) {
-    console.error(`[doc-writer:readme] Failed:`, err);
-    errors.push({ doc: "readme", error: err.message });
-    // Minimal fallback README
-    docs.readme = buildFallbackReadme({
-      meta,
-      owner,
-      repo,
-      techStack,
-      endpoints,
-    });
-    console.log(`[doc-writer:readme] Using fallback README`);
-    notify("⚠ README.md generation failed — using fallback", err.message);
+  // ── 2. README + Internal Docs (parallel LLM calls) ────────────
+  // These two are independent — run them concurrently to halve
+  // wall-clock time and reduce timeout risk from TPM rate limiting.
+  notify("Writing README.md and internal docs…", "parallel LLM generation");
+
+  const readmePromise = (async () => {
+    try {
+      const readmeCtx = buildReadmeContext({
+        meta, techStack, endpoints, models, components, structure, owner, repo,
+      });
+      console.log(
+        `[doc-writer:readme] Prepared context: ${readmeCtx.length} chars (~${Math.ceil(readmeCtx.length / 4)} tokens)`,
+      );
+      const raw = await llmCallWithRetry({
+        systemPrompt: README_SYSTEM_PROMPT,
+        userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
+        temperature: 0.2,
+      });
+      console.log(`[doc-writer:readme] LLM returned: ${raw?.length || 0} chars`);
+      return { doc: validateMarkdown(raw, "README.md") };
+    } catch (err) {
+      console.error(`[doc-writer:readme] Failed:`, err);
+      return { doc: buildFallbackReadme({ meta, owner, repo, techStack, endpoints }), error: err };
+    }
+  })();
+
+  const internalPromise = (async () => {
+    try {
+      const internalCtx = buildInternalContext({
+        structure, components, relationships, entryPoints, techStack, endpoints,
+      });
+      const raw = await llmCallWithRetry({
+        systemPrompt: INTERNAL_SYSTEM_PROMPT,
+        userContent: `Generate internal developer documentation:\n\n${internalCtx}`,
+        temperature: 0.1,
+      });
+      return { doc: validateMarkdown(raw, "Internal Docs") };
+    } catch (err) {
+      return {
+        doc: "# Internal Developer Docs\n\n> ⚠️ Generation failed — please write this manually.\n",
+        error: err,
+      };
+    }
+  })();
+
+  const [readmeResult, internalResult] = await Promise.all([
+    readmePromise,
+    internalPromise,
+  ]);
+
+  docs.readme = readmeResult.doc;
+  if (readmeResult.error) {
+    errors.push({ doc: "readme", error: readmeResult.error.message });
+    notify("⚠ README.md generation failed — using fallback", readmeResult.error.message);
   }
 
-  // ── 2. Internal Developer Docs ────────────────────────────────
-  const internalCtx = buildInternalContext({
-    structure,
-    components,
-    relationships,
-    entryPoints,
-    techStack,
-    endpoints,
-  });
-
-  notify(
-    "Writing internal developer docs…",
-    `~${Math.ceil(internalCtx.length / 4)} input tokens`,
-  );
-
-  try {
-    const raw = await llmCallWithRetry({
-      systemPrompt: INTERNAL_SYSTEM_PROMPT,
-      userContent: `Generate internal developer documentation:\n\n${internalCtx}`,
-      temperature: 0.1,
-    });
-    docs.internalDocs = validateMarkdown(raw, "Internal Docs");
-  } catch (err) {
-    errors.push({ doc: "internalDocs", error: err.message });
-    docs.internalDocs =
-      "# Internal Developer Docs\n\n> ⚠️ Generation failed — please write this manually.\n";
-    notify("⚠ Internal docs generation failed", err.message);
+  docs.internalDocs = internalResult.doc;
+  if (internalResult.error) {
+    errors.push({ doc: "internalDocs", error: internalResult.error.message });
+    notify("⚠ Internal docs generation failed", internalResult.error.message);
   }
 
   // ── 3. Component Reference (LLM-written, rich) ────────────────
@@ -771,34 +771,17 @@ export async function docWriterAgent({
     docs.componentRef = "# Component Reference\n\nNo components documented.\n";
   }
 
-  // ── 4. API Reference (static — no LLM cost) ───────────────────
-  notify(
-    "Building API reference…",
-    `${endpoints?.length || 0} endpoints · static build`,
-  );
-  docs.apiReference = buildApiReference(endpoints || []);
-
-  // ── 5. Schema Docs (static — no LLM cost) ─────────────────────
-  notify(
-    "Building schema documentation…",
-    `${models?.length || 0} models · static build`,
-  );
-  docs.schemaDocs = buildSchemaDocs(models || [], relationships || []);
-
-  // ── 6. Component Index (static — supplements LLM ref) ─────────
-  notify("Building component index…", "static build");
-  docs.componentIndex = buildComponentIndex(components || []);
-
-  // ── 7. Summary ────────────────────────────────────────────────
+  // ── 4. Summary ────────────────────────────────────────────────
+  const lineCount = (s) => (s || "").split("\n").length;
   const summary = {
-    readme: docs.readme.split("\n").length,
-    internalDocs: docs.internalDocs.split("\n").length,
-    componentRef: docs.componentRef.split("\n").length,
-    apiReference: docs.apiReference.split("\n").length,
-    schemaDocs: docs.schemaDocs.split("\n").length,
-    componentIndex: docs.componentIndex.split("\n").length,
+    readme: lineCount(docs.readme),
+    internalDocs: lineCount(docs.internalDocs),
+    componentRef: lineCount(docs.componentRef),
+    apiReference: lineCount(docs.apiReference),
+    schemaDocs: lineCount(docs.schemaDocs),
+    componentIndex: lineCount(docs.componentIndex),
     totalLines: Object.values(docs).reduce(
-      (acc, d) => acc + d.split("\n").length,
+      (acc, d) => acc + (d || "").split("\n").length,
       0,
     ),
     errors: errors.length,
