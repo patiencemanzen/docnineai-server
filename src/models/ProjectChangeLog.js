@@ -93,19 +93,4 @@ const ProjectChangeLogSchema = new Schema(
   { collection: "projectChangeLogs" },
 );
 
-/**
- * Compound index for efficient querying:
- * - Get all changes for a project ordered by date
- */
-ProjectChangeLogSchema.index({ projectId: 1, createdAt: -1 });
-
-/**
- * TTL index: Keep logs for 1 year (31536000 seconds)
- * Older logs are automatically deleted
- */
-ProjectChangeLogSchema.index(
-  { createdAt: 1 },
-  { expireAfterSeconds: 31536000 },
-);
-
 export default model("ProjectChangeLog", ProjectChangeLogSchema);

@@ -47,6 +47,4 @@ const AttachmentSchema = new Schema(
   },
 );
 
-AttachmentSchema.index({ projectId: 1, createdAt: -1 });
-
 export const Attachment = model("Attachment", AttachmentSchema);

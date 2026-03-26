@@ -301,11 +301,6 @@ const ProjectSchema = new Schema(
   },
 );
 
-// ── Compound indexes ──────────────────────────────────────────
-ProjectSchema.index({ userId: 1, createdAt: -1 });
-ProjectSchema.index({ userId: 1, status: 1 });
-ProjectSchema.index({ userId: 1, repoOwner: 1, repoName: 1 });
-
 // ── Text index for search ─────────────────────────────────────
 // language_override points to a non-existent field ("search_language")
 // so MongoDB never reads meta.language (e.g. "TypeScript", "Python")

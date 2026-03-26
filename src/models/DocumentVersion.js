@@ -76,10 +76,6 @@ const DocumentVersionSchema = new Schema(
   },
 );
 
-// ── Indexes ───────────────────────────────────────────────────
-// List versions for a section: newest first
-DocumentVersionSchema.index({ projectId: 1, section: 1, createdAt: -1 });
-
 // ── Static helper: create a version + prune old ones ─────────
 DocumentVersionSchema.statics.createVersion = async function ({
   projectId,

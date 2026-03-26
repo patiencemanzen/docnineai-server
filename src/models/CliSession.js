@@ -46,7 +46,4 @@ const CliSessionSchema = new Schema(
   },
 );
 
-// Hard expiry after 10 minutes.
-CliSessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 600 });
-
 export const CliSession = model("CliSession", CliSessionSchema);

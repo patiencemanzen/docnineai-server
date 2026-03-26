@@ -65,16 +65,4 @@ const ProjectShareSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Prevent duplicate pending invites for the same project + email
-ProjectShareSchema.index(
-  { projectId: 1, inviteeEmail: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { status: { $in: ["pending", "accepted"] } },
-  }
-);
-
-// Fast lookup: "which projects is this user a member of?"
-ProjectShareSchema.index({ inviteeUserId: 1, status: 1 });
-
 export const ProjectShare = mongoose.model("ProjectShare", ProjectShareSchema);
