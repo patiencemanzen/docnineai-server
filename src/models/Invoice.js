@@ -126,8 +126,6 @@ const InvoiceSchema = new Schema(
   },
 );
 
-InvoiceSchema.index({ userId: 1, createdAt: -1 });
-
 // ── Auto-generate invoice number before save ──────────────────
 InvoiceSchema.pre("save", async function (next) {
   if (this.invoiceNumber) return next(); // already set (idempotent)

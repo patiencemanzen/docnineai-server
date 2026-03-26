@@ -189,10 +189,6 @@ const UserSchema = new Schema(
   },
 );
 
-// ── Indexes ───────────────────────────────────────────────────
-UserSchema.index({ emailVerificationToken: 1 }); // verify-email
-UserSchema.index({ passwordResetToken: 1 }); // reset-password
-
 // ── Pre-save validation — password required for email provider ──
 UserSchema.pre("validate", function (next) {
   if (this.provider === "email" && this.isNew && !this.password) {

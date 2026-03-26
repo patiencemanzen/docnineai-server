@@ -152,9 +152,4 @@ const SubscriptionSchema = new Schema(
   },
 );
 
-// ── Compound indexes for cron queries ─────────────────────────
-SubscriptionSchema.index({ status: 1, currentPeriodEnd: 1 });
-SubscriptionSchema.index({ status: 1, trialEndsAt: 1 });
-SubscriptionSchema.index({ status: 1, dunningStartedAt: 1 });
-
 export const Subscription = model("Subscription", SubscriptionSchema);

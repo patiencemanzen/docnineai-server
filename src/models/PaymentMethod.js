@@ -91,9 +91,6 @@ const PaymentMethodSchema = new Schema(
   },
 );
 
-// Only one default payment method per user
-PaymentMethodSchema.index({ userId: 1, isDefault: 1 });
-
 // ── Virtual display label ─────────────────────────────────────
 PaymentMethodSchema.virtual("displayLabel").get(function () {
   if (this.type === "card" && this.card) {

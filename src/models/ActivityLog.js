@@ -234,12 +234,6 @@ const activityLogSchema = new mongoose.Schema(
   },
 );
 
-// Compound query indexes
-activityLogSchema.index({ userId: 1, createdAt: -1 });
-activityLogSchema.index({ projectId: 1, createdAt: -1 });
-activityLogSchema.index({ category: 1, createdAt: -1 });
-activityLogSchema.index({ severity: 1, createdAt: -1 });
-
 // TTL — auto-delete after 90 days
 activityLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
