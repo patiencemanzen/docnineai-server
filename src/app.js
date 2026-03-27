@@ -58,6 +58,15 @@ app.use(async (req, res, next) => {
 // required for credentialed cross-origin requests (cookies).
 // In development, reflect the request origin for convenience.
 const FRONTEND_ORIGIN = process.env.FRONTEND_URL || "";
+
+const allowedOrigins = [
+  "https://docnineai.com",
+  "https://www.docnineai.com",
+  process.env.CLIENT_URL,
+  process.env.NODE_ENV === "development" && "http://localhost:5173",
+  process.env.NODE_ENV === "development" && "http://localhost:3000",
+].filter(Boolean);
+
 app.use(
   cors({
     origin: (incomingOrigin, callback) => {
@@ -67,12 +76,10 @@ app.use(
       // Always allow the configured frontend origin
       if (incomingOrigin === FRONTEND_ORIGIN) return callback(null, true);
 
-      // In development also allow any localhost origin
-      if (
-        process.env.NODE_ENV !== "production" &&
-        incomingOrigin.startsWith("http://localhost")
-      )
+      // other custom allowed origins
+      if (allowedOrigins.includes(incomingOrigin)) {
         return callback(null, true);
+      }
 
       callback(new Error(`CORS: origin ${incomingOrigin} not allowed`));
     },
@@ -95,15 +102,19 @@ app.use(
   express.urlencoded({
     extended: true,
     limit: "10mb",
-    verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
-  })
+    verify: (req, _res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
 );
 app.use(
   "/slack/events",
   express.json({
     limit: "10mb",
-    verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
-  })
+    verify: (req, _res, buf) => {
+      req.rawBody = buf.toString("utf8");
+    },
+  }),
 );
 
 const jsonParser = express.json({
