@@ -15,6 +15,7 @@ let _connectionPromise = null;
 
 export async function connectDB() {
   const URI = process.env.MONGODB_URI;
+  
   if (!URI) {
     throw new Error("MONGODB_URI is required in environment variables.\n");
   }
@@ -47,7 +48,6 @@ async function _connect(URI) {
   });
 
   // Wait for the connection to be fully open before proceeding.
-  // On Vercel/serverless, connect() can resolve slightly before
   // connection.db and connection.host are populated.
   if (mongoose.connection.readyState !== 1) {
     await new Promise((resolve, reject) => {
@@ -56,9 +56,7 @@ async function _connect(URI) {
     });
   }
 
-  const host = mongoose.connection.host || "atlas";
-  const name = mongoose.connection.name || "db";
-  console.log(`Database Connection → ${host}/${name}`);
+  console.log("[Database] Connected to MongoDB");
 
   await migrateIndexes();
 }
@@ -127,15 +125,15 @@ async function migrateIndexes() {
 }
 
 mongoose.connection.on("disconnected", () =>
-  console.warn("Database disconnected — will reconnect on next request"),
+  console.warn("[Database] Database disconnected"),
 );
 
 mongoose.connection.on("reconnected", () =>
-  console.log("Database reconnected"),
+  console.log("[Database] Database reconnected"),
 );
 
 mongoose.connection.on("error", (err) =>
-  console.error("Database error:", err.message),
+  console.error("[Database] Database error:", err.message),
 );
 
 export default mongoose;
