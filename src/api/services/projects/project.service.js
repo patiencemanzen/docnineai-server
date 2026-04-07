@@ -39,6 +39,7 @@ import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../../models/Project.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
+import { NotificationService } from "../../../services/notification.service.js";
 import { DocumentVersion, SECTIONS } from "../../../models/DocumentVersion.js";
 import { ProjectShare } from "../../../models/ProjectShare.js";
 import { User } from "../../../models/User.js";
@@ -1330,6 +1331,13 @@ async function runPipeline({ project, normalised, jobId }) {
         projectName: `${project.repoOwner}/${project.repoName}`,
         metadata: { jobId, error: result.error || "Unknown pipeline error" },
       });
+      NotificationService.create({
+        userId: project.userId,
+        type: "PIPELINE_FAILED",
+        projectId: project._id,
+        actionUrl: `/projects/${project._id}`,
+        metadata: { projectName: `${project.repoOwner}/${project.repoName}`, reason: result.error || "an unexpected error" },
+      });
       failJob(jobId, new Error(result.error || "Unknown pipeline error"));
       return;
     }
@@ -1368,6 +1376,13 @@ async function runPipeline({ project, normalised, jobId }) {
         agentErrorCount: result.agentErrors?.length ?? 0,
       },
     });
+    NotificationService.create({
+      userId: project.userId,
+      type: "PIPELINE_COMPLETED",
+      projectId: project._id,
+      actionUrl: `/projects/${project._id}`,
+      metadata: { projectName: `${project.repoOwner}/${project.repoName}` },
+    });
 
     finishJob(jobId, {
       success: true,
@@ -1389,6 +1404,38 @@ async function runPipeline({ project, normalised, jobId }) {
         err.message,
       );
     }
+
+    // ── Security finding notifications ─────────────────────────────
+    if (result.security?.findings?.length) {
+      const projectName = `${project.repoOwner}/${project.repoName}`;
+      const criticals = result.security.findings.filter((f) => f.severity === "critical");
+      const highs = result.security.findings.filter((f) => f.severity === "high");
+      for (const finding of criticals) {
+        NotificationService.create({
+          userId: project.userId,
+          type: "SECURITY_CRITICAL_FINDING",
+          projectId: project._id,
+          actionUrl: `/projects/${project._id}#security`,
+          metadata: { projectName, finding: finding.title ?? finding.rule ?? "a critical vulnerability" },
+        });
+      }
+      for (const finding of highs) {
+        NotificationService.create({
+          userId: project.userId,
+          type: "SECURITY_HIGH_FINDING",
+          projectId: project._id,
+          actionUrl: `/projects/${project._id}#security`,
+          metadata: { projectName, finding: finding.title ?? finding.rule ?? "a high-severity vulnerability" },
+        });
+      }
+      NotificationService.create({
+        userId: project.userId,
+        type: "SECURITY_REPORT_READY",
+        projectId: project._id,
+        actionUrl: `/projects/${project._id}#security`,
+        metadata: { projectName },
+      });
+    }
   } catch (err) {
     // Detect Vercel timeout scenario
     if (err.message === "VERCEL_HTTP_TIMEOUT") {
@@ -1409,6 +1456,13 @@ async function runPipeline({ project, normalised, jobId }) {
         projectName: `${project.repoOwner}/${project.repoName}`,
         metadata: { jobId },
       });
+      NotificationService.create({
+        userId: project.userId,
+        type: "PIPELINE_TIMEOUT",
+        projectId: project._id,
+        actionUrl: `/projects/${project._id}`,
+        metadata: { projectName: `${project.repoOwner}/${project.repoName}` },
+      });
       return;
     }
 
@@ -1424,6 +1478,13 @@ async function runPipeline({ project, normalised, jobId }) {
       projectId: project._id,
       projectName: `${project.repoOwner}/${project.repoName}`,
       metadata: { jobId, error: err.message },
+    });
+    NotificationService.create({
+      userId: project.userId,
+      type: "PIPELINE_FAILED",
+      projectId: project._id,
+      actionUrl: `/projects/${project._id}`,
+      metadata: { projectName: `${project.repoOwner}/${project.repoName}`, reason: err.message },
     });
     failJob(jobId, err);
   }

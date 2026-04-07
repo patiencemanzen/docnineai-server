@@ -37,3 +37,33 @@ export async function chat(req, res) {
   }
 }
 
+export async function diff(req, res) {
+  const { id: projectId } = req.params;
+  const { since } = req.query;
+  try {
+    const result = await cliService.diffFromCli({
+      userId: req.user.userId,
+      projectId,
+      since,
+    });
+    return ok(res, result, "CLI diff loaded.");
+  } catch (err) {
+    return toDomainFail(res, err, "cli.diff");
+  }
+}
+
+export async function exportDoc(req, res) {
+  const { id: projectId } = req.params;
+  const format = String(req.query.format || "openapi").toLowerCase();
+  try {
+    const result = await cliService.exportFromCli({
+      userId: req.user.userId,
+      projectId,
+      format,
+    });
+    return ok(res, result, "CLI export loaded.");
+  } catch (err) {
+    return toDomainFail(res, err, "cli.export");
+  }
+}
+

@@ -126,3 +126,51 @@ export const REFRESH_COOKIE_OPTS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
   path: "/auth",
 };
+
+// ── Token denylist (server-side revocation) ───────────────────
+// Uses Redis when available. Falls back to no-ops when Redis is
+// not configured (graceful degradation — logout still clears the
+// client-side token; revocation just isn't enforced server-side).
+
+import { createHash } from "crypto";
+import { getRedis, isRedisAvailable } from "../config/redis.js";
+
+const DENYLIST_PREFIX = "token:deny:";
+
+function tokenKey(token) {
+  const hash = createHash("sha256").update(token).digest("hex");
+  return `${DENYLIST_PREFIX}${hash}`;
+}
+
+/**
+ * Add a token to the server-side denylist. TTL is set to the token's
+ * remaining lifetime so Redis expires the entry automatically.
+ * @param {string} token — raw JWT access token
+ */
+export async function denylistToken(token) {
+  if (!isRedisAvailable()) return;
+  try {
+    const { ACCESS_SECRET } = getSecrets();
+    const payload = jwt.decode(token);
+    const ttlSeconds = payload?.exp ? Math.max(0, payload.exp - Math.floor(Date.now() / 1000)) : 172800; // 2d fallback
+    if (ttlSeconds > 0) {
+      await getRedis().set(tokenKey(token), "1", "EX", ttlSeconds);
+    }
+  } catch {
+    // Non-fatal — Redis failure must never break the logout flow.
+  }
+}
+
+/**
+ * Returns true if the token has been server-side revoked.
+ * @param {string} token — raw JWT access token
+ */
+export async function isTokenDenylisted(token) {
+  if (!isRedisAvailable()) return false;
+  try {
+    const result = await getRedis().get(tokenKey(token));
+    return result === "1";
+  } catch {
+    return false;
+  }
+}

@@ -6,7 +6,7 @@
 import * as authService from "../../services/auth/auth.service.js";
 import * as cliAuthService from "../../services/auth/cli-auth.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-import { getRefreshCookieOpts } from "../../../utils/jwt.util.js";
+import { getRefreshCookieOpts, denylistToken } from "../../../utils/jwt.util.js";
 
 // ── POST /auth/signup ─────────────────────────────────────────
 export async function signup(req, res) {
@@ -60,6 +60,22 @@ export async function logout(req, res) {
     return ok(res, null, "Logged out successfully.");
   } catch (err) {
     return serverError(res, err, "logout");
+  }
+}
+
+// ── POST /auth/cli/logout ─────────────────────────────────────
+export async function cliLogout(req, res) {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+    // Denylist the access token so it cannot be reused even before natural expiry
+    if (token && !token.startsWith("docnine_")) {
+      await denylistToken(token);
+    }
+    return ok(res, null, "Logged out successfully.");
+  } catch (err) {
+    // Non-fatal: still return success so CLI clears local credentials
+    return ok(res, null, "Logged out.");
   }
 }
 

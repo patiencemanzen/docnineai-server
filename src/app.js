@@ -7,6 +7,7 @@ import { connectDB } from "./config/db.js";
 import apiRouter, { loadServices } from "./api/routes/router.js";
 import { recoverOrphanedJobs } from "./api/services/projects/project.service.js";
 import { startBillingCron } from "./services/cron.service.js";
+import { startNotificationScheduler } from "./services/notification.scheduler.js";
 
 const app = express();
 
@@ -38,6 +39,9 @@ async function initOnce() {
 
   // init Billings cron jobs
   startBillingCron();
+
+  // init Notification scheduler
+  startNotificationScheduler();
 
   initialized = true;
 }

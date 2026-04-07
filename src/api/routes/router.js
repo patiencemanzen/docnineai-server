@@ -14,6 +14,7 @@
 //   /chat            — chat service
 //   /export          — pdf & notion exports (backward compatibility)
 //   /activity-logs   — user activity feed
+//   /notifications   — in-app notification feed
 // ===================================================================
 
 import { Router } from "express";
@@ -29,6 +30,7 @@ import adminRoutes from "./admin/admin.routes.js";
 import cliRoutes from "./cli/cli.routes.js";
 import slackRoutes from "./slack/slack.routes.js";
 import activityLogRoutes from "./activity/activity-log.routes.js";
+import notificationRoutes from "./notification/notification.routes.js";
 import {
   handleWebhook,
   handleFlutterwaveWebhook,
@@ -50,6 +52,7 @@ router.use("/portal", portalRoutes); // public — no auth
 router.use("/billing", billingRoutes);
 router.use("/admin", adminRoutes);
 router.use("/activity-logs", activityLogRoutes);
+router.use("/notifications", notificationRoutes);
 
 // ── Service Status & Lazy Loading ──────────────────────────────────
 

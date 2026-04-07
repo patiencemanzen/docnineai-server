@@ -47,6 +47,7 @@ import {
   sendPaymentReceiptEmail,
   sendTrialStartedEmail,
 } from "../config/email.js";
+import { NotificationService } from "./notification.service.js";
 
 // ── Ensure subscription exists ────────────────────────────────────
 
@@ -256,6 +257,16 @@ export async function activateFromPayment(fwTx) {
     description: invoice.description,
     paidAt: invoice.paidAt,
   });
+
+  NotificationService.create({
+    userId: invoice.userId,
+    type: "SUBSCRIPTION_PAYMENT_SUCCESS",
+    actionUrl: "/settings/billing",
+    metadata: {
+      plan: sub?.plan ?? "your plan",
+      amount: `$${centsToUsd(invoice.amount)}`,
+    },
+  });
 }
 
 // ── Plan change (upgrade / downgrade) ─────────────────────────────
@@ -312,11 +323,19 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
         { status: "void" },
       );
 
+      // Zero-cost / immediate upgrade
       await sendPlanUpgradedEmail({
         to: user.email,
         name: user.name,
         newPlanName: getPlan(newPlanId).name,
         nextRenewalDate: periodEnd,
+      });
+
+      NotificationService.create({
+        userId,
+        type: "SUBSCRIPTION_UPGRADED",
+        actionUrl: "/settings/billing",
+        metadata: { newPlan: getPlan(newPlanId).name },
       });
 
       return { type: "immediate_no_charge" };
@@ -386,6 +405,13 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
           name: user.name,
           newPlanName: getPlan(newPlanId).name,
           nextRenewalDate: periodEnd,
+        });
+
+        NotificationService.create({
+          userId,
+          type: "SUBSCRIPTION_UPGRADED",
+          actionUrl: "/settings/billing",
+          metadata: { newPlan: getPlan(newPlanId).name },
         });
 
         return { type: "upgrade", immediate: true };
@@ -467,6 +493,13 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       currentPlanName: getPlan(currentPlan).name,
       newPlanName: getPlan(newPlanId).name,
       effectiveAt: sub.currentPeriodEnd,
+    });
+
+    NotificationService.create({
+      userId,
+      type: "SUBSCRIPTION_DOWNGRADED",
+      actionUrl: "/settings/billing",
+      metadata: { newPlan: getPlan(newPlanId).name },
     });
 
     return { type: "downgrade", effectiveAt: sub.currentPeriodEnd };
@@ -798,12 +831,12 @@ export async function countTeamBillableSeats(userId) {
   // Get all ACCEPTED shares (pending don't count yet)
   const shares = await ProjectShare.find(
     { projectId: { $in: projectIds }, status: "accepted" },
-    "inviteeUserId"
+    "inviteeUserId",
   ).lean();
 
   // Count unique users (exclude null, avoid duplicates)
   const uniqueUserIds = new Set(
-    shares.map((s) => s.inviteeUserId).filter(Boolean)
+    shares.map((s) => s.inviteeUserId).filter(Boolean),
   );
 
   // Total = owner + unique collaborators
@@ -855,7 +888,9 @@ export function computeTeamPlanCharge({
 
   // Pro-rated calculation: credit old seats, charge new seats for remaining days
   const dailyRatePerSeat = TEAM_MONTHLY_RATE / totalDaysInCycle;
-  const creditCents = Math.round(currentSeats * dailyRatePerSeat * daysRemaining);
+  const creditCents = Math.round(
+    currentSeats * dailyRatePerSeat * daysRemaining,
+  );
   const chargeCents = Math.round(newSeats * dailyRatePerSeat * daysRemaining);
   const netChargeCents = chargeCents - creditCents;
 
@@ -864,7 +899,7 @@ export function computeTeamPlanCharge({
       `| ${daysRemaining}/${totalDaysInCycle} days remaining ` +
       `| credit: ${creditCents}¢ ($${(creditCents / 100).toFixed(2)}) ` +
       `| charge: ${chargeCents}¢ ($${(chargeCents / 100).toFixed(2)}) ` +
-      `| net: ${netChargeCents}¢ ($${(netChargeCents / 100).toFixed(2)})`
+      `| net: ${netChargeCents}¢ ($${(netChargeCents / 100).toFixed(2)})`,
   );
 
   return {
@@ -899,7 +934,7 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
   const currentSeats = await countTeamBillableSeats(projectOwnerId);
 
   console.log(
-    `[team-sync] Project ${projectId}: ${projectOwnerId} seats ${previousSeats} → ${currentSeats}`
+    `[team-sync] Project ${projectId}: ${projectOwnerId} seats ${previousSeats} → ${currentSeats}`,
   );
 
   if (currentSeats === previousSeats) return null; // No change
@@ -925,7 +960,7 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
   // If net charge <= 0, no invoice needed (credit or break-even)
   if (proration.netChargeCents <= 0) {
     console.log(
-      `[team-sync] No charge needed (net: ${proration.netChargeCents}¢)`
+      `[team-sync] No charge needed (net: ${proration.netChargeCents}¢)`,
     );
     return { previousSeats, currentSeats, proration, invoiceCreated: false };
   }
@@ -961,7 +996,7 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
   });
 
   console.log(
-    `[team-sync] Created invoice ${invoice._id} for ${proration.netChargeCents}¢`
+    `[team-sync] Created invoice ${invoice._id} for ${proration.netChargeCents}¢`,
   );
 
   return {
@@ -1203,7 +1238,8 @@ function calculateProration(sub, newPlanId, newCycle, seats) {
   const oldDailyRate =
     computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats) /
     totalDays;
-  const newDailyRate = computeMonthlyPrice(newPlanId, newCycle, seats) / totalDays;
+  const newDailyRate =
+    computeMonthlyPrice(newPlanId, newCycle, seats) / totalDays;
 
   const credit = Math.round(oldDailyRate * daysRemaining);
   const newCharge = Math.round(newDailyRate * daysRemaining);

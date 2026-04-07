@@ -12,6 +12,7 @@ import {
   verifySlackSignature,
 } from "../../../services/slack.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
+import { NotificationService } from "../../../services/notification.service.js";
 
 const SLACK_API_BASE = "https://slack.com/api";
 const SLACK_CLIENT_ID = process.env.SLACK_CLIENT_ID;
@@ -295,6 +296,14 @@ export async function handleSlackCallback(req, res) {
       "installed",
       `App installed in ${workspaceName}`,
     );
+
+    NotificationService.create({
+      userId: integration.userId,
+      type: "SLACK_CONNECTED",
+      projectId: integration.projectId,
+      actionUrl: `/projects/${integration.projectId}/settings`,
+      metadata: { workspaceName },
+    });
 
     // Redirect to success page
     res.redirect(
@@ -913,10 +922,20 @@ export async function disconnectSlack(req, res) {
   try {
     const { projectId } = req.params;
 
-    await SlackIntegration.findOneAndDelete({
+    const integration = await SlackIntegration.findOneAndDelete({
       projectId,
       userId: req.user.userId,
     });
+
+    if (integration) {
+      NotificationService.create({
+        userId: req.user.userId,
+        type: "SLACK_DISCONNECTED",
+        projectId,
+        actionUrl: `/projects/${projectId}/settings`,
+        metadata: {},
+      });
+    }
 
     return ok(res, {}, "Slack integration disconnected");
   } catch (err) {

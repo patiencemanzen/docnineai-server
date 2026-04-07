@@ -6,7 +6,7 @@
 // (inside the function), so there is no module-load dotenv race.
 // ===================================================================
 
-import { verifyAccessToken } from "../utils/jwt.util.js";
+import { verifyAccessToken, isTokenDenylisted } from "../utils/jwt.util.js";
 import { fail } from "../utils/response.util.js";
 import { authenticateAPIToken } from "./token-auth.middleware.js";
 
@@ -14,7 +14,7 @@ import { authenticateAPIToken } from "./token-auth.middleware.js";
  * Hard auth guard — 401 if Bearer token is missing, expired, or invalid.
  * Attaches req.user = { userId, email } on success.
  */
-export function protect(req, res, next) {
+export async function protect(req, res, next) {
   const header = req.headers.authorization || "";
 
   if (!header.startsWith("Bearer ")) {
@@ -37,6 +37,13 @@ export function protect(req, res, next) {
 
   try {
     const payload = verifyAccessToken(token);
+
+    // Check server-side denylist (async — non-blocking on Redis unavailability)
+    const revoked = await isTokenDenylisted(token);
+    if (revoked) {
+      return fail(res, "TOKEN_REVOKED", "Session has been revoked. Run: docnine login", 401);
+    }
+
     req.user = {
       userId: payload.sub,
       email: payload.email,
