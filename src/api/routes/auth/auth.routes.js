@@ -106,6 +106,9 @@ router.post("/webhook/init", protect, wrap(ctrl.initWebhook));
 router.post("/webhook/rotate", protect, wrap(ctrl.rotateWebhookSecret));
 router.patch("/webhook", protect, wrap(ctrl.updateWebhookSettings));
 
+// ── CLI logout (server-side token revocation) ───────────────
+router.post("/cli/logout", protect, wrap(ctrl.cliLogout));
+
 // ── Protected ─────────────────────────────────────────────────
 router.post("/logout", protect, autoLog("AUTH_LOGOUT"), wrap(ctrl.logout));
 router.get("/me", protect, wrap(ctrl.getMe));

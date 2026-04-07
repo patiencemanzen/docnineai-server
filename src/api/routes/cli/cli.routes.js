@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { body } from "express-validator";
+import { body, param } from "express-validator";
 import * as ctrl from "../../controllers/cli/cli.controller.js";
 import { protect } from "../../../middleware/auth.middleware.js";
 import { apiLimiter } from "../../../middleware/rateLimiter.middleware.js";
@@ -33,6 +33,18 @@ router.post(
     validate,
   ],
   wrap(ctrl.chat),
+);
+
+router.get(
+  "/diff/:id",
+  [param("id").isMongoId().withMessage("id must be a valid MongoDB id"), validate],
+  wrap(ctrl.diff),
+);
+
+router.get(
+  "/export/:id",
+  [param("id").isMongoId().withMessage("id must be a valid MongoDB id"), validate],
+  wrap(ctrl.exportDoc),
 );
 
 export default router;

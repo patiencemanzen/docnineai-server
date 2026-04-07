@@ -14,6 +14,7 @@ import bcrypt from "bcryptjs";
 import { Portal } from "../../../models/Portal.js";
 import { Project } from "../../../models/Project.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
+import { NotificationService } from "../../../services/notification.service.js";
 
 // ── Section keys and their display labels ─────────────────────
 export const SECTION_KEYS = [
@@ -178,6 +179,13 @@ export async function togglePublish(projectId, userId) {
       projectId,
       metadata: { slug: portal.slug },
     });
+    NotificationService.create({
+      userId,
+      type: "PORTAL_PUBLISHED",
+      projectId,
+      actionUrl: `/portal/${portal.slug}`,
+      metadata: { projectName: project.meta?.name || project.repoName },
+    });
     return portal.toObject();
   }
   portal.isPublished = !portal.isPublished;
@@ -188,6 +196,15 @@ export async function togglePublish(projectId, userId) {
     projectId,
     metadata: { slug: portal.slug },
   });
+  if (portal.isPublished) {
+    NotificationService.create({
+      userId,
+      type: "PORTAL_PUBLISHED",
+      projectId,
+      actionUrl: `/portal/${portal.slug}`,
+      metadata: { projectName: project.meta?.name || project.repoName },
+    });
+  }
   return portal.toObject();
 }
 

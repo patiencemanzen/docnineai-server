@@ -1,6 +1,7 @@
 import { Project } from '../../../models/Project.js';
 import { ProjectShare } from '../../../models/ProjectShare.js';
 import { DocumentVersion } from '../../../models/DocumentVersion.js';
+import { Portal } from '../../../models/Portal.js';
 import * as projectService from '../../services/projects/project.service.js';
 
 /**
@@ -77,13 +78,13 @@ export class MCPController {
       }
 
       // Verify access (owner or shared member)
-      const userId = req.user._id?.toString();
+      const userId = (req.user?.userId || req.user?._id)?.toString();
       const isOwner = project.userId?.toString() === userId;
 
       if (!isOwner) {
         const share = await ProjectShare.findOne({
           projectId: project._id,
-          inviteeUserId: req.user._id,
+          inviteeUserId: userId,
           status: 'accepted',
         });
         if (!share) {
@@ -148,7 +149,7 @@ export class MCPController {
       }
 
       // Access control - check if authenticated user has access
-      const userId = req.user?._id || req.tokenAuth?.userId;
+      const userId = req.user?.userId || req.user?._id || req.tokenAuth?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
@@ -234,6 +235,15 @@ export class MCPController {
 
       case 'get_diff':
         return await MCPController.getDiff(project);
+
+      case 'get_project_status':
+        return await MCPController.getProjectStatus(project);
+
+      case 'get_doc_section':
+        return await MCPController.getDocSection(project, input.section);
+
+      case 'get_portal_url':
+        return await MCPController.getPortalUrl(project);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
@@ -438,24 +448,51 @@ export class MCPController {
   }
 
   static async listProjects(userId) {
-    const projects = await Project.find({
-      $or: [
-        { owner: userId },
-        { members: userId },
-      ],
-    })
-      .select('_id name repoName status techStack')
+    // Owned projects
+    const ownedProjects = await Project.find({ userId })
+      .select('_id name repoName status techStack provider')
+      .sort({ updatedAt: -1 })
       .limit(50);
 
+    // Shared projects (accepted invitations)
+    const sharedEntries = await ProjectShare.find({
+      inviteeUserId: userId,
+      status: 'accepted',
+    }).select('projectId role');
+
+    const sharedProjectIds = sharedEntries.map((s) => s.projectId);
+    const sharedProjects = sharedProjectIds.length
+      ? await Project.find({ _id: { $in: sharedProjectIds } })
+          .select('_id name repoName status techStack provider')
+          .limit(50)
+      : [];
+
+    const shareRoleMap = Object.fromEntries(
+      sharedEntries.map((s) => [s.projectId.toString(), s.role]),
+    );
+
     return {
-      total: projects.length,
-      projects: projects.map((p) => ({
-        projectId: p._id,
-        name: p.name,
-        repo: p.repoName,
-        status: p.status,
-        techStack: p.techStack || [],
-      })),
+      total: ownedProjects.length + sharedProjects.length,
+      projects: [
+        ...ownedProjects.map((p) => ({
+          projectId: p._id,
+          name: p.name,
+          repo: p.repoName,
+          provider: p.provider,
+          status: p.status,
+          techStack: p.techStack || [],
+          access: 'owner',
+        })),
+        ...sharedProjects.map((p) => ({
+          projectId: p._id,
+          name: p.name,
+          repo: p.repoName,
+          provider: p.provider,
+          status: p.status,
+          techStack: p.techStack || [],
+          access: shareRoleMap[p._id.toString()] || 'viewer',
+        })),
+      ],
     };
   }
 
@@ -507,7 +544,103 @@ export class MCPController {
           : {
               message: 'No previous version to compare',
             },
-      lastProjects: project.eventS?.slice(-10) || [],
+    };
+  }
+
+  static async getProjectStatus(project) {
+    const outputSections = Object.keys(project.output || {});
+    const expectedSections = ['readme', 'apiReference', 'schemaDocs', 'componentRef', 'internalDocs', 'securityReport'];
+    const completedSections = expectedSections.filter((s) => !!project.output?.[s]);
+
+    return {
+      projectId: project._id,
+      projectName: project.name,
+      status: project.status,
+      techStack: project.techStack || [],
+      provider: project.provider,
+      repo: {
+        name: project.repoName,
+        url: project.repoUrl,
+      },
+      sync: {
+        lastDocumentedCommit: project.stats?.lastDocumentedCommit || null,
+        totalFiles: project.stats?.totalFiles || 0,
+      },
+      documentation: {
+        complete: completedSections.length === expectedSections.length,
+        completedSections,
+        missingSections: expectedSections.filter((s) => !project.output?.[s]),
+        totalSections: expectedSections.length,
+        completedCount: completedSections.length,
+      },
+      security: {
+        grade: project.security?.grade || null,
+        score: project.security?.score ?? null,
+      },
+    };
+  }
+
+  static async getDocSection(project, section) {
+    const validSections = ['readme', 'apiReference', 'schemaDocs', 'componentRef', 'internalDocs', 'securityReport'];
+    if (!section || !validSections.includes(section)) {
+      return {
+        error: `Invalid section. Must be one of: ${validSections.join(', ')}`,
+      };
+    }
+
+    const content = project.output?.[section];
+    if (!content) {
+      return {
+        projectId: project._id,
+        projectName: project.name,
+        section,
+        content: null,
+        message: `Section '${section}' has not been generated yet.`,
+      };
+    }
+
+    return {
+      projectId: project._id,
+      projectName: project.name,
+      section,
+      content,
+      lastUpdated: project.stats?.lastDocumentedCommit || null,
+    };
+  }
+
+  static async getPortalUrl(project) {
+    const portal = await Portal.findOne({ projectId: project._id }).select(
+      'slug isPublished accessMode customDomain seoTitle',
+    );
+
+    if (!portal) {
+      return {
+        projectId: project._id,
+        projectName: project.name,
+        portal: null,
+        message: 'No portal configured for this project. Create one at docnineai.com.',
+      };
+    }
+
+    const baseUrl = 'https://docnineai.com/docs';
+    const portalUrl = portal.customDomain
+      ? `https://${portal.customDomain}`
+      : `${baseUrl}/${portal.slug}`;
+
+    return {
+      projectId: project._id,
+      projectName: project.name,
+      portal: {
+        slug: portal.slug,
+        isPublished: portal.isPublished,
+        accessMode: portal.accessMode,
+        portalUrl: portal.isPublished ? portalUrl : null,
+        customDomain: portal.customDomain || null,
+        seoTitle: portal.seoTitle || project.name,
+        message: portal.isPublished
+          ? 'Portal is live'
+          : 'Portal exists but is not published yet',
+      },
     };
   }
 

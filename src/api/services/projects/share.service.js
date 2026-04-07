@@ -19,6 +19,7 @@ import { User } from "../../../models/User.js";
 import { sendProjectInviteEmail } from "../../../config/email.js";
 import { syncTeamSeatsAndBilling } from "../../../services/billing.service.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
+import { NotificationService } from "../../../services/notification.service.js";
 
 // ─────────────────────────────────────────────────────────────
 // Internal helpers
@@ -152,6 +153,20 @@ export async function inviteUsers(projectId, ownerId, invites) {
       resourceType: "share",
       metadata: { inviteeEmail: lc, role },
     });
+
+    // Notify the invitee if they already have an account
+    if (inviteeUser?._id) {
+      NotificationService.create({
+        userId: inviteeUser._id,
+        type: "SHARE_INVITE_RECEIVED",
+        projectId: share.projectId,
+        actionUrl: `/invite/${share.token}`,
+        metadata: {
+          inviterName: owner.name,
+          projectName: project.meta?.name || project.repoName,
+        },
+      });
+    }
   }
 
   return results;
@@ -199,6 +214,20 @@ export async function changeRole(projectId, shareId, ownerId, newRole) {
     metadata: { inviteeEmail: share.inviteeEmail, newRole },
   });
 
+  if (share.inviteeUserId) {
+    const project = await Project.findById(projectId).select("meta repoName").lean();
+    NotificationService.create({
+      userId: share.inviteeUserId,
+      type: "SHARE_ROLE_CHANGED",
+      projectId,
+      actionUrl: `/projects/${projectId}`,
+      metadata: {
+        projectName: project?.meta?.name || project?.repoName || "a project",
+        newRole,
+      },
+    });
+  }
+
   return _serialize(share);
 }
 
@@ -223,7 +252,18 @@ export async function revokeAccess(projectId, shareId, ownerId) {
     metadata: { inviteeEmail: share.inviteeEmail },
   });
 
-  // Sync Team plan billing if owner is on Team plan (seat count decreased)
+  if (share.inviteeUserId) {
+    const project = await Project.findById(projectId).select("meta repoName").lean();
+    NotificationService.create({
+      userId: share.inviteeUserId,
+      type: "SHARE_MEMBER_REMOVED",
+      projectId,
+      actionUrl: "/projects",
+      metadata: {
+        projectName: project?.meta?.name || project?.repoName || "a project",
+      },
+    });
+  }
   await syncTeamSeatsAndBilling(projectId, ownerId);
 }
 
@@ -303,9 +343,22 @@ export async function acceptInvite(token, userId) {
   });
 
   // Sync Team plan billing if owner is on Team plan
-  const project = await Project.findById(share.projectId).select("userId");
+  const project = await Project.findById(share.projectId).select("userId meta repoName");
   if (project) {
     await syncTeamSeatsAndBilling(project._id.toString(), project.userId.toString());
+    const inviteeName = userId
+      ? (await User.findById(userId).select("name").lean())?.name ?? share.inviteeEmail
+      : share.inviteeEmail;
+    NotificationService.create({
+      userId: project.userId,
+      type: "SHARE_INVITE_ACCEPTED",
+      projectId: project._id,
+      actionUrl: `/projects/${project._id}`,
+      metadata: {
+        inviteeName,
+        projectName: project.meta?.name || project.repoName || "your project",
+      },
+    });
   }
 
   return { projectId: share.projectId.toString(), role: share.role };
