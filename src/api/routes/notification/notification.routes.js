@@ -4,7 +4,9 @@
 // ===================================================================
 
 import { Router } from "express";
+import { param } from "express-validator";
 import { protect } from "../../../middleware/auth.middleware.js";
+import { validate } from "../../../middleware/validate.middleware.js";
 import {
   getNotifications,
   getUnreadCount,
@@ -18,6 +20,9 @@ const router = Router();
 
 router.use(protect);
 
+// Reusable MongoId guard — prevents CastError 500s on invalid :id values
+const validateId = [param("id").isMongoId().withMessage("Invalid notification ID"), validate];
+
 // GET /api/notifications
 router.get("/", getNotifications);
 
@@ -29,12 +34,12 @@ router.get("/unread-count", getUnreadCount);
 router.patch("/read-all", markAllAsRead);
 
 // PATCH /api/notifications/:id/read
-router.patch("/:id/read", markAsRead);
+router.patch("/:id/read", ...validateId, markAsRead);
 
 // PATCH /api/notifications/:id/archive
-router.patch("/:id/archive", archiveNotification);
+router.patch("/:id/archive", ...validateId, archiveNotification);
 
 // DELETE /api/notifications/:id
-router.delete("/:id", deleteNotification);
+router.delete("/:id", ...validateId, deleteNotification);
 
 export default router;

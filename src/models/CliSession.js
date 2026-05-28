@@ -31,6 +31,8 @@ const CliSessionSchema = new Schema(
       type: Date,
       default: Date.now,
       index: true,
+      // MongoDB TTL index: automatically purge sessions after 24 hours
+      expires: 60 * 60 * 24,
     },
     userAgent: {
       type: String,

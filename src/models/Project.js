@@ -301,6 +301,10 @@ const ProjectSchema = new Schema(
   },
 );
 
+// ── Compound index for webhook matching (repoOwner + repoName) ──────────────
+// Used heavily by webhook.service.js to look up projects by repository identity.
+ProjectSchema.index({ repoOwner: 1, repoName: 1 }, { name: "project_repo_lookup" });
+
 // ── Text index for search ─────────────────────────────────────
 // language_override points to a non-existent field ("search_language")
 // so MongoDB never reads meta.language (e.g. "TypeScript", "Python")

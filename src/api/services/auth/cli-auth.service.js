@@ -78,9 +78,17 @@ export async function pollCliSession(sessionId) {
   if (!user?.email) return { status: "expired" };
 
   const plan = await getUserPlan(session.userId);
+
+  // Capture token before clearing it — one-time retrieval prevents any future
+  // poll (even with the correct sessionId) from re-fetching the token.
+  const token = session.cliToken;
+  session.status = "expired";
+  session.cliToken = null;
+  await session.save();
+
   return {
     status: "approved",
-    token: session.cliToken,
+    token,
     user: {
       email: user.email,
       plan,
@@ -153,7 +161,7 @@ export async function approveCliSession({ sessionId, userId }) {
       email: user.email,
       role: user.role ?? "user",
     },
-    { expiresIn: "90d" },
+    { expiresIn: "7d" },
   );
 
   session.status = "approved";

@@ -10,6 +10,34 @@ import { ApiSpec } from "../../../models/ApiSpec.js";
 import { parseSpec } from "./apispec.parser.js";
 import { getShareRole } from "../projects/share.service.js";
 
+/**
+ * Returns true if the URL resolves to a private / link-local / loopback
+ * address that should never be reachable from the server (SSRF guard).
+ */
+function isPrivateUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return true; // unparseable — reject
+  }
+  const h = parsed.hostname.toLowerCase().replace(/^\[|]$/g, ""); // strip IPv6 brackets
+  return (
+    h === "localhost" ||
+    h === "0.0.0.0" ||
+    h.endsWith(".local") ||
+    /^127\./.test(h) ||                          // 127.x.x.x loopback
+    /^10\./.test(h) ||                           // 10.x.x.x private
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||     // 172.16–31.x.x private
+    /^192\.168\./.test(h) ||                     // 192.168.x.x private
+    /^169\.254\./.test(h) ||                     // 169.254.x.x link-local / IMDS
+    h === "::1" ||                               // IPv6 loopback
+    /^fe80:/i.test(h) ||                         // IPv6 link-local
+    /^fc00:/i.test(h) ||                         // IPv6 ULA
+    /^fd[0-9a-f]{2}:/i.test(h)                  // IPv6 ULA (fd00::/8)
+  );
+}
+
 // ── Permission helpers ────────────────────────────────────────
 
 function makeError(msg, code, status = 400) {
@@ -60,6 +88,13 @@ export async function importSpec(projectId, userId, opts) {
   } else if (method === "url") {
     if (!url || !url.trim()) {
       throw makeError("No URL provided.", "NO_URL", 400);
+    }
+    if (isPrivateUrl(url.trim())) {
+      throw makeError(
+        "Fetching specs from private or internal network addresses is not allowed.",
+        "PRIVATE_URL",
+        403,
+      );
     }
     try {
       const resp = await axios.get(url.trim(), {
@@ -207,15 +242,7 @@ export async function tryRequest(projectId, userId, opts) {
     throw makeError("Invalid endpoint URL.", "BAD_URL", 400);
   }
 
-  const hostname = targetUrl.hostname.toLowerCase();
-  if (
-    hostname === "localhost" ||
-    hostname.endsWith(".local") ||
-    /^127\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^10\./.test(hostname) ||
-    hostname === "0.0.0.0"
-  ) {
+  if (isPrivateUrl(targetUrl.toString())) {
     throw makeError(
       "Proxying to localhost or private network addresses is not allowed.",
       "PRIVATE_URL",

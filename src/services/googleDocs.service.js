@@ -13,8 +13,48 @@
 // ===================================================================
 
 import { google } from "googleapis";
+import { createHmac, timingSafeEqual } from "crypto";
 import { encrypt, decrypt } from "../utils/crypto.util.js";
 import GoogleToken from "../models/GoogleToken.js";
+
+// ── CSRF-safe state helpers ───────────────────────────────────
+
+const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function getStateSecret() {
+  return process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || "changeme";
+}
+
+/**
+ * Build a signed, time-bound state token for the Google Docs OAuth flow.
+ * Encodes userId + timestamp + HMAC-SHA256 so the callback can verify
+ * the request originated from our server (prevents CSRF account linking).
+ */
+function buildSignedState(userId) {
+  const ts = Date.now();
+  const payload = `${userId}:${ts}`;
+  const sig = createHmac("sha256", getStateSecret()).update(payload).digest("hex");
+  return Buffer.from(JSON.stringify({ u: String(userId), ts, sig })).toString("base64url");
+}
+
+/**
+ * Verify and decode a signed state token. Returns userId string on success,
+ * null on invalid/expired state.
+ */
+export function verifySignedState(stateParam) {
+  try {
+    const { u, ts, sig } = JSON.parse(Buffer.from(stateParam, "base64url").toString("utf8"));
+    if (!u || !ts || !sig) return null;
+    if (Date.now() - ts > STATE_TTL_MS) return null; // expired
+    const expected = createHmac("sha256", getStateSecret()).update(`${u}:${ts}`).digest("hex");
+    const a = Buffer.from(sig, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    return u;
+  } catch {
+    return null;
+  }
+}
 
 // ── OAuth2 client factory ─────────────────────────────────────
 function makeOAuth2Client() {
@@ -54,7 +94,7 @@ export function getGoogleDocsOAuthUrl(userId) {
     access_type: "offline",
     scope: SCOPES,
     prompt: "consent", // force refresh_token on every consent
-    state: userId.toString(), // we recover userId in callback
+    state: buildSignedState(userId), // HMAC-signed; verified in callback
   });
 }
 

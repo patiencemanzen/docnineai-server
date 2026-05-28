@@ -17,16 +17,36 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-if (!process.env.GROQ_API_KEY) {
-  throw new Error("GROQ_API_KEY is required in .env");
+export const MODEL = "llama-3.1-8b-instant";
+
+// Lazy-init: the LLM client is created on first use rather than at import time.
+// This prevents a missing GROQ_API_KEY from crashing the entire server on cold
+// start — routes that don't use the LLM remain fully operational.
+let _client = null;
+
+export function getClient() {
+  if (_client) return _client;
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error(
+      "GROQ_API_KEY is missing from environment. AI generation features are unavailable.",
+    );
+  }
+  _client = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1",
+  });
+  return _client;
 }
 
-export const client = new OpenAI({
-  apiKey: process.env.GROQ_API_KEY,
-  baseURL: "https://api.groq.com/openai/v1",
-});
-
-export const MODEL = "llama-3.1-8b-instant";
+/** @deprecated Use getClient() — kept for backward compat with existing imports. */
+export const client = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      return getClient()[prop];
+    },
+  },
+);
 
 // ── Rate limit config ─────────────────────────────────────────
 const TPM_LIMIT = 5000; // stay under 6000 — leave 1000 buffer

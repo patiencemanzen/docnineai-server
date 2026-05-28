@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
@@ -17,6 +18,25 @@ const app = express();
 // X-Forwarded-For but Express "trust proxy" is false by default.
 // Setting to 1 means trust the first hop (eg: Vercel's edge proxy).
 app.set("trust proxy", 1);
+
+// ── Security headers ───────────────────────────────────────────
+// helmet sets X-Frame-Options, X-Content-Type-Options, HSTS, etc.
+// CSP is relaxed for the OAuth popup HTML pages that use inline scripts.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // needed for OAuth popup pages
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        connectSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // prevents issues with OAuth redirects
+  }),
+);
 
 let initialized = false;
 
@@ -74,13 +94,16 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (incomingOrigin, callback) => {
-      // Allow requests with no origin (curl, Postman, server-to-server)
+      // Requests without an Origin header (curl, Postman, server-to-server webhooks)
+      // are allowed — but only for non-credentialed paths. Express CORS middleware
+      // will NOT set credentials:true when origin is not reflected, so cookies are
+      // still protected. Auth routes that require cookie handling always have an Origin.
       if (!incomingOrigin) return callback(null, true);
 
       // Always allow the configured frontend origin
       if (incomingOrigin === FRONTEND_ORIGIN) return callback(null, true);
 
-      // other custom allowed origins
+      // Other explicitly allowed origins
       if (allowedOrigins.includes(incomingOrigin)) {
         return callback(null, true);
       }
@@ -151,7 +174,7 @@ app.get("/health", (_req, res) => {
 app.get("/", (_req, res) => {
   res.json({
     success: true,
-    error: "Welcome to docnine AI server",
+    message: "Welcome to docnine AI server",
   });
 });
 
@@ -168,9 +191,10 @@ app.use((req, res) => {
 // ── Error handler ──────────────────────────
 app.use((err, req, res, _next) => {
   console.error("[Error]: ", err);
-  res.status(500).json({
+  const isProd = process.env.NODE_ENV === "production";
+  res.status(err.status || 500).json({
     success: false,
-    error: err.message || "Internal error",
+    error: isProd ? "Internal server error" : (err.message || "Internal error"),
   });
 });
 

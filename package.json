@@ -10,9 +10,7 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "start:legacy": "node src/index.js",
     "dev": "nodemon src/dev.js",
-    "dev:legacy": "nodemon src/index.js",
     "vercel:dev": "vercel dev"
   },
   "dependencies": {
@@ -27,6 +25,7 @@
     "express-rate-limit": "^7.3.1",
     "express-validator": "^7.1.0",
     "googleapis": "^171.4.0",
+    "helmet": "^8.2.0",
     "ioredis": "^5.10.1",
     "js-yaml": "^4.1.1",
     "jsonwebtoken": "^9.0.2",
