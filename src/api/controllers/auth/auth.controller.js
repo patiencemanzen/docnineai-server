@@ -197,6 +197,11 @@ export function githubPopup(req, res) {
     return res.status(401).send("Unauthorized: No token provided");
   }
 
+  // JSON.stringify encodes the token so special characters can never break
+  // out of the JS string context (XSS prevention).
+  const safeToken = JSON.stringify(token);
+  const safeOrigin = JSON.stringify(frontendUrl);
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -212,8 +217,9 @@ export function githubPopup(req, res) {
         (async function() {
           try {
             const response = await fetch('/github/oauth/start', {
-              headers: { 'Authorization': 'Bearer ${token}' }
+              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
             });
+            if (!response.ok) throw new Error('Request failed: ' + response.status);
             const data = await response.json();
             if (data.url) {
               window.location.href = data.url;
@@ -225,7 +231,7 @@ export function githubPopup(req, res) {
               type: 'github-oauth-complete',
               status: 'error',
               msg: err.message
-            }, '*');
+            }, ${safeOrigin} || '*');
             window.close();
           }
         })();
@@ -287,6 +293,9 @@ export function gitlabPopup(req, res) {
     return res.status(401).send("Unauthorized: No token provided");
   }
 
+  const safeToken = JSON.stringify(token);
+  const safeOrigin = JSON.stringify(frontendUrl);
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -302,8 +311,9 @@ export function gitlabPopup(req, res) {
         (async function() {
           try {
             const response = await fetch('/gitlab/oauth/start', {
-              headers: { 'Authorization': 'Bearer ${token}' }
+              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
             });
+            if (!response.ok) throw new Error('Request failed: ' + response.status);
             const data = await response.json();
             if (data.url) {
               window.location.href = data.url;
@@ -315,7 +325,7 @@ export function gitlabPopup(req, res) {
               type: 'gitlab-oauth-complete',
               status: 'error',
               msg: err.message
-            }, '*');
+            }, ${safeOrigin} || '*');
             window.close();
           }
         })();
@@ -337,6 +347,9 @@ export function bitbucketPopup(req, res) {
     return res.status(401).send("Unauthorized: No token provided");
   }
 
+  const safeToken = JSON.stringify(token);
+  const safeOrigin = JSON.stringify(frontendUrl);
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -352,8 +365,9 @@ export function bitbucketPopup(req, res) {
         (async function() {
           try {
             const response = await fetch('/bitbucket/oauth/start', {
-              headers: { 'Authorization': 'Bearer ${token}' }
+              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
             });
+            if (!response.ok) throw new Error('Request failed: ' + response.status);
             const data = await response.json();
             if (data.url) {
               window.location.href = data.url;
@@ -365,7 +379,7 @@ export function bitbucketPopup(req, res) {
               type: 'bitbucket-oauth-complete',
               status: 'error',
               msg: err.message
-            }, '*');
+            }, ${safeOrigin} || '*');
             window.close();
           }
         })();
@@ -387,6 +401,9 @@ export function azurePopup(req, res) {
     return res.status(401).send("Unauthorized: No token provided");
   }
 
+  const safeToken = JSON.stringify(token);
+  const safeOrigin = JSON.stringify(frontendUrl);
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -402,8 +419,9 @@ export function azurePopup(req, res) {
         (async function() {
           try {
             const response = await fetch('/azure/oauth/start', {
-              headers: { 'Authorization': 'Bearer ${token}' }
+              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
             });
+            if (!response.ok) throw new Error('Request failed: ' + response.status);
             const data = await response.json();
             if (data.url) {
               window.location.href = data.url;
@@ -415,7 +433,7 @@ export function azurePopup(req, res) {
               type: 'azure-oauth-complete',
               status: 'error',
               msg: err.message
-            }, '*');
+            }, ${safeOrigin} || '*');
             window.close();
           }
         })();
@@ -469,16 +487,23 @@ export async function googleLoginCallback(req, res) {
 // ── GET /auth/google-docs/callback ───────────────────────────
 // Called after user grants Google Drive / Docs access via project export flow
 export async function googleDocsCallback(req, res) {
-  const { code, state: userId, error } = req.query;
+  const { code, state, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
-  if (error || !code || !userId) {
+  if (error || !code || !state) {
     return res.redirect(`${frontendUrl}/settings?googleDocs=error`);
   }
 
   try {
-    const { handleGoogleDocsCallback } =
+    const { handleGoogleDocsCallback, verifySignedState } =
       await import("../../../services/googleDocs.service.js");
+
+    // Verify HMAC-signed state to prevent CSRF account-linking attacks
+    const userId = verifySignedState(state);
+    if (!userId) {
+      return res.redirect(`${frontendUrl}/settings?googleDocs=error`);
+    }
+
     await handleGoogleDocsCallback(code, userId);
     return res.redirect(`${frontendUrl}/settings?googleDocs=connected`);
   } catch (err) {
@@ -579,7 +604,6 @@ export async function notionDisconnect(req, res) {
 function getApiBaseUrl(req) {
   return (
     req.headers["x-api-base-url"] ||
-    process.env.APP_URL ||
     process.env.APP_URL ||
     `${req.protocol}://${req.get("host")}`
   );

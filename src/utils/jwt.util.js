@@ -115,25 +115,23 @@ export function getRefreshCookieOpts() {
   };
 }
 
-/**
- * @deprecated Use getRefreshCookieOpts() — kept for any code referencing this name.
- * Will be removed in a future cleanup.
- */
-export const REFRESH_COOKIE_OPTS = {
-  httpOnly: true,
-  secure: false, // conservative default; getRefreshCookieOpts() reads env correctly
-  sameSite: "strict",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-  path: "/auth",
-};
 
 // ── Token denylist (server-side revocation) ───────────────────
 // Uses Redis when available. Falls back to no-ops when Redis is
 // not configured (graceful degradation — logout still clears the
 // client-side token; revocation just isn't enforced server-side).
+// WARNING: In production, set REDIS_URL so token revocation is enforced.
 
 import { createHash } from "crypto";
 import { getRedis, isRedisAvailable } from "../config/redis.js";
+
+// Warn once at startup in production when Redis is not configured.
+if (process.env.NODE_ENV === "production" && !process.env.REDIS_URL) {
+  console.warn(
+    "[jwt] WARNING: REDIS_URL is not set. Token revocation (logout/CLI logout) " +
+    "is NOT enforced server-side. Set REDIS_URL in production.",
+  );
+}
 
 const DENYLIST_PREFIX = "token:deny:";
 

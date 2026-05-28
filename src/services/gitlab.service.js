@@ -404,7 +404,9 @@ export async function fetchRepoFilesWithProgress(
  * We use constant-time comparison to prevent timing attacks.
  */
 export function validateWebhookToken(incomingToken, expectedSecret) {
-  if (!expectedSecret) return true;
+  // Fail closed: if no secret is configured for this project, reject the webhook.
+  // Accepting arbitrary webhooks without a shared secret is a security risk.
+  if (!expectedSecret) return false;
   if (!incomingToken) return false;
   const a = Buffer.from(String(incomingToken));
   const b = Buffer.from(String(expectedSecret));

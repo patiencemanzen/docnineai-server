@@ -56,3 +56,52 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
   handler: onLimitReached,
 });
+
+/**
+ * Token refresh limiter — prevent brute-force refresh-token rotation.
+ * 20 per 15 minutes per IP.
+ */
+export const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: onLimitReached,
+});
+
+/**
+ * Email verification limiter — prevent OTP/token brute-force.
+ * 5 attempts per 15 minutes per IP.
+ */
+export const verifyEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: onLimitReached,
+});
+
+/**
+ * CLI session poll/cancel limiter — prevent session-ID brute-force discovery.
+ * 30 requests per 5 minutes per IP.
+ */
+export const cliPollLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: onLimitReached,
+});
+
+/**
+ * Portal password limiter — prevent online password guessing on password-protected portals.
+ * 10 attempts per 15 minutes, keyed by IP + portal slug.
+ */
+export const portalAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: onLimitReached,
+  keyGenerator: (req) => `${req.ip}:${req.params.slug || ""}`,
+});

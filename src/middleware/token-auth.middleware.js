@@ -121,7 +121,8 @@ export function requireAPIToken(req, res, next) {
 }
 
 /**
- * Optional: Check token scope
+ * Optional: Check token scope.
+ * Works with both singular string scope and array of scopes.
  */
 export function checkTokenScope(requiredScopes = []) {
   return (req, res, next) => {
@@ -134,10 +135,10 @@ export function checkTokenScope(requiredScopes = []) {
       );
     }
 
-    const tokenScopes = req.tokenAuth.scopes || [];
-    const hasScope = requiredScopes.some((scope) =>
-      tokenScopes.includes(scope),
-    );
+    // req.tokenAuth.scope is set as a string by authenticateAPIToken; normalise to array
+    const rawScope = req.tokenAuth.scope || req.tokenAuth.scopes || [];
+    const tokenScopes = Array.isArray(rawScope) ? rawScope : [rawScope];
+    const hasScope = requiredScopes.some((scope) => tokenScopes.includes(scope));
 
     if (!hasScope) {
       return fail(

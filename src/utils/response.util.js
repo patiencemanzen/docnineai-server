@@ -30,12 +30,11 @@ export function ok(res, data = null, message = "OK", status = 200) {
  * @param {string} code     - machine-readable error code (SCREAMING_SNAKE)
  * @param {string} message  - human-readable explanation
  * @param {number} status   - HTTP status (default 400)
+ * @param {object} [meta]   - optional extra fields merged into the error object
  */
-export function fail(res, code, message, status = 400) {
-  return res.status(status).json({
-    success: false,
-    error: { code, message },
-  });
+export function fail(res, code, message, status = 400, meta = undefined) {
+  const error = { code, message, ...meta };
+  return res.status(status).json({ success: false, error });
 }
 
 /**

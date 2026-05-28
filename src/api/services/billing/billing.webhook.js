@@ -98,7 +98,9 @@ export async function handleFlutterwaveWebhook(req, res) {
         console.log(`[fw-webhook] Unhandled event type: ${event}`);
     }
   } catch (err) {
-    console.error(`[fw-webhook] Error processing ${event}: ${err.message}`);
+    // Log full stack — payment processing failures must never be silent.
+    // TODO: feed into a dead-letter queue / alerting system for production.
+    console.error(`[fw-webhook] PAYMENT PROCESSING ERROR — event: ${event}`, err);
   }
 }
 

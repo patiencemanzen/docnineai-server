@@ -331,24 +331,47 @@ export class MCPController {
 
   static async askCodebase(project, question) {
     if (!question || question.trim().length === 0) {
+      return { error: 'Question is required' };
+    }
+
+    // Build context from generated docs; truncate each section to stay within token budget.
+    const SECTION_LIMIT = 2000;
+    const trim = (s) => (s ? s.slice(0, SECTION_LIMIT) + (s.length > SECTION_LIMIT ? '…' : '') : null);
+
+    const sections = [
+      project.output?.readme       ? `README:\n${trim(project.output.readme)}`         : null,
+      project.output?.apiReference ? `API Reference:\n${trim(project.output.apiReference)}` : null,
+      project.output?.componentRef ? `Components:\n${trim(project.output.componentRef)}`    : null,
+      project.output?.internalDocs ? `Internal Docs:\n${trim(project.output.internalDocs)}` : null,
+    ].filter(Boolean);
+
+    if (sections.length === 0) {
       return {
-        error: 'Question is required',
+        projectId: project._id,
+        projectName: project.name,
+        question,
+        answer: 'No documentation has been generated yet for this project. Run `docnine generate` first.',
       };
     }
 
-    // Call the chat service to generate an answer
-    // For now, return a structured prompt response
-    return {
-      projectId: project._id,
-      projectName: project.name,
-      question,
-      answer: `I can help answer questions about ${project.name}. Based on the project documentation and analysis, use the following context to answer:\n\nREADME:\n${project.output?.readme || 'N/A'}\n\nAPI Reference:\n${project.output?.apiReference || 'N/A'}\n\nComponent Docs:\n${project.output?.componentRef || 'N/A'}`,
-      context: {
-        readme: project.output?.readme || null,
-        apiDocs: project.output?.apiReference || null,
-        componentDocs: project.output?.componentRef || null,
-      },
-    };
+    try {
+      const { llmCall } = await import('../../../config/llm.js');
+      const systemPrompt =
+        `You are a helpful documentation assistant for the project "${project.name}". ` +
+        'Answer the question using only the provided documentation. Be concise and accurate.';
+      const userContent = `Documentation:\n\n${sections.join('\n\n---\n\n')}\n\n---\n\nQuestion: ${question}`;
+
+      const answer = await llmCall({ systemPrompt, userContent, temperature: 0 });
+      return { projectId: project._id, projectName: project.name, question, answer };
+    } catch (err) {
+      console.error('[MCP askCodebase] LLM call failed:', err.message);
+      return {
+        projectId: project._id,
+        projectName: project.name,
+        question,
+        answer: `Unable to generate answer (LLM unavailable): ${err.message}`,
+      };
+    }
   }
 
   static async searchDocs(project, query) {
@@ -650,6 +673,10 @@ export class MCPController {
   static async listTools(req, res) {
     try {
       const { projectId } = req.params;
+      const userId = req.user?.userId;
+
+      // Verify the caller actually owns or is a member of this project
+      await MCPController.verifyProjectAccess(projectId, userId);
 
       const project = await Project.findById(projectId);
       if (!project) {
@@ -734,7 +761,8 @@ export class MCPController {
       });
     } catch (error) {
       console.error('Error listing tools:', error);
-      res.status(500).json({ error: 'Failed to list tools' });
+      const status = error.statusCode || 500;
+      res.status(status).json({ error: status === 403 || status === 404 ? error.message : 'Failed to list tools' });
     }
   }
 
@@ -745,28 +773,21 @@ export class MCPController {
     try {
       const { projectId } = req.params;
 
-      // Quick validation that project exists (no user auth required for health check)
-      const project = await Project.findById(projectId);
-      if (!project) {
-        return res.status(404).json({
-          status: 'unhealthy',
-          error: 'Project not found'
-        });
+      // Only confirm the project exists — do not leak project name to unauthenticated callers.
+      const exists = await Project.exists({ _id: projectId });
+      if (!exists) {
+        return res.status(404).json({ status: 'unhealthy', error: 'Project not found' });
       }
 
       return res.status(200).json({
         status: 'healthy',
         projectId,
-        projectName: project.name,
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.0.0',
       });
     } catch (error) {
       console.error('Health check error:', error);
-      res.status(500).json({
-        status: 'unhealthy',
-        error: error.message
-      });
+      res.status(500).json({ status: 'unhealthy', error: 'Internal error' });
     }
   }
 }
