@@ -240,7 +240,22 @@ async function updateUserWebhookStatus({ userId, status }) {
   }
 }
 
-export async function handleWebhook({ payload, signature }) {
+export async function handleWebhook({ payload, signature, githubEvent = "" }) {
+  // Fast-path: ignore non-push / non-ping events before any heavy processing.
+  // The x-github-event header is the authoritative event type; payload shape is
+  // the fallback for integrations that don't send the header.
+  const eventLower = githubEvent.toLowerCase();
+  if (eventLower && eventLower !== "push" && eventLower !== "ping") {
+    return {
+      status: 200,
+      body: {
+        received: true,
+        action: "ignored",
+        reason: `Event '${githubEvent}' not handled — only push and ping events trigger sync.`,
+      },
+    };
+  }
+
   const rawPayload = Buffer.isBuffer(payload)
     ? payload
     : typeof payload === "string"

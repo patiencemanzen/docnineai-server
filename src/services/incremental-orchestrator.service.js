@@ -807,8 +807,8 @@ export async function incrementalSync(project, onProgress, options = {}) {
           owner,
           repo,
           changedPathsToFetch,
-          accessToken,
-          (msg) => emit("sync:fetch", "running", msg),
+          (msg) => emit("sync:fetch", "running", msg), // onProgress (4th param)
+          accessToken, // token (5th param)
         ),
       TIMEOUTS.fetch,
       "File fetch",
@@ -1348,11 +1348,11 @@ async function fullSyncFallback(
 
   if (!result.success) return { success: false, error: result.error };
 
-  const currentTree = await getFileTreeWithSha(
-    owner,
-    repo,
-    meta?.defaultBranch || "main",
-  ).catch(() => []);
+  // Use the adapter pattern (consistent with rest of incremental sync)
+  const { git: gitFallback, accessToken: fallbackToken } = resolveGit(project);
+  const currentTree = await gitFallback
+    .getFileTreeWithSha(owner, repo, meta?.defaultBranch || "main", fallbackToken)
+    .catch(() => []);
 
   const ALL_SECTIONS = [
     "readme",
