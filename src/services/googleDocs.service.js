@@ -184,23 +184,38 @@ async function getAuthenticatedClient(userId) {
  * A Google Docs batchUpdate accepts an array of requests; we build
  * headings + body text from each section's markdown (stripped of
  * the heaviest markdown syntax for readability).
+ *
+ * Accepts two shapes for `output`:
+ *   1. ExportDocumentData (frontend):  { tabs: [{key, label, content}], ... }
+ *   2. effectiveOutput (project model): { readme, apiReference, schemaDocs, internalDocs, securityReport }
  */
-function buildDocRequests(output, meta, stats, securityScore) {
+function buildDocRequests(output, meta) {
   const requests = [];
   let idx = 1; // insertText index accumulator (1-based, after title)
 
-  const sections = [
-    { key: "readme", title: "README" },
-    { key: "api", title: "API Reference" },
-    { key: "schema", title: "Schema Documentation" },
-    { key: "internal", title: "Internal Notes" },
-    { key: "security", title: "Security Report" },
-  ];
+  // Normalise both input shapes into a uniform [{title, content}] array
+  let sections = [];
 
-  for (const { key, title } of sections) {
-    const content = output[key] || output[`${key}Markdown`] || "";
-    if (!content) continue;
+  if (Array.isArray(output?.tabs) && output.tabs.length > 0) {
+    // Frontend ExportDocumentData format — use as-is (already cleaned by frontend)
+    sections = output.tabs
+      .filter((t) => t.content && t.content.trim())
+      .map((t) => ({ title: t.label, content: t.content }));
+  } else {
+    // Project effectiveOutput format — map to correct field names
+    const EFFECTIVE_OUTPUT_SECTIONS = [
+      { key: "readme",         title: "README" },
+      { key: "apiReference",   title: "API Reference" },
+      { key: "schemaDocs",     title: "Schema Documentation" },
+      { key: "internalDocs",   title: "Internal Notes" },
+      { key: "securityReport", title: "Security Report" },
+    ];
+    sections = EFFECTIVE_OUTPUT_SECTIONS
+      .map(({ key, title }) => ({ title, content: output?.[key] || "" }))
+      .filter((s) => s.content.trim());
+  }
 
+  for (const { title, content } of sections) {
     // Section heading
     const headingText = `${title}\n`;
     requests.push({
@@ -215,14 +230,14 @@ function buildDocRequests(output, meta, stats, securityScore) {
     });
     idx += headingText.length;
 
-    // Strip heavy markdown (we keep the text readable without heavy formatting)
+    // Strip heavy markdown for readability in Google Docs
     const stripped = content
-      .replace(/^#{1,6}\s+/gm, "") // headings
-      .replace(/\*\*(.+?)\*\*/g, "$1") // bold
-      .replace(/\*(.+?)\*/g, "$1") // italic
-      .replace(/`{3}[\s\S]*?`{3}/g, "") // code blocks (drop for brevity)
-      .replace(/`(.+?)`/g, "$1") // inline code
-      .replace(/\[(.+?)\]\(.+?\)/g, "$1") // links → text
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/`{3}[\s\S]*?`{3}/g, "")
+      .replace(/`(.+?)`/g, "$1")
+      .replace(/\[(.+?)\]\(.+?\)/g, "$1")
       .trim();
 
     const bodyText = stripped + "\n\n";
@@ -272,7 +287,7 @@ export async function exportToGoogleDocs({
   const documentId = created.documentId;
 
   // 2. Build content requests and batch-insert
-  const requests = buildDocRequests(output, meta, stats, securityScore);
+  const requests = buildDocRequests(output, meta);
   if (requests.length > 0) {
     await docs.documents.batchUpdate({
       documentId,

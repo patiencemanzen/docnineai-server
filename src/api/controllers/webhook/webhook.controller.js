@@ -58,9 +58,15 @@ export async function handleWebhook(req, res) {
     const rawSig = req.headers["x-hub-signature-256"];
     const signature = Array.isArray(rawSig) ? rawSig[0] : rawSig || "";
 
+    // Forward the GitHub event type so the service can ignore non-push events
+    // (ping, pull_request, etc.) without needing to inspect the payload shape.
+    const rawEvent = req.headers["x-github-event"];
+    const githubEvent = Array.isArray(rawEvent) ? rawEvent[0] : rawEvent || "";
+
     const result = await _handleGlobalWebhook({
       payload,
       signature,
+      githubEvent,
     });
 
     res.status(result.status).json(result.body);

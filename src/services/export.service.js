@@ -112,59 +112,54 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
     doc.moveDown(0.3);
   };
 
-  // ── Sections ─────────────────────────────────────────────────
-  if (output.readme) {
-    heading1("📋 README");
-    body(output.readme.slice(0, 3000));
-  }
-
-  if (
-    output.apiReference &&
-    output.apiReference !== "No API endpoints detected."
-  ) {
-    heading1("🌐 API Reference");
-    const lines = output.apiReference.split("\n");
-    for (const line of lines.slice(0, 150)) {
-      if (line.startsWith("### "))
-        heading2(line.replace(/^###\s*/, "").replace(/`/g, ""));
-      else if (line.startsWith("| "))
-        doc
-          .fill(DARK)
-          .fontSize(8)
-          .font("Courier")
-          .text(line, 50, doc.y, { width: PAGE_W });
-      else body(line);
+    // ── Sections ─────────────────────────────────────────────────
+  // Accept both ExportDocumentData (tabs array) and effectiveOutput formats.
+  if (Array.isArray(output?.tabs) && output.tabs.length > 0) {
+    // Frontend ExportDocumentData format — iterate all exported tabs
+    for (const tab of output.tabs) {
+      if (!tab.content?.trim()) continue;
+      heading1(tab.label);
+      body(tab.content.slice(0, 3000));
     }
-  }
+  } else {
+    // Project effectiveOutput format
+    if (output.readme) {
+      heading1("📋 README");
+      body(output.readme.slice(0, 3000));
+    }
 
-  if (output.schemaDocs && output.schemaDocs !== "No data models detected.") {
-    heading1("🗄️ Data Models");
-    body(output.schemaDocs.slice(0, 2500));
-  }
+    if (output.apiReference && output.apiReference !== "No API endpoints detected.") {
+      heading1("🌐 API Reference");
+      const lines = output.apiReference.split("\n");
+      for (const line of lines.slice(0, 150)) {
+        if (line.startsWith("### "))
+          heading2(line.replace(/^###\s*/, "").replace(/`/g, ""));
+        else if (line.startsWith("| "))
+          doc.fill(DARK).fontSize(8).font("Courier").text(line, 50, doc.y, { width: PAGE_W });
+        else body(line);
+      }
+    }
 
-  if (output.securityReport) {
-    heading1("🔒 Security Report");
-    const scoreColor =
-      (securityScore ?? 0) >= 75
-        ? GREEN
-        : (securityScore ?? 0) >= 50
-          ? "#D97706"
-          : RED;
-    doc
-      .fill(scoreColor)
-      .fontSize(36)
-      .font("Helvetica-Bold")
-      .text(`${securityScore ?? "?"}/100`, 50, doc.y, {
-        width: PAGE_W,
-        align: "center",
-      });
-    doc.fill(DARK).moveDown(0.5);
-    body(output.securityReport.slice(0, 2500));
-  }
+    if (output.schemaDocs && output.schemaDocs !== "No data models detected.") {
+      heading1("🗄️ Data Models");
+      body(output.schemaDocs.slice(0, 2500));
+    }
 
-  if (output.internalDocs) {
-    heading1("🏗️ Architecture & Internal Docs");
-    body(output.internalDocs.slice(0, 2500));
+    if (output.securityReport) {
+      heading1("🔒 Security Report");
+      const scoreColor =
+        (securityScore ?? 0) >= 75 ? GREEN : (securityScore ?? 0) >= 50 ? "#D97706" : RED;
+      doc
+        .fill(scoreColor).fontSize(36).font("Helvetica-Bold")
+        .text(`${securityScore ?? "?"}/100`, 50, doc.y, { width: PAGE_W, align: "center" });
+      doc.fill(DARK).moveDown(0.5);
+      body(output.securityReport.slice(0, 2500));
+    }
+
+    if (output.internalDocs) {
+      heading1("🏗️ Architecture & Internal Docs");
+      body(output.internalDocs.slice(0, 2500));
+    }
   }
 
   doc.end();
@@ -216,13 +211,18 @@ export async function exportToNotion({
     ],
   });
 
-  const sections = [
-    { title: "📋 README", content: output.readme },
-    { title: "🌐 API Reference", content: output.apiReference },
-    { title: "🗄️ Data Models", content: output.schemaDocs },
-    { title: "🔒 Security Report", content: output.securityReport },
-    { title: "🏗️ Architecture", content: output.internalDocs },
-  ].filter((s) => s.content && s.content.length > 10);
+  // Accept both ExportDocumentData (tabs array) and effectiveOutput formats.
+  const sections = Array.isArray(output?.tabs) && output.tabs.length > 0
+    ? output.tabs
+        .filter((t) => t.content && t.content.length > 10)
+        .map((t) => ({ title: t.label, content: t.content }))
+    : [
+        { title: "📋 README",         content: output.readme },
+        { title: "🌐 API Reference",  content: output.apiReference },
+        { title: "🗄️ Data Models",   content: output.schemaDocs },
+        { title: "🔒 Security Report",content: output.securityReport },
+        { title: "🏗️ Architecture",  content: output.internalDocs },
+      ].filter((s) => s.content && s.content.length > 10);
 
   const childPages = [];
   for (const section of sections) {

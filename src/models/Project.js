@@ -68,6 +68,10 @@ const StatsSchema = new Schema(
     models: { type: Number, default: 0 },
     relationships: { type: Number, default: 0 },
     components: { type: Number, default: 0 },
+    // ── Incremental sync timing ────────────────────────────────
+    // Populated after each successful incremental or full sync.
+    lastSyncedAt: { type: Date, default: null },
+    lastSyncDuration: { type: Number, default: null }, // milliseconds
   },
   { _id: false },
 );

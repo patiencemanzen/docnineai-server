@@ -42,29 +42,39 @@ import { updateFileManifest } from "./diff.service.js";
 const isVercel = !!process.env.VERCEL;
 const isProduction = process.env.NODE_ENV === "production";
 
-// On Vercel (60s limit), use conservative timeouts that fit within 55s safety margin
-// On local/traditional servers, use extended timeouts for large projects
+// fastMode: on Vercel all agents use heuristic/static paths (zero LLM cost).
+// This reserves the entire LLM TPM budget (5000/62s) for the doc writer,
+// which is the only place LLM generation actually runs on Vercel.
+// Result: pipeline completes in ~10-20s instead of timing out at 60s.
+const fastMode = isVercel && isProduction;
+
+// On Vercel (60s limit) with fastMode:
+//   - scan/security/api/schema/components: heuristic-only → each < 1s
+//   - doc writer: 1 LLM call for README → ~5-10s
+//   - total headroom: ~45s buffer before Vercel cuts the function
+//
+// On local/traditional servers: full LLM analysis with generous timeouts
 const TIMEOUTS =
-  isVercel && isProduction
+  fastMode
     ? {
-        fetch: 15_000, // 15s - GitHub API is usually fast
-        scan: 30_000, // 30s - repo scanning with LLM preview
-        api: 15_000, // 15s - API extraction
-        schema: 15_000, // 15s - Schema analysis
-        components: 15_000, // 15s - Component mapping
-        security: 20_000, // 20s - Security audit
-        write: 25_000, // 25s - Doc writing (critical, needs time)
-        chat: 10_000, // 10s - Chat setup
+        fetch: 15_000,  // 15s - GitHub API
+        scan: 5_000,    // 5s - heuristics only, should be < 200ms
+        api: 5_000,     // 5s - heuristics only
+        schema: 5_000,  // 5s - heuristics only
+        components: 5_000, // 5s - heuristics only
+        security: 5_000,   // 5s - static scan only
+        write: 30_000,  // 30s - 1 LLM call for README (critical)
+        chat: 10_000,   // 10s - chat setup
       }
     : {
-        fetch: 120_000, // GitHub API fetch (doubled - handle large repo clones)
-        scan: 240_000, // Repo Scanner — LLM batches over all files
-        api: 180_000, // API Extractor (doubled - many endpoints to extract)
-        schema: 180_000, // Schema Analyser (doubled - complex models)
-        components: 180_000, // Component Mapper (doubled - was failing at 90s)
-        security: 240_000, // Security Auditor (doubled - static + LLM analysis)
-        write: 300_000, // Doc Writer (5min - multiple LLM calls)
-        chat: 30_000, // Chat session setup
+        fetch: 120_000,    // GitHub API fetch
+        scan: 240_000,     // Repo Scanner — LLM batches over all files
+        api: 180_000,      // API Extractor
+        schema: 180_000,   // Schema Analyser
+        components: 180_000, // Component Mapper
+        security: 240_000, // Security Auditor — static + LLM
+        write: 300_000,    // Doc Writer — multiple LLM calls
+        chat: 30_000,      // Chat session setup
       };
 
 // ─── Routing Thresholds ───────────────────────────────────────────
@@ -420,6 +430,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       repoScannerAgent({
         files,
         meta,
+        fastMode,
         emit: (msg, detail) => emit("scan", "running", msg, detail),
       }),
     TIMEOUTS.scan,
@@ -543,6 +554,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
               apiExtractorAgent({
                 files,
                 projectMap,
+                fastMode,
                 emit: (msg, detail) => emit("api", "running", msg, detail),
               }),
           })
@@ -560,6 +572,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
               schemaAnalyserAgent({
                 files,
                 projectMap,
+                fastMode,
                 emit: (msg, detail) => emit("schema", "running", msg, detail),
               }),
           })
@@ -578,6 +591,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
                 files,
                 projectMap,
                 structure,
+                fastMode,
                 emit: (msg, detail) =>
                   emit("components", "running", msg, detail),
               }),
@@ -585,8 +599,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
         : Promise.resolve({ ...FALLBACKS.components, _skipped: true }),
 
       // Agent 6: Security Auditor
-      // Receives projectMap so it can use has_auth flags and importance scores
-      // from Agent 1 to prioritise LLM deep-scan files.
       routing.runSecurity
         ? runAgent({
             label: "Security Auditor",
@@ -597,7 +609,8 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
             fn: () =>
               securityAuditorAgent({
                 files,
-                projectMap, // NEW: passes Agent 1 metadata to improve file prioritisation
+                projectMap,
+                fastMode,
                 emit: (msg, detail) => emit("security", "running", msg, detail),
               }),
           })
@@ -736,7 +749,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
         entryPoints: entryPoints ?? [],
         owner,
         repo,
-        // Pass extra context from improved agents
         layerMap,
         flagsSummary,
         architectureHint,
@@ -750,6 +762,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
             .filter((f) => f.severity === "CRITICAL" || f.severity === "HIGH")
             .slice(0, 10),
         },
+        fastMode,
         emit: (msg, detail) => emit("write", "running", msg, detail),
       }),
   });
