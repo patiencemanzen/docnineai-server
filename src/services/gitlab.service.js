@@ -22,6 +22,42 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
 
+// ── Relevance-based file selection (mirrors github.service.js) ────
+
+const HIGH_PRIORITY = [
+  /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|go\.mod|pom\.xml|build\.gradle|Cargo\.toml|pyproject\.toml|setup\.py|composer\.json)$/i,
+  /^(dockerfile|docker-compose\.ya?ml|\.env\.example|\.gitignore|readme\.md)$/i,
+  /\/(index|main|app|server|entry)\.[jt]sx?$/i,
+];
+const SOURCE_PRIORITY = [
+  /\/(route[s]?|controller[s]?|handler[s]?|endpoint[s]?)\//i,
+  /\/(model[s]?|schema[s]?|entit(?:y|ies))\//i,
+  /\/(service[s]?|middleware[s]?|util[s]?|helper[s]?|hook[s]?|provider[s]?)\//i,
+  /\.(route|controller|service|model|schema)\.[jt]sx?$/i,
+];
+const LOW_PRIORITY = [
+  /\/(test[s]?|spec[s]?|__tests?__|__mocks?__|fixture[s]?)\//i,
+  /\.(test|spec)\.[jt]sx?$/i,
+  /\/(dist|build|out|\.next|\.nuxt|coverage|generated)\//i,
+  /\/(node_modules|vendor|\.git)\//i,
+];
+
+function scoreFilePath(path) {
+  for (const re of LOW_PRIORITY) if (re.test(path)) return -1;
+  for (const re of HIGH_PRIORITY) if (re.test(path)) return 10;
+  for (const re of SOURCE_PRIORITY) if (re.test(path)) return 5;
+  return 1;
+}
+
+function selectRelevantFiles(files, cap) {
+  return files
+    .map((f) => ({ f, score: scoreFilePath(f.path) }))
+    .filter(({ score }) => score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, cap)
+    .map(({ f }) => f);
+}
+
 // ── Internal helpers ──────────────────────────────────────────
 
 function glHeaders(accessToken) {
@@ -308,8 +344,8 @@ export async function fetchFileContents(
   owner,
   repo,
   filePaths,
-  accessToken,
   onProgress,
+  accessToken,
 ) {
   const files = [];
   for (const [i, path] of filePaths.entries()) {
@@ -334,9 +370,10 @@ export async function fetchRepoFiles(repoUrl, accessToken) {
     meta.defaultBranch,
     accessToken,
   );
-  const eligible = allFiles
-    .filter((f) => !SKIP_EXT.test(f.path))
-    .slice(0, MAX_FILES);
+  const eligible = selectRelevantFiles(
+    allFiles.filter((f) => !SKIP_EXT.test(f.path)),
+    MAX_FILES,
+  );
 
   console.log(
     `📂 Fetching ${eligible.length} files from ${owner}/${repo} (GitLab)…`,
@@ -374,9 +411,10 @@ export async function fetchRepoFilesWithProgress(
     meta.defaultBranch,
     accessToken,
   );
-  const eligible = allFiles
-    .filter((f) => !SKIP_EXT.test(f.path))
-    .slice(0, MAX_FILES);
+  const eligible = selectRelevantFiles(
+    allFiles.filter((f) => !SKIP_EXT.test(f.path)),
+    MAX_FILES,
+  );
   onProgress?.(`Downloading ${eligible.length} source files…`);
 
   const files = [];

@@ -2,7 +2,7 @@
 // Incremental Sync Pipeline — Enhanced
 // ===================================================================
 
-import { getAdapter } from "./provider.adapter.js";
+import { getAdapter, createRepoAdapter } from "../adapters/provider.adapter.js";
 import { decrypt } from "../utils/crypto.util.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
@@ -62,9 +62,13 @@ async function getDocWriter() {
 }
 
 /**
- * Resolve the correct git service and decrypted access token for a project.
- * GitHub uses the server-level GITHUB_TOKEN env var (accessToken = null).
- * GitLab uses the per-user token stored encrypted on the project document.
+ * Resolve the correct git service, decrypted access token, and a
+ * repo-bound normalized adapter for a project.
+ *
+ * `git`         — raw service module (for fetchRepoFilesWithProgress)
+ * `accessToken` — decrypted OAuth/PAT token (null for GitHub)
+ * `ra`          — createRepoAdapter instance that hides Azure's extra
+ *                 `project` argument and other provider quirks
  */
 function resolveGit(project) {
   const provider = project.provider || "github";
@@ -72,7 +76,8 @@ function resolveGit(project) {
   const accessToken = project.providerToken
     ? decrypt(project.providerToken)
     : null; // GitHub: null — github.service.js reads GITHUB_TOKEN internally
-  return { git, accessToken };
+  const ra = createRepoAdapter(provider, project.repoUrl);
+  return { git, accessToken, ra };
 }
 
 // ─── Timeout + cancellation ───────────────────────────────────────
@@ -261,7 +266,7 @@ function buildSecurityReport(
   counts,
   categoryCounts = {},
 ) {
-  let md = `# 🔒 Security Audit Report\n\n`;
+  let md = `# Security Audit Report\n\n`;
   md += `## Summary\n\n| Metric | Value |\n|--------|-------|\n`;
   md += `| **Score** | ${score}/100 |\n| **Grade** | **${grade}** |\n`;
   md += `| **Total Findings** | ${findings?.length ?? 0} |\n\n`;
@@ -621,7 +626,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
   };
 
   const { owner, repoName: repo } = parseOwnerRepo(project);
-  const { git, accessToken } = resolveGit(project);
+  const { git, accessToken, ra } = resolveGit(project);
 
   try {
     emit("sync", "running", "Starting incremental sync…", `${owner}/${repo}`);
@@ -636,13 +641,8 @@ export async function incrementalSync(project, onProgress, options = {}) {
     let meta, currentSha;
     try {
       [meta, currentSha] = await Promise.all([
-        git.getRepoMeta(owner, repo, accessToken),
-        git.getCommitSha(
-          owner,
-          repo,
-          project.meta?.defaultBranch || "main",
-          accessToken,
-        ),
+        ra.getRepoMeta(accessToken),
+        ra.getCommitSha(project.meta?.defaultBranch || "main", accessToken),
       ]);
     } catch (err) {
       emit("sync:fetch", "error", "Failed to fetch repo metadata", err.message);
@@ -689,14 +689,12 @@ export async function incrementalSync(project, onProgress, options = {}) {
       changedFileEntries = [...added, ...modified, ...removed];
       // Fetch tree in background — needed for manifest update in Phase 8
       // We don't await here; it runs concurrently with the agent phase
-      currentTree = await git
-        .getFileTreeWithSha(owner, repo, meta.defaultBranch, accessToken)
+      currentTree = await ra
+        .getFileTreeWithSha(meta.defaultBranch, accessToken)
         .catch(() => []);
     } else {
       try {
-        const diffResult = await git.computeFileDiff(
-          owner,
-          repo,
+        const diffResult = await ra.computeFileDiff(
           meta.defaultBranch,
           project.fileManifest,
           accessToken,
@@ -803,12 +801,10 @@ export async function incrementalSync(project, onProgress, options = {}) {
 
     const { result: fetchResult, error: fetchErr } = await withTimeout(
       () =>
-        git.fetchFileContents(
-          owner,
-          repo,
+        ra.fetchFileContents(
           changedPathsToFetch,
-          (msg) => emit("sync:fetch", "running", msg), // onProgress (4th param)
-          accessToken, // token (5th param)
+          (msg) => emit("sync:fetch", "running", msg),
+          accessToken,
         ),
       TIMEOUTS.fetch,
       "File fetch",
@@ -859,9 +855,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
     // so its latency is hidden behind the agent run time
     const treePromise =
       currentTree.length === 0
-        ? git
-            .getFileTreeWithSha(owner, repo, meta.defaultBranch, accessToken)
-            .catch(() => [])
+        ? ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => [])
         : Promise.resolve(currentTree);
 
     const [
@@ -1344,14 +1338,18 @@ async function fullSyncFallback(
   emit("sync:full", "running", "Running full pipeline…", `${owner}/${repo}`);
 
   const { orchestrate } = await import("./orchestrator.service.js");
-  const result = await orchestrate(project.repoUrl, onProgress);
+  const { accessToken: fallbackToken, ra: raFallback } = resolveGit(project);
+
+  // Pass the provider token so private repos on GitLab/Bitbucket/Azure succeed.
+  const result = await orchestrate(project.repoUrl, onProgress, {
+    provider: project.provider || "github",
+    token: fallbackToken,
+  });
 
   if (!result.success) return { success: false, error: result.error };
 
-  // Use the adapter pattern (consistent with rest of incremental sync)
-  const { git: gitFallback, accessToken: fallbackToken } = resolveGit(project);
-  const currentTree = await gitFallback
-    .getFileTreeWithSha(owner, repo, meta?.defaultBranch || "main", fallbackToken)
+  const currentTree = await raFallback
+    .getFileTreeWithSha(meta?.defaultBranch || "main", fallbackToken)
     .catch(() => []);
 
   const ALL_SECTIONS = [

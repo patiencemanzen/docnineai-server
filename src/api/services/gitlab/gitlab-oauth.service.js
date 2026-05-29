@@ -220,6 +220,68 @@ export function decryptProvidersToken(encrypted) {
   return decrypt(encrypted);
 }
 
+// ── Token refresh ─────────────────────────────────────────────
+
+/**
+ * Use the stored refresh token to get a new GitLab access token,
+ * persist both new tokens, and return the new plaintext access token.
+ *
+ * Throws with code TOKEN_REFRESH_FAILED if no refresh token is stored
+ * or if GitLab rejects the refresh (user must re-authorise).
+ *
+ * @param {string} userId
+ * @returns {Promise<string>} new plaintext access token
+ */
+export async function refreshAndStoreToken(userId) {
+  const user = await User.findById(userId).select(
+    "+gitlabTokenEncrypted +gitlabRefreshTokenEncrypted",
+  );
+
+  if (!user?.gitlabRefreshTokenEncrypted) {
+    console.warn("[GitLab OAuth] No refresh token stored for user", { userId });
+    const e = new Error(
+      "GitLab session expired. Please reconnect your GitLab account.",
+    );
+    e.code = "TOKEN_REFRESH_FAILED";
+    e.status = 401;
+    throw e;
+  }
+
+  const refreshToken = decrypt(user.gitlabRefreshTokenEncrypted);
+
+  let tokenData;
+  try {
+    tokenData = await glService.refreshAccessToken(refreshToken);
+  } catch (err) {
+    console.error("[GitLab OAuth] Token refresh failed", {
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    // Refresh token is also invalid — user must re-authorise
+    await User.findByIdAndUpdate(userId, {
+      gitlabTokenEncrypted: null,
+      gitlabRefreshTokenEncrypted: null,
+    });
+    const e = new Error(
+      "GitLab session expired. Please reconnect your GitLab account.",
+    );
+    e.code = "TOKEN_REFRESH_FAILED";
+    e.status = 401;
+    throw e;
+  }
+
+  const { access_token, refresh_token } = tokenData;
+  await User.findByIdAndUpdate(userId, {
+    gitlabTokenEncrypted: encrypt(access_token),
+    ...(refresh_token && {
+      gitlabRefreshTokenEncrypted: encrypt(refresh_token),
+    }),
+  });
+
+  console.log("[GitLab OAuth] Token refreshed and stored", { userId });
+  return access_token;
+}
+
 // ── Disconnect / revoke ───────────────────────────────────────
 
 /**

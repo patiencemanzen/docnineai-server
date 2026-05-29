@@ -153,6 +153,14 @@ export async function oauthCallback(req, res) {
   }
 }
 
+function isExpiredTokenError(err) {
+  return (
+    err.response?.status === 401 &&
+    (err.response?.data?.error === "invalid_token" ||
+      err.response?.data?.error_description?.toLowerCase().includes("expired"))
+  );
+}
+
 export async function listRepos(req, res) {
   try {
     // Query User to get the encrypted token (auth middleware only sets userId/email)
@@ -164,7 +172,7 @@ export async function listRepos(req, res) {
       return ok(res, { repos: [], hasNextPage: false });
     }
 
-    const token = await gitlabOAuthService.decryptProvidersToken(
+    let token = gitlabOAuthService.decryptProvidersToken(
       user.gitlabTokenEncrypted,
     );
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
@@ -179,7 +187,22 @@ export async function listRepos(req, res) {
       userId: req.user.userId,
     });
 
-    const result = await gitlabService.listUserRepos(token, page, perPage);
+    let result;
+    try {
+      result = await gitlabService.listUserRepos(token, page, perPage);
+    } catch (apiErr) {
+      if (!isExpiredTokenError(apiErr)) throw apiErr;
+
+      console.log("[gitlab.controller] Token expired — attempting refresh", {
+        userId: req.user.userId,
+      });
+      try {
+        token = await gitlabOAuthService.refreshAndStoreToken(req.user.userId);
+      } catch (refreshErr) {
+        return fail(res, refreshErr.code || "TOKEN_EXPIRED", refreshErr.message, 401);
+      }
+      result = await gitlabService.listUserRepos(token, page, perPage);
+    }
     
     console.log("[gitlab.controller] Successfully fetched GitLab repos", {
       count: result.length,

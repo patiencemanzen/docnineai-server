@@ -648,7 +648,7 @@ function buildReport(
   staticCount,
   llmCount,
 ) {
-  let md = `# 🔒 Security Audit Report\n\n`;
+  let md = `# Security Audit Report\n\n`;
 
   // ── Executive Summary ─────────────────────────────────────────
   md += `## Executive Summary\n\n`;

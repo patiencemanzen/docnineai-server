@@ -15,7 +15,7 @@
 //     msg, detail, ts, duration? }
 // ===================================================================
 
-import { getAdapter, detectProvider } from "../adapters/provider.adapter.js";
+import { getAdapter, detectProvider, createRepoAdapter } from "../adapters/provider.adapter.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
 import { apiExtractorAgent } from "../agents/api-extractor.agent.js";
@@ -158,6 +158,14 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
  * Determine which agents to run based on Agent 1 outputs.
  * Returns a routing decision object with reasons for each skip.
  */
+// Path-pattern regexes for the routing safety net — used when scanner
+// returned zero classifications (e.g. because it timed out even in fastMode).
+const ROUTING_PATH_PATTERNS = {
+  route: /route[s]?\/|controller[s]?\/|handler[s]?\/|endpoint[s]?\/|\.route\.[jt]sx?$|\.controller\.[jt]sx?$|pages\/api\/|app\/api\//i,
+  schema: /model[s]?\/|schema[s]?\/|entit(?:y|ies)\/|migration[s]?\/|database\/|db\/|orm\/|\.model\.[jt]sx?$|\.schema\.[jt]sx?$|\.entity\.[jt]sx?$/i,
+  component: /service[s]?\/|middleware[s]?\/|util[s]?\/|helper[s]?\/|hook[s]?\/|config[s]?\/|provider[s]?\/|store[s]?\//i,
+};
+
 function computeRouting(projectMap, structure, files) {
   const roles = Object.fromEntries(
     Object.entries(structure).map(([role, paths]) => [role, paths.length]),
@@ -185,9 +193,33 @@ function computeRouting(projectMap, structure, files) {
     (f) => !/\.(md|yaml|yml|txt|svg|png|jpg|json|lock)$/i.test(f.path),
   ).length;
 
-  const runApi = routeFileCount >= ROUTING.minRouteFiles;
-  const runSchema = schemaFileCount >= ROUTING.minSchemaFiles;
-  const runComponents = componentFileCount >= ROUTING.minComponentFiles;
+  // ── Safety net: path-based detection when scanner returned nothing ──────────
+  // If projectMap is empty (scanner completely failed), directly scan file paths
+  // so downstream agents are not wrongly skipped on every analysis run.
+  let pathRouteCount = 0;
+  let pathSchemaCount = 0;
+  let pathComponentCount = 0;
+
+  if (projectMap.length === 0 && files.length > 0) {
+    const isTestPath = /test|spec|__mock|fixture/i;
+    pathRouteCount = files.filter(
+      (f) => ROUTING_PATH_PATTERNS.route.test(f.path) && !isTestPath.test(f.path),
+    ).length;
+    pathSchemaCount = files.filter(
+      (f) => ROUTING_PATH_PATTERNS.schema.test(f.path) && !isTestPath.test(f.path),
+    ).length;
+    pathComponentCount = files.filter(
+      (f) => ROUTING_PATH_PATTERNS.component.test(f.path) && !isTestPath.test(f.path),
+    ).length;
+  }
+
+  const effectiveRouteCount = routeFileCount + pathRouteCount;
+  const effectiveSchemaCount = schemaFileCount + pathSchemaCount;
+  const effectiveComponentCount = componentFileCount + pathComponentCount;
+
+  const runApi = effectiveRouteCount >= ROUTING.minRouteFiles;
+  const runSchema = effectiveSchemaCount >= ROUTING.minSchemaFiles;
+  const runComponents = effectiveComponentCount >= ROUTING.minComponentFiles;
   const runSecurity = codeFileCount >= ROUTING.minCodeFiles;
 
   return {
@@ -198,21 +230,21 @@ function computeRouting(projectMap, structure, files) {
     reasons: {
       api: runApi
         ? null
-        : `Only ${routeFileCount} route/controller files found`,
+        : `Only ${effectiveRouteCount} route/controlleer files found`,
       schema: runSchema
         ? null
-        : `Only ${schemaFileCount} model/schema files found`,
+        : `Only ${effectiveSchemaCount} model/schema files found`,
       components: runComponents
         ? null
-        : `Only ${componentFileCount} component/service files found`,
+        : `Only ${effectiveComponentCount} component/service files found`,
       security: runSecurity
         ? null
         : `Only ${codeFileCount} code files — below threshold`,
     },
     counts: {
-      routeFiles: routeFileCount,
-      schemaFiles: schemaFileCount,
-      componentFiles: componentFileCount,
+      routeFiles: effectiveRouteCount,
+      schemaFiles: effectiveSchemaCount,
+      componentFiles: effectiveComponentCount,
       codeFiles: codeFileCount,
     },
   };
@@ -405,10 +437,12 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   let treeWithSha = repoUrl.fileTree || [];
 
   if (!isPrefetched) {
-    const adapter = getAdapter(authContext.provider || detectProvider(repoUrl));
+    // Use createRepoAdapter so Azure's extra `project` arg is handled transparently.
+    const provider = authContext.provider || detectProvider(repoUrl);
+    const ra = createRepoAdapter(provider, repoUrl);
     [currentCommitSha, treeWithSha] = await Promise.all([
-      adapter.getCommitSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => null),
-      adapter.getFileTreeWithSha(owner, repo, meta.defaultBranch, authContext.token).catch(() => []),
+      ra.getCommitSha(meta.defaultBranch, authContext.token).catch(() => null),
+      ra.getFileTreeWithSha(meta.defaultBranch, authContext.token).catch(() => []),
     ]);
   }
 
@@ -438,16 +472,34 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   );
 
   if (scanErr) {
-    // Agent 1 failure is semi-fatal — we can continue with empty projectMap
-    // but results will be lower quality
+    // Agent 1 failed or timed out — re-run in fastMode (pure heuristics, < 200ms)
+    // instead of falling back to an empty projectMap. An empty projectMap causes
+    // computeRouting to see 0 route/schema/component files and skip every agent.
     emit(
       "scan",
       "error",
-      "Repo Scanner failed — continuing with heuristics",
+      "Repo Scanner timed out — running heuristic fallback classification",
       scanErr.message,
     );
     agentErrors.push({ agent: "scan", error: scanErr.message });
-    scanResult = FALLBACKS.scan;
+
+    try {
+      scanResult = await repoScannerAgent({
+        files,
+        meta,
+        fastMode: true,
+        emit: (msg, detail) => emit("scan", "running", msg, detail),
+      });
+      emit(
+        "scan",
+        "running",
+        `Heuristic fallback complete — ${scanResult.projectMap.length} files classified`,
+        "Pipeline will continue with heuristic classifications",
+      );
+    } catch (fallbackErr) {
+      emit("scan", "error", "Heuristic fallback also failed", fallbackErr.message);
+      scanResult = FALLBACKS.scan;
+    }
   } else {
     scanResult = scanRes;
   }
