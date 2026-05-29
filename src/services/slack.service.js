@@ -160,7 +160,7 @@ export function buildSecurityAuditBlocks(audit) {
       type: "header",
       text: {
         type: "plain_text",
-        text: `🔒 Security Audit Report`,
+        text: `Security Audit Report`,
       },
     },
     {

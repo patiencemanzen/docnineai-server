@@ -94,8 +94,8 @@ Your entire response must start with [ and end with ].
 
 // ─── Constants ────────────────────────────────────────────────────
 
-const BATCH_SIZE = 10; // files per LLM call — larger than original for efficiency
-const SNIPPET_SIZE = 600; // chars per file — was 300, too small for export detection
+const BATCH_SIZE = 10; // files per LLM call
+const SNIPPET_SIZE = 1200; // chars per file — richer context since fewer ambiguous files go to LLM
 const MAX_FILES = 200; // hard cap before filtering
 const MAX_RETRIES = 2;
 
@@ -763,11 +763,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
     };
   }
 
-  const totalBatches = Math.ceil(relevant.length / BATCH_SIZE);
-  notify(
-    `Classifying ${relevant.length} files…`,
-    `${totalBatches} batch${totalBatches > 1 ? "es" : ""} · ${BATCH_SIZE} files each`,
-  );
+  notify(`Classifying ${relevant.length} files…`, "Running heuristic pre-filter…");
 
   // ── 2. Classification ─────────────────────────────────────────
   // fastMode (Vercel): use pure heuristics — zero LLM calls, completes in < 100ms.
@@ -789,18 +785,44 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
       classifiedMap.set(r.path, r);
     }
   } else {
-    // Full LLM batch classification
-    const batches = [];
-    for (let i = 0; i < relevant.length; i += BATCH_SIZE) {
-      batches.push({
-        batchNum: Math.floor(i / BATCH_SIZE) + 1,
-        batch: relevant.slice(i, i + BATCH_SIZE),
-      });
+    // ── Step 1: Pre-classify ALL files with heuristics (instant, zero LLM cost) ──
+    // Heuristics correctly handle ~70-80% of files in any well-structured project
+    // (controllers, models, routes, services, tests all have clear path patterns).
+    // Only files returning "other" are truly ambiguous and need LLM.
+    for (const f of relevant) {
+      classifiedMap.set(f.path, heuristicClassify(f));
     }
 
-    await Promise.all(
-      batches.map(async ({ batchNum, batch }) => {
-        notify(`Classifying files…`, `Batch ${batchNum} of ${totalBatches}`);
+    const ambiguous = relevant.filter((f) => classifiedMap.get(f.path)?.role === "other");
+
+    if (ambiguous.length === 0) {
+      notify(
+        `All ${relevant.length} files classified via heuristics`,
+        "No ambiguous files — LLM not needed",
+      );
+    } else {
+      notify(
+        `${relevant.length - ambiguous.length} files pre-classified · ${ambiguous.length} need LLM`,
+        "Heuristic pre-filter reduced LLM batch count",
+      );
+
+      // ── Step 2: LLM-classify only ambiguous files, SEQUENTIALLY ──────────────
+      // Sequential processing prevents TPM storms: with parallel batches all
+      // competing for the 5000-TPM window at once, each batch waits 30-62s for
+      // the window to clear, easily exceeding the 240s scanner timeout.
+      // Sequential batches spread token usage naturally over time.
+      const llmBatches = [];
+      for (let i = 0; i < ambiguous.length; i += BATCH_SIZE) {
+        llmBatches.push({
+          batchNum: Math.floor(i / BATCH_SIZE) + 1,
+          batch: ambiguous.slice(i, i + BATCH_SIZE),
+        });
+      }
+
+      const totalLlmBatches = llmBatches.length;
+
+      for (const { batchNum, batch } of llmBatches) {
+        notify(`Classifying ambiguous files…`, `LLM batch ${batchNum} of ${totalLlmBatches}`);
 
         const userContent = batch
           .map((f) => {
@@ -821,16 +843,12 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
           const parsed = safeParseJSON(raw);
 
           if (!Array.isArray(parsed)) {
-            batchErrors.push({
-              batch: batchNum,
-              error: "Response was not a JSON array",
-            });
-            batch.forEach((f) => classifiedMap.set(f.path, heuristicClassify(f)));
-            return;
+            batchErrors.push({ batch: batchNum, error: "Response was not a JSON array" });
+            // Heuristic classification already in classifiedMap — nothing to do
+            continue;
           }
 
           for (const item of parsed) {
-            // Match returned path to the original batch file
             const matchedFile = batch.find(
               (f) =>
                 item.path === f.path ||
@@ -839,21 +857,17 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
             );
             const fallbackPath = matchedFile?.path || item.path;
             const validated = validateClassification(item, fallbackPath);
-            if (validated) classifiedMap.set(validated.path, validated);
-          }
-
-          // Any batch file not returned by LLM → heuristic fallback
-          for (const f of batch) {
-            if (!classifiedMap.has(f.path)) {
-              classifiedMap.set(f.path, heuristicClassify(f));
+            // Only upgrade the classification if LLM resolved the ambiguity
+            if (validated && validated.role !== "other") {
+              classifiedMap.set(validated.path, validated);
             }
           }
         } catch (err) {
           batchErrors.push({ batch: batchNum, error: err.message });
-          batch.forEach((f) => classifiedMap.set(f.path, heuristicClassify(f)));
+          // Heuristic classification already in classifiedMap — graceful degradation
         }
-      }),
-    );
+      }
+    }
   }
 
   // ── 3. Strip internal markers and finalise ────────────────────

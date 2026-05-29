@@ -1697,17 +1697,25 @@ export async function runZipPipeline({ project, jobId }) {
       `[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`,
     );
 
-    // Normalize ZIP files into the same format as Git providers
+    // Normalize ZIP files into the same format as Git providers.
+    // `files` must include `content` so agents can process file bodies.
+    // `meta` must be present so doc-writer and other agents can read project info.
     const normalised = {
       owner: project.repoOwner || "local",
       repo: project.repoName || "zip-project",
+      meta: {
+        name: project.meta?.name || project.repoName || "zip-project",
+        description: project.meta?.description || `Uploaded ZIP project (${extractedFiles.length} files)`,
+        language: project.meta?.language || "unknown",
+        defaultBranch: "main",
+        stars: 0,
+        topics: project.meta?.topics || [],
+        createdAt: project.zipMetadata?.uploadedAt || new Date(),
+        updatedAt: project.zipMetadata?.uploadedAt || new Date(),
+      },
       branch: "main",
       commits: [],
-      files: extractedFiles.map((f) => ({
-        path: f.path,
-        type: "blob",
-        lastModified: project.zipMetadata.uploadedAt,
-      })),
+      files: extractedFiles, // Already [{path, content}] — no mapping needed
       fileTree: buildFileTree(extractedFiles),
       fileManifest: extractedFiles.reduce((acc, f) => {
         acc[f.path] = {

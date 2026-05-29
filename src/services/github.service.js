@@ -14,6 +14,86 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
 
+// ── File relevance scoring for large-repo selection ───────────
+// When a repo has more files than MAX_FILES we need to pick the most
+// important ones. Score 3 = manifest/entry, 2 = source code, 1 = other,
+// 0 = low-value (tests, dist, generated). Sorting by score descending
+// before .slice(MAX_FILES) ensures controllers, models and routes are
+// always included even in repos with thousands of files.
+
+const HIGH_PRIORITY = [
+  /^(?:src\/)?(?:main|app|server|index)\.[jt]sx?$/i, // root entry points
+  /^(?:main|app|server|index)\.[jt]sx?$/i,
+  /package\.json$/i,
+  /requirements\.txt$/i,
+  /pyproject\.toml$/i,
+  /Cargo\.toml$/i,
+  /go\.mod$/i,
+  /pom\.xml$/i,
+  /composer\.json$/i,
+  /Gemfile$/i,
+  /README/i,
+  /\.env\.example$/i,
+  /docker-compose/i,
+  /Dockerfile$/i,
+];
+
+const SOURCE_PRIORITY = [
+  /controller[s]?\//i,
+  /route[s]?\//i,
+  /model[s]?\//i,
+  /service[s]?\//i,
+  /schema[s]?\//i,
+  /middleware[s]?\//i,
+  /migration[s]?\//i,
+  /\/api\//i,
+  /handler[s]?\//i,
+  /repository|repositories/i,
+  /util[s]?\/|helper[s]?\//i,
+  /config[s]?\//i,
+  /hook[s]?\//i,
+  /store[s]?\//i,
+  /provider[s]?\//i,
+];
+
+const LOW_PRIORITY = [
+  /\.test\.[jt]sx?$/i,
+  /\.spec\.[jt]sx?$/i,
+  /__tests__\//i,
+  /\/tests?\//i,
+  /\/spec[s]?\//i,
+  /fixture[s]?\//i,
+  /seed[s]?\//i,
+  /\.min\.(?:js|css)$/i,
+  /\/dist\//i,
+  /\/build\//i,
+  /\/coverage\//i,
+  /\/vendor\//i,
+  /\.d\.ts$/i,
+  /node_modules\//i,
+];
+
+function scoreFilePath(path) {
+  if (LOW_PRIORITY.some((r) => r.test(path))) return 0;
+  if (HIGH_PRIORITY.some((r) => r.test(path))) return 3;
+  if (SOURCE_PRIORITY.some((r) => r.test(path))) return 2;
+  return 1;
+}
+
+/**
+ * Select the most relevant files from a candidate list.
+ * Files are sorted by relevance score descending so the cap always
+ * keeps manifests, controllers, models and routes over low-value files.
+ */
+function selectRelevantFiles(files, cap) {
+  return files
+    .map((f) => ({ ...f, _score: scoreFilePath(f.path) }))
+    .filter((f) => f._score > 0) // drop low-priority (tests, dist, generated)
+    .sort((a, b) => b._score - a._score)
+    .slice(0, cap)
+    .map(({ _score, ...f }) => f); // strip internal score field
+}
+
 // ── Download concurrency semaphore ────────────────────────────
 // 10 concurrent requests eliminates the ~30s sequential download
 // penalty for 100-file repos while staying well within GitHub API
@@ -222,9 +302,10 @@ export async function fetchRepoFiles(repoUrl, token = null) {
   const meta = await getRepoMeta(owner, repo, token);
   const allFiles = await getFileTree(owner, repo, meta.defaultBranch, token);
 
-  const eligible = allFiles
-    .filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024)
-    .slice(0, MAX_FILES);
+  const eligible = selectRelevantFiles(
+    allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),
+    MAX_FILES,
+  );
 
   console.log(`📂 Fetching ${eligible.length} files from ${owner}/${repo}…`);
 
@@ -261,9 +342,10 @@ export async function fetchRepoFilesWithProgress(
   notify(`Reading file tree on branch "${meta.defaultBranch}"…`);
   const allFiles = await getFileTree(owner, repo, meta.defaultBranch, token);
 
-  const eligible = allFiles
-    .filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024)
-    .slice(0, MAX_FILES);
+  const eligible = selectRelevantFiles(
+    allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),
+    MAX_FILES,
+  );
 
   notify(`Downloading ${eligible.length} source files…`);
 
