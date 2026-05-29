@@ -590,7 +590,53 @@ function buildSummary(models, relationships) {
 
 // ─── Agent ────────────────────────────────────────────────────────
 
-export async function schemaAnalyserAgent({ files, projectMap, emit }) {
+// ─── Heuristic Model Extraction ──────────────────────────────────
+// Used in fastMode — extracts model names and basic field shapes via
+// regex pattern matching, zero LLM cost.
+
+function heuristicExtractModels(files, projectMap) {
+  const rawModels = [];
+
+  for (const file of files) {
+    const content = file.content;
+
+    // Prisma: model ModelName { ... }
+    const prismaModels = [...content.matchAll(/^model\s+(\w+)\s*\{([^}]*)\}/gm)];
+    for (const m of prismaModels) {
+      const name = m[1];
+      const body = m[2];
+      const fields = [...body.matchAll(/^\s+(\w+)\s+(\w+(?:\?)?)/gm)].map(f => ({
+        name: f[1], type: f[2].replace("?", ""), db_type: "", required: !f[2].endsWith("?"),
+        unique: body.includes(`@unique`) && body.includes(f[1]), primary: f[1] === "id",
+        default: "", auto: /auto|uuid|cuid|now\(\)/.test(body.slice(body.indexOf(f[1]), body.indexOf(f[1]) + 80)),
+        index: false, enum_values: [], relation: "", description: "",
+      }));
+      rawModels.push(validateModel({ name, file: file.path, line: null, orm: "prisma", database: "unknown", table: "", description: `${name} Prisma model`, fields, indexes: [], constraints: [], hooks: [], soft_delete: body.includes("deletedAt"), timestamps: body.includes("createdAt"), tags: [] }, file.path));
+    }
+
+    // Mongoose: mongoose.model('ModelName', ...) or new Schema({ })
+    const mongooseModels = [...content.matchAll(/mongoose\.model\s*\(\s*['"`](\w+)['"`]/gi)];
+    for (const m of mongooseModels) {
+      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "mongoose", database: "mongodb", table: m[1].toLowerCase() + "s", description: `${m[1]} Mongoose model`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: /timestamps\s*:\s*true/.test(content), tags: [] }, file.path));
+    }
+
+    // TypeORM: @Entity() class ModelName
+    const typeormModels = [...content.matchAll(/@Entity\s*\([^)]*\)\s*(?:export\s+)?class\s+(\w+)/gi)];
+    for (const m of typeormModels) {
+      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "typeorm", database: "unknown", table: "", description: `${m[1]} TypeORM entity`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: content.includes("DeleteDateColumn"), timestamps: content.includes("CreateDateColumn"), tags: [] }, file.path));
+    }
+
+    // Zod/Yup/Joi: const schemaName = z.object({ or Yup.object({
+    const zodSchemas = [...content.matchAll(/(?:const|let)\s+(\w+Schema|\w+Dto)\s*=\s*(?:z|Yup|yup|Joi|joi)\.object\s*\(/gi)];
+    for (const m of zodSchemas) {
+      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: /Yup|yup/.test(content) ? "yup" : /Joi|joi/.test(content) ? "joi" : "zod", database: "unknown", table: "", description: `${m[1]} validation schema`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: false, tags: ["validation"] }, file.path));
+    }
+  }
+
+  return rawModels.filter(Boolean);
+}
+
+export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
   // ── 1. Filter to schema-relevant files ────────────────────────
@@ -627,6 +673,22 @@ export async function schemaAnalyserAgent({ files, projectMap, emit }) {
       relationships: [],
       summary: buildSummary([], []),
     };
+  }
+
+  // ── fastMode: heuristic regex extraction (zero LLM cost) ──────
+  if (fastMode) {
+    notify(`Extracting models via heuristics…`, `${schemaFiles.length} schema files (fast mode)`);
+    const rawModels = heuristicExtractModels(schemaFiles, projectMap);
+    const modelMap = new Map();
+    for (const m of rawModels) {
+      if (!modelMap.has(m.name)) modelMap.set(m.name, m);
+    }
+    const models = Array.from(modelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const staticRels = extractStaticRelationships(models);
+    const relationships = staticRels.map(({ _static, ...r }) => r);
+    const summary = buildSummary(models, relationships);
+    notify(`${models.length} models · ${relationships.length} relationships (heuristic)`, `${schemaFiles.length} files scanned`);
+    return { models, relationships, summary };
   }
 
   const totalBatches = Math.ceil(schemaFiles.length / FILES_PER_BATCH);

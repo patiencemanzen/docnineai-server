@@ -272,9 +272,104 @@ async function llmCallWithRetry({
   }
 }
 
+// ─── Heuristic Endpoint Extraction ───────────────────────────────
+// Used in fastMode (Vercel) — no LLM needed. Extracts method + path
+// from route definition patterns using regex matching.
+
+const HEURISTIC_ROUTE_MATCHERS = [
+  // Express: router.get('/path', ...) or app.post('/path', ...)
+  { re: /(?:router|app)\.(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
+  // NestJS decorators: @Get('/path') or @Post()
+  { re: /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*['"`]?([^'"`),]*)['"`]?\s*\)/gi, mIdx: 1, pIdx: 2 },
+  // FastAPI: @app.get('/path') or @router.post('/path')
+  { re: /@(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
+  // Flask: @app.route('/path', methods=['GET'])
+  { re: /@(?:app|blueprint|api)\.route\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: null, pIdx: 1 },
+  // Laravel: Route::get('/path') or Route::post('/path')
+  { re: /Route::(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
+  // Next.js API routes — infer from file path pattern (handled below)
+];
+
+function heuristicExtractEndpoints(file, projectMap) {
+  const endpoints = [];
+  const meta = projectMap?.find((m) => m.path === file.path);
+
+  // Next.js: infer REST method from file name / content export
+  const isNextApiRoute = /(?:pages|app)\/api\//.test(file.path) || /(?:route|page)\.[jt]sx?$/.test(file.path);
+
+  if (isNextApiRoute) {
+    const methods = [];
+    if (/export\s+(?:async\s+)?function\s+GET\b|handler.*method.*GET/i.test(file.content)) methods.push("GET");
+    if (/export\s+(?:async\s+)?function\s+POST\b|handler.*method.*POST/i.test(file.content)) methods.push("POST");
+    if (/export\s+(?:async\s+)?function\s+PUT\b/i.test(file.content)) methods.push("PUT");
+    if (/export\s+(?:async\s+)?function\s+DELETE\b/i.test(file.content)) methods.push("DELETE");
+    if (/export\s+(?:async\s+)?function\s+PATCH\b/i.test(file.content)) methods.push("PATCH");
+    // Generic handler = GET + POST
+    if (!methods.length && /export\s+(?:default|async)\s+function\s+handler/i.test(file.content)) {
+      methods.push("GET", "POST");
+    }
+    if (!methods.length) methods.push("GET");
+
+    const routePath = "/" + file.path
+      .replace(/^.*?(?:pages\/api|app\/api)\//, "api/")
+      .replace(/\/route\.[jt]sx?$/, "")
+      .replace(/\/index\.[jt]sx?$/, "")
+      .replace(/\.[jt]sx?$/, "")
+      .replace(/\[([^\]]+)\]/g, ":$1");
+
+    for (const method of methods) {
+      endpoints.push(validateEndpoint({
+        method,
+        path: routePath.startsWith("/") ? routePath : "/" + routePath,
+        file: file.path,
+        handler: "handler",
+        description: meta?.summary || "",
+        auth: { required: /auth|protect|verify|guard/i.test(file.content), type: "unknown", roles: [] },
+        request: { headers: [], params: [], body_schema: "" },
+        response: { success: { status: method === "POST" ? 201 : 200, description: "", schema: "" }, errors: [] },
+        middleware: [],
+        rate_limit: "",
+        deprecated: false,
+        tags: [routePath.split("/").filter(s => s && !s.startsWith(":"))[1] || "api"],
+        notes: "",
+      }, file.path));
+    }
+    return endpoints.filter(Boolean);
+  }
+
+  // Traditional frameworks — scan with regex matchers
+  for (const { re, mIdx, pIdx } of HEURISTIC_ROUTE_MATCHERS) {
+    const regex = new RegExp(re.source, re.flags);
+    let match;
+    while ((match = regex.exec(file.content)) !== null) {
+      const method = mIdx ? match[mIdx].toUpperCase() : "GET";
+      const path = match[pIdx]?.trim();
+      if (!path || path.length < 1) continue;
+      const normalPath = path.startsWith("/") ? path : "/" + path;
+      endpoints.push(validateEndpoint({
+        method,
+        path: normalPath,
+        file: file.path,
+        handler: "unknown",
+        description: meta?.summary || "",
+        auth: { required: /auth|protect|verify|guard/i.test(file.content), type: "unknown", roles: [] },
+        request: { headers: [], params: [], body_schema: "" },
+        response: { success: { status: method === "POST" ? 201 : 200, description: "", schema: "" }, errors: [] },
+        middleware: [],
+        rate_limit: "",
+        deprecated: false,
+        tags: inferTags(normalPath, file.path),
+        notes: "",
+      }, file.path));
+    }
+  }
+
+  return endpoints.filter(Boolean);
+}
+
 // ─── Agent ────────────────────────────────────────────────────────
 
-export async function apiExtractorAgent({ files, projectMap, emit }) {
+export async function apiExtractorAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
   // ── 1. Filter to route-related files ──────────────────────────
@@ -293,6 +388,23 @@ export async function apiExtractorAgent({ files, projectMap, emit }) {
   if (routeFiles.length === 0) {
     notify("No route files found", "Skipping API extraction");
     return { endpoints: [] };
+  }
+
+  // ── fastMode: heuristic regex extraction (zero LLM cost) ──────
+  if (fastMode) {
+    notify(`Extracting endpoints via heuristics…`, `${routeFiles.length} route files (fast mode)`);
+    const rawEndpoints = routeFiles.flatMap((f) => heuristicExtractEndpoints(f, projectMap));
+    const endpointMap = new Map();
+    for (const ep of rawEndpoints) {
+      const key = `${ep.method}:${ep.path}`;
+      if (!endpointMap.has(key)) endpointMap.set(key, ep);
+    }
+    const endpoints = Array.from(endpointMap.values()).sort((a, b) => {
+      return (a.tags[0] ?? "").localeCompare(b.tags[0] ?? "") || a.path.localeCompare(b.path);
+    });
+    const summary = buildSummary(endpoints);
+    notify(`${endpoints.length} endpoints found (heuristic)`, `${summary.authRequired} require auth`);
+    return { endpoints, summary };
   }
 
   const totalBatches = Math.ceil(routeFiles.length / FILES_PER_BATCH);

@@ -8,6 +8,15 @@ import { llmCall } from "../config/llm.js";
 
 const README_SYSTEM_PROMPT = `You are a senior technical writer who specializes in open-source and professional software documentation.
 
+## YOUR REASONING PROCESS
+Before writing, reason through these questions silently (do NOT output this reasoning):
+1. What is the core problem this project solves? Who is the primary user?
+2. What are the 3 most important things a developer cloning this repo needs to know first?
+3. What architecture pattern does this use — and why does it matter for setup instructions?
+4. Which environment variables are actually required (not optional) to run this at all?
+5. What would a developer get wrong on their first attempt — and how do I pre-empt that?
+Then write the README with those answers informing every sentence.
+
 ## YOUR TASK
 Write a complete, production-ready README.md in Markdown for the project described in the provided JSON context.
 
@@ -37,6 +46,15 @@ Write a complete, production-ready README.md in Markdown for the project describ
 - Write in present tense, active voice`;
 
 const INTERNAL_SYSTEM_PROMPT = `You are a principal software architect writing internal developer onboarding documentation for a technical audience (senior engineers joining the team).
+
+## YOUR REASONING PROCESS
+Before writing, reason through these questions silently (do NOT output this reasoning):
+1. What is the single most important architectural decision in this codebase and what are its implications?
+2. What is NOT obvious from reading the code — what implicit conventions exist that trip up new engineers?
+3. Where are the most likely places a bug would be introduced in this codebase, and why?
+4. What is the critical path from an API request to the database — which components own each step?
+5. If the entry points or key services failed, what would break first?
+Write the internal guide with answers to these questions embedded throughout.
 
 ## YOUR TASK
 Write a concise internal developer guide in Markdown based on the provided project context. Assume the reader can read code but needs architectural context and tribal knowledge they can't get from reading files alone.
@@ -96,6 +114,9 @@ function buildReadmeContext({
   structure,
   owner,
   repo,
+  architectureHint,
+  securitySummary,
+  keyFiles,
 }) {
   // Ensure all inputs are safe
   meta = meta || {};
@@ -159,6 +180,10 @@ function buildReadmeContext({
       models: modelSummary,
       structure: structureSummary,
       inferredFeatures,
+      architectureHint: architectureHint || "",
+      securityScore: securitySummary?.score ?? null,
+      securityGrade: securitySummary?.grade ?? null,
+      keyFiles: (keyFiles || []).slice(0, 10),
     },
     null,
     2,
@@ -172,6 +197,11 @@ function buildInternalContext({
   entryPoints,
   techStack,
   endpoints,
+  architectureHint,
+  layerMap,
+  flagsSummary,
+  keyFiles,
+  testFrameworks,
 }) {
   // Group components by type for richer context
   const componentsByType = {};
@@ -224,6 +254,11 @@ function buildInternalContext({
       authEndpoints,
       totalComponents: (components || []).length,
       totalEndpoints: (endpoints || []).length,
+      architectureHint: architectureHint || "",
+      layerMap: layerMap || {},
+      flagsSummary: flagsSummary || {},
+      keyFiles: (keyFiles || []).slice(0, 10),
+      testFrameworks: testFrameworks || [],
     },
     null,
     2,
@@ -537,7 +572,7 @@ export function buildComponentIndex(components) {
         const async_ = c.async ? "✅" : "❌";
         const complexity =
           { low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High" }[
-            c.complexity
+          c.complexity
           ] || "—";
         md += `| \`${c.name}\`${deprecated} | \`${c.file}\` | ${c.layer || "—"} | ${async_} | ${complexity} | ${c.description ? c.description.slice(0, 80) + (c.description.length > 80 ? "…" : "") : "—"} |\n`;
       });
@@ -636,22 +671,29 @@ export async function docWriterAgent({
   entryPoints,
   owner,
   repo,
+  // Enhanced context from improved agents (used in prompts)
+  layerMap,
+  flagsSummary,
+  architectureHint,
+  keyFiles,
+  testFrameworks,
+  securitySummary,
+  // Vercel fast mode: only generate README (1 LLM call), skip internal docs + component ref
+  fastMode = false,
   emit,
 }) {
   const notify = (msg, detail) => emit?.(msg, detail);
   const errors = [];
   const docs = {};
 
-  // Log input data summary for debugging
   console.log(`[doc-writer:agent] Starting with inputs:`, {
     meta: !!meta,
-    techStack: !!techStack?.length,
-    structure: !!(structure && Object.keys(structure).length),
-    endpoints: !!endpoints?.length,
-    models: !!models?.length,
-    relationships: !!relationships?.length,
-    components: !!components?.length,
-    entryPoints: !!entryPoints?.length,
+    techStack: techStack?.length,
+    endpoints: endpoints?.length,
+    models: models?.length,
+    components: components?.length,
+    architectureHint,
+    fastMode,
     owner,
     repo,
   });
@@ -667,108 +709,121 @@ export async function docWriterAgent({
   docs.schemaDocs = buildSchemaDocs(models || [], relationships || []);
   docs.componentIndex = buildComponentIndex(components || []);
 
-  // ── 2. README + Internal Docs (parallel LLM calls) ────────────
-  // These two are independent — run them concurrently to halve
-  // wall-clock time and reduce timeout risk from TPM rate limiting.
-  notify("Writing README.md and internal docs…", "parallel LLM generation");
-
-  const readmePromise = (async () => {
+  // ── 2a. fastMode: sequential README-only (1 LLM call, fits in Vercel budget) ──
+  // On Vercel (60s limit, 5000 TPM), we skip internal docs and component ref LLM
+  // calls to ensure the README — the most user-visible output — is always generated.
+  if (fastMode) {
+    notify("Writing README.md…", "fast mode — 1 LLM call within Vercel budget");
     try {
       const readmeCtx = buildReadmeContext({
         meta, techStack, endpoints, models, components, structure, owner, repo,
+        architectureHint, securitySummary, keyFiles,
       });
-      console.log(
-        `[doc-writer:readme] Prepared context: ${readmeCtx.length} chars (~${Math.ceil(readmeCtx.length / 4)} tokens)`,
-      );
       const raw = await llmCallWithRetry({
         systemPrompt: README_SYSTEM_PROMPT,
         userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
         temperature: 0.2,
       });
-      console.log(`[doc-writer:readme] LLM returned: ${raw?.length || 0} chars`);
-      return { doc: validateMarkdown(raw, "README.md") };
+      docs.readme = validateMarkdown(raw, "README.md");
     } catch (err) {
-      console.error(`[doc-writer:readme] Failed:`, err);
-      return { doc: buildFallbackReadme({ meta, owner, repo, techStack, endpoints }), error: err };
+      errors.push({ doc: "readme", error: err.message });
+      docs.readme = buildFallbackReadme({ meta, owner, repo, techStack, endpoints });
+      notify("⚠ README.md generation failed — using fallback", err.message);
     }
-  })();
+    docs.internalDocs = "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode — regenerate without Vercel timeout constraints.\n";
+    docs.componentRef = buildComponentIndex(components || []);
+    // Fall through to summary
+  } else {
+    // ── 2b. Full mode: README + Internal Docs in parallel ─────────
+    notify("Writing README.md and internal docs…", "parallel LLM generation");
 
-  const internalPromise = (async () => {
-    try {
-      const internalCtx = buildInternalContext({
-        structure, components, relationships, entryPoints, techStack, endpoints,
-      });
-      const raw = await llmCallWithRetry({
-        systemPrompt: INTERNAL_SYSTEM_PROMPT,
-        userContent: `Generate internal developer documentation:\n\n${internalCtx}`,
-        temperature: 0.1,
-      });
-      return { doc: validateMarkdown(raw, "Internal Docs") };
-    } catch (err) {
-      return {
-        doc: "# Internal Developer Docs\n\n> ⚠️ Generation failed — please write this manually.\n",
-        error: err,
-      };
-    }
-  })();
-
-  const [readmeResult, internalResult] = await Promise.all([
-    readmePromise,
-    internalPromise,
-  ]);
-
-  docs.readme = readmeResult.doc;
-  if (readmeResult.error) {
-    errors.push({ doc: "readme", error: readmeResult.error.message });
-    notify("⚠ README.md generation failed — using fallback", readmeResult.error.message);
-  }
-
-  docs.internalDocs = internalResult.doc;
-  if (internalResult.error) {
-    errors.push({ doc: "internalDocs", error: internalResult.error.message });
-    notify("⚠ Internal docs generation failed", internalResult.error.message);
-  }
-
-  // ── 3. Component Reference (LLM-written, rich) ────────────────
-  if (components?.length > 0) {
-    const chunkSize = 30; // components per LLM call to avoid context overflow
-    const chunks = [];
-    for (let i = 0; i < components.length; i += chunkSize) {
-      chunks.push(components.slice(i, i + chunkSize));
-    }
-
-    notify(
-      "Writing component reference…",
-      `${components.length} components · ${chunks.length} chunk${chunks.length > 1 ? "s" : ""}`,
-    );
-
-    const compChunks = [];
-    for (let i = 0; i < chunks.length; i++) {
+    const readmePromise = (async () => {
       try {
-        const ctx = buildComponentRefContext(chunks[i]);
+        const readmeCtx = buildReadmeContext({
+          meta, techStack, endpoints, models, components, structure, owner, repo,
+          architectureHint, securitySummary, keyFiles,
+        });
+        console.log(`[doc-writer:readme] Prepared context: ${readmeCtx.length} chars (~${Math.ceil(readmeCtx.length / 4)} tokens)`);
         const raw = await llmCallWithRetry({
-          systemPrompt: COMPONENT_REF_SYSTEM_PROMPT,
-          userContent: `Document these components:\n\n${ctx}`,
+          systemPrompt: README_SYSTEM_PROMPT,
+          userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
+          temperature: 0.2,
+        });
+        console.log(`[doc-writer:readme] LLM returned: ${raw?.length || 0} chars`);
+        return { doc: validateMarkdown(raw, "README.md") };
+      } catch (err) {
+        console.error(`[doc-writer:readme] Failed:`, err);
+        return { doc: buildFallbackReadme({ meta, owner, repo, techStack, endpoints }), error: err };
+      }
+    })();
+
+    const internalPromise = (async () => {
+      try {
+        const internalCtx = buildInternalContext({
+          structure, components, relationships, entryPoints, techStack, endpoints,
+          architectureHint, layerMap, flagsSummary, keyFiles, testFrameworks,
+        });
+        const raw = await llmCallWithRetry({
+          systemPrompt: INTERNAL_SYSTEM_PROMPT,
+          userContent: `Generate internal developer documentation:\n\n${internalCtx}`,
           temperature: 0.1,
         });
-        compChunks.push(validateMarkdown(raw, `Component Ref chunk ${i + 1}`));
+        return { doc: validateMarkdown(raw, "Internal Docs") };
       } catch (err) {
-        errors.push({ doc: `componentRef_chunk_${i}`, error: err.message });
-        // Fall back to static index for this chunk
-        compChunks.push(buildComponentIndex(chunks[i]));
-        notify(
-          `⚠ Component ref chunk ${i + 1} failed — using static fallback`,
-          err.message,
-        );
+        return {
+          doc: "# Internal Developer Docs\n\n> ⚠️ Generation failed — please write this manually.\n",
+          error: err,
+        };
       }
+    })();
+
+    const [readmeResult, internalResult] = await Promise.all([readmePromise, internalPromise]);
+
+    docs.readme = readmeResult.doc;
+    if (readmeResult.error) {
+      errors.push({ doc: "readme", error: readmeResult.error.message });
+      notify("⚠ README.md generation failed — using fallback", readmeResult.error.message);
     }
 
-    docs.componentRef =
-      chunks.length > 1
+    docs.internalDocs = internalResult.doc;
+    if (internalResult.error) {
+      errors.push({ doc: "internalDocs", error: internalResult.error.message });
+      notify("⚠ Internal docs generation failed", internalResult.error.message);
+    }
+
+    // ── 3. Component Reference (LLM-written, rich) ────────────────
+    if (components?.length > 0) {
+      const chunkSize = 30;
+      const chunks = [];
+      for (let i = 0; i < components.length; i += chunkSize) {
+        chunks.push(components.slice(i, i + chunkSize));
+      }
+
+      notify("Writing component reference…", `${components.length} components · ${chunks.length} chunk${chunks.length > 1 ? "s" : ""}`);
+
+      const compChunks = [];
+      for (let i = 0; i < chunks.length; i++) {
+        try {
+          const ctx = buildComponentRefContext(chunks[i]);
+          const raw = await llmCallWithRetry({
+            systemPrompt: COMPONENT_REF_SYSTEM_PROMPT,
+            userContent: `Document these components:\n\n${ctx}`,
+            temperature: 0.1,
+          });
+          compChunks.push(validateMarkdown(raw, `Component Ref chunk ${i + 1}`));
+        } catch (err) {
+          errors.push({ doc: `componentRef_chunk_${i}`, error: err.message });
+          compChunks.push(buildComponentIndex(chunks[i]));
+          notify(`⚠ Component ref chunk ${i + 1} failed — using static fallback`, err.message);
+        }
+      }
+
+      docs.componentRef = chunks.length > 1
         ? `# Component Reference\n\n${compChunks.join("\n\n")}`
         : compChunks[0];
-  } else {
-    docs.componentRef = "# Component Reference\n\nNo components documented.\n";
+    } else {
+      docs.componentRef = "# Component Reference\n\nNo components documented.\n";
+    }
   }
 
   // ── 4. Summary ────────────────────────────────────────────────

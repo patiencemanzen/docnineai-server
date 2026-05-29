@@ -376,6 +376,15 @@ const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "�
 
 const LLM_SYSTEM_PROMPT = `You are a principal application security engineer with expertise in OWASP Top 10, secure code review, and penetration testing. You specialise in finding vulnerabilities that static regex analysis cannot catch.
 
+## YOUR REASONING PROCESS
+Before reporting any finding, reason through these questions explicitly in your head (do NOT include this reasoning in output):
+1. What is this code actually trying to do? What is the developer's intent?
+2. What could go wrong at runtime — not just statically? Who calls this and with what inputs?
+3. Is this a real exploitable issue, or a false positive because context is missing?
+4. Would a competent attacker actually be able to exploit this in this codebase's threat model?
+5. Is there already a mitigation in place that I haven't seen (e.g. validation upstream, separate middleware)?
+Only report a finding if you can answer: "Yes, a real attacker with access to the API could exploit this with a specific technique."
+
 ## YOUR TASK
 Review the provided source code and identify security vulnerabilities, focusing exclusively on issues that require semantic understanding:
 - Business logic flaws (e.g. skippable payment steps, privilege escalation paths)
@@ -404,11 +413,11 @@ If no vulnerabilities are found, return: []
     "title": string,           // Short vulnerability name e.g. "Missing ownership check on resource update"
     "file": string,            // File path
     "line": string,            // The specific code snippet (max 120 chars) that demonstrates the issue
-    "description": string,     // 2–3 sentences: what the vulnerability is, how it could be exploited
-    "impact": string,          // What an attacker could achieve if this is exploited
-    "advice": string,          // Specific, actionable fix for this codebase — not generic advice
+    "description": string,     // 2–3 sentences: what the vulnerability is, how it could be exploited — include the specific attack vector
+    "impact": string,          // Concrete impact: "Attacker can read any user's appointment records by iterating IDs"
+    "advice": string,          // Specific, actionable fix referencing actual variable/function names in this file
     "cwe": string,             // CWE identifier e.g. "CWE-639"
-    "confidence": string       // "HIGH" | "MEDIUM" | "LOW" — how confident you are this is a real issue
+    "confidence": string       // "HIGH" | "MEDIUM" | "LOW" — how confident you are this is a real, exploitable issue
   }
 ]
 
@@ -419,7 +428,8 @@ If no vulnerabilities are found, return: []
 4. For "advice", refer to actual variable names, function names, or line patterns in the provided code.
 5. Do NOT re-report issues that are clearly caught by static analysis (hardcoded secrets, basic eval usage).
 6. Do NOT report missing documentation, code style, or non-security concerns.
-7. If you are reviewing an auth, payment, or permission-related function — scrutinise it more thoroughly.`;
+7. If you are reviewing an auth, payment, or permission-related function — scrutinise it more thoroughly.
+8. Prefer HIGH confidence, fewer findings over LOW confidence, many findings. Quality over quantity.`;
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -764,7 +774,7 @@ function buildRemediationPlan(findings) {
 
 // ─── Agent ────────────────────────────────────────────────────────
 
-export async function securityAuditorAgent({ files, projectMap, emit }) {
+export async function securityAuditorAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
   notify("Starting security audit…", "Agent 6 — Security Auditor");
@@ -827,6 +837,48 @@ export async function securityAuditorAgent({ files, projectMap, emit }) {
     `Static scan complete — ${staticFindings.length} findings`,
     `Critical:${staticCountBySev.CRITICAL} · High:${staticCountBySev.HIGH} · Medium:${staticCountBySev.MEDIUM} · Low:${staticCountBySev.LOW}`,
   );
+
+  // ── fastMode: skip LLM deep scan to stay within Vercel timeout budget ──
+  // The static scan already covers all 32 OWASP pattern rules. On Vercel,
+  // the 20s security timeout + TPM rate limits make LLM scanning impossible.
+  // Return static results directly so the pipeline can continue to doc writing.
+  if (fastMode) {
+    const findings = deduplicateFindings(staticFindings).sort((a, b) => {
+      const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      return (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3) || a.file.localeCompare(b.file);
+    });
+    const { score, grade } = calculateScore(findings);
+    const counts = countBySeverity(findings);
+    const categoryCounts = countByCategory(findings);
+    const affectedFiles = buildAffectedFiles(findings);
+    const summary = {
+      totalFindings: findings.length,
+      staticFindings: findings.length,
+      llmFindings: 0,
+      afterDedup: findings.length,
+      score,
+      grade,
+      counts,
+      categoryCounts,
+      affectedFiles,
+      filesScanned: codeFiles.length,
+      filesDeepScanned: 0,
+      llmErrors: 0,
+      fastMode: true,
+    };
+    notify(`Audit complete (static only) — ${score}/100 (${grade})`, `${findings.length} findings · AI deep scan skipped (fast mode)`);
+    return {
+      findings,
+      score,
+      grade,
+      counts,
+      categoryCounts,
+      affectedFiles,
+      summary,
+      reportMarkdown: buildReport(findings, score, grade, counts, categoryCounts, affectedFiles, findings.length, 0),
+      remediationMarkdown: buildRemediationPlan(findings),
+    };
+  }
 
   // ── 3. Score files for LLM priority ───────────────────────────
   // Files that already have static findings get priority,

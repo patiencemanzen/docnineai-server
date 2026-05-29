@@ -451,6 +451,7 @@ export async function componentMapperAgent({
   projectMap,
   structure,
   emit,
+  fastMode = false,
 }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
@@ -469,6 +470,45 @@ export async function componentMapperAgent({
   if (targetFiles.length === 0) {
     notify("No component files found", "Skipping component mapping");
     return { components: [], summary: buildSummary([]) };
+  }
+
+  // ── fastMode: build components from projectMap metadata ───────
+  // createFallbackComponent already uses projectMap role + summary,
+  // so this gives us structured component stubs with zero LLM cost.
+  // Enriched by heuristic scan data (exports, flags, layer).
+  if (fastMode) {
+    notify(`Mapping components via heuristics…`, `${targetFiles.length} files (fast mode)`);
+    const components = targetFiles
+      .map((f) => {
+        const meta = projectMap?.find((m) => m.path === f.path);
+        const stub = createFallbackComponent(f, projectMap);
+        // Enrich stub with heuristic scan metadata from projectMap
+        return {
+          ...stub,
+          layer: meta?.layer || stub.layer,
+          type: meta?.role || stub.type,
+          description: meta?.summary || stub.description,
+          exports: {
+            default: meta?.exports?.[0] || null,
+            named: meta?.exports || [],
+          },
+          async: /async\s+function|=>\s*{|\.then\s*\(|await\s+/m.test(f.content.slice(0, 1000)),
+          side_effects: meta?.flags?.includes("has_db") ? ["Database operations"] :
+                        meta?.flags?.includes("has_side_effects") ? ["Side effects detected"] : [],
+          notes: meta ? "" : "⚠ Auto-generated stub — LLM extraction skipped (fast mode).",
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const componentMap = new Map();
+    for (const c of components) {
+      const key = `${c.file}::${c.name}`;
+      if (!componentMap.has(key)) componentMap.set(key, c);
+    }
+    const deduped = Array.from(componentMap.values());
+    const summary = buildSummary(deduped);
+    notify(`${deduped.length} components mapped (heuristic)`, `${summary.byType ? Object.entries(summary.byType).map(([t, n]) => `${n} ${t}`).join(", ") : ""}`);
+    return { components: deduped, summary };
   }
 
   const totalBatches = Math.ceil(targetFiles.length / FILES_PER_BATCH);
