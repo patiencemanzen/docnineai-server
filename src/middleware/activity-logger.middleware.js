@@ -3,7 +3,7 @@
  *
  * Express middleware factory that fires an ActivityLog entry only when the
  * response is a 2xx success JSON response.  It does this by monkey-patching
- * `res.json` — the patch runs synchronously BEFORE the response is flushed,
+ * `res.json` : the patch runs synchronously BEFORE the response is flushed,
  * so the action string and the response body are both available.
  *
  * Usage:
@@ -19,7 +19,7 @@
  *   opts object that will be merged into the log call.  When omitted the
  *   middleware reads userId / actorName / actorEmail from req.user (set by
  *   the protect middleware).
- * - Always fire-and-forget — never blocks response delivery.
+ * - Always fire-and-forget : never blocks response delivery.
  */
 
 import ActivityLogService from "../services/activity-log.service.js";

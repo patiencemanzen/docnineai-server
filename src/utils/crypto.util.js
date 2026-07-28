@@ -6,11 +6,11 @@
 // All three parts are needed to decrypt. Tampering with any part
 // causes authentication failure (authTag mismatch).
 //
-// WHY lazy key read: same ESM/dotenv race as jwt.util.js — env vars
+// WHY lazy key read: same ESM/dotenv race as jwt.util.js : env vars
 // from .env are not available at module evaluation time.
 //
 // Required env:
-//   ENCRYPTION_KEY — exactly 64 hex characters (= 32 bytes)
+//   ENCRYPTION_KEY : exactly 64 hex characters (= 32 bytes)
 //   Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 // ===================================================================
 
@@ -22,7 +22,7 @@ import {
 } from "crypto";
 
 const ALG = "aes-256-gcm";
-const IV_BYTES = 12; // 96-bit IV — GCM recommendation (NIST SP 800-38D)
+const IV_BYTES = 12; // 96-bit IV : GCM recommendation (NIST SP 800-38D)
 
 /** Read and validate the encryption key at call-time (after dotenv.config). */
 function getKey() {
@@ -39,7 +39,7 @@ function getKey() {
 /**
  * Encrypt plaintext using AES-256-GCM.
  * @param {string} plaintext
- * @returns {string}  "<iv>.<authTag>.<ciphertext>" — safe to store in MongoDB
+ * @returns {string}  "<iv>.<authTag>.<ciphertext>" : safe to store in MongoDB
  */
 export function encrypt(plaintext) {
   const key = getKey();
@@ -82,7 +82,7 @@ export function decrypt(stored) {
 
 /**
  * One-way hash for tokens that need only equality checks (e.g. refresh tokens).
- * SHA-256 is sufficient — these tokens have high entropy (JWT/random hex).
+ * SHA-256 is sufficient : these tokens have high entropy (JWT/random hex).
  * @param {string} token
  * @returns {string} hex digest
  */

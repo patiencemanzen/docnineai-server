@@ -1,6 +1,6 @@
 // ===================================================================
 // All auth business logic lives here. Controllers call these
-// functions — they never touch the database directly.
+// functions : they never touch the database directly.
 // ===================================================================
 
 import { User } from "../../models/User.js";
@@ -44,7 +44,7 @@ export async function signup({ name, email, password }) {
     emailVerificationExpires: expiresAt,
   });
 
-  // Send verification email — fire-and-forget (don't fail signup if SMTP is down)
+  // Send verification email : fire-and-forget (don't fail signup if SMTP is down)
   sendVerificationEmail({ to: email, token: rawToken, name }).catch((err) =>
     console.error("⚠️  Failed to send verification email:", err.message),
   );
@@ -61,7 +61,7 @@ export async function signup({ name, email, password }) {
  * @throws with code INVALID_CREDENTIALS (same message for bad email or bad password)
  */
 export async function login({ email, password }) {
-  // Select password field — excluded by default via schema
+  // Select password field : excluded by default via schema
   const user = await User.findOne({ email }).select("+password");
 
   // Identical error for "not found" and "wrong password" to prevent email enumeration
@@ -79,7 +79,7 @@ export async function login({ email, password }) {
     match = await user.comparePassword(password);
   } catch (e) {
     if (e.message === "PASSWORD_LOGIN_NOT_AVAILABLE") {
-      // OAuth-only account — tell the user which provider to use
+      // OAuth-only account : tell the user which provider to use
       const providerName = user.provider === "github" ? "GitHub" : "Google";
       const oauthErr = new Error(
         `This account was created with ${providerName}. Please use "Continue with ${providerName}" to sign in.`,
@@ -116,7 +116,7 @@ export async function logout(userId) {
  * invalidates the old one. Any replay of the old token triggers a full
  * revocation (both DB hash cleared, forcing re-login).
  *
- * @param {string} rawRefreshToken  — value from the httpOnly cookie
+ * @param {string} rawRefreshToken  : value from the httpOnly cookie
  * @returns {{ user: User, accessToken: string, refreshToken: string }}
  */
 export async function refreshSession(rawRefreshToken) {
@@ -130,7 +130,7 @@ export async function refreshSession(rawRefreshToken) {
   // 1. Verify JWT signature and expiry
   let payload;
   try {
-    payload = verifyRefreshToken(rawRefreshToken); // static import — no dynamic import needed
+    payload = verifyRefreshToken(rawRefreshToken); // static import : no dynamic import needed
   } catch {
     const err = new Error(
       "Refresh token is invalid or has expired. Please log in again.",
@@ -148,7 +148,7 @@ export async function refreshSession(rawRefreshToken) {
 
   if (!user || storedHash !== incomingHash) {
     // Hash mismatch: token was already rotated or user logged out.
-    // Wipe the DB hash to force full re-login — assume token theft.
+    // Wipe the DB hash to force full re-login : assume token theft.
     if (user) {
       user.refreshTokenHash = undefined;
       await user.save();
@@ -199,12 +199,12 @@ export async function verifyEmail(rawToken) {
 
 /**
  * Generate a password-reset token and email it.
- * Always returns without throwing — prevents email enumeration.
+ * Always returns without throwing : prevents email enumeration.
  * @param {string} email
  */
 export async function forgotPassword(email) {
   const user = await User.findOne({ email });
-  if (!user) return; // No user — silently no-op; controller always sends 200
+  if (!user) return; // No user : silently no-op; controller always sends 200
 
   const rawToken = generateSecureToken();
   const hashedToken = hashToken(rawToken);

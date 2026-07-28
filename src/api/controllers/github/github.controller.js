@@ -1,5 +1,5 @@
 // ===================================================================
-// Thin HTTP layer — calls github.service.js, formats responses.
+// Thin HTTP layer : calls github.service.js, formats responses.
 // ===================================================================
 
 import * as githubService from "../../services/github/github.service.js";
@@ -12,7 +12,7 @@ import { ok, fail, serverError } from "../../../utils/response.util.js";
 //   This endpoint is called via the browser's fetch() API with a Bearer
 //   token in the Authorization header. A redirect response to
 //   github.com would be followed by fetch(), which would then make a
-//   CORS-blocked request to GitHub — the browser never navigates away.
+//   CORS-blocked request to GitHub : the browser never navigates away.
 //   Instead, we return the URL in JSON and let the client do:
 //     window.location.href = data.url
 export async function oauthStart(req, res) {
@@ -29,7 +29,7 @@ export async function oauthStart(req, res) {
 
 // ── GET /github/oauth/callback ────────────────────────────────
 // GitHub redirects the browser here after the user grants permission.
-// This is a BROWSER navigation, not a fetch() call — no Bearer token.
+// This is a BROWSER navigation, not a fetch() call : no Bearer token.
 // User identity comes from the signed `state` JWT set in oauthStart.
 //
 // On success/failure, redirect the popup to the SPA's /github/oauth/complete
@@ -66,7 +66,7 @@ export async function oauthCallback(req, res) {
   }
 
   if (!code || !state) {
-    const msg = "Missing code or state — please try again.";
+    const msg = "Missing code or state : please try again.";
     return res.send(`
       <!DOCTYPE html>
       <html>

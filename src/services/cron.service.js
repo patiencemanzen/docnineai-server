@@ -1,16 +1,16 @@
 // ===================================================================
-// Cron service — all scheduled billing jobs.
+// Cron service : all scheduled billing jobs.
 //
 // Initialise once from dev.js / server.js after DB connects.
 // Jobs run daily at 00:00 UTC.
 //
 // Job list:
-//   check_trial_expiry         — send reminders, downgrade expired trials
-//   check_subscription_renewals — charge renewals due today
-//   process_dunning            — retry failed payments, escalate emails
-//   process_scheduled_downgrades — apply pending plan changes
-//   reset_ai_usage             — reset AI chat counters
-//   flag_expiring_cards        — warn on card expiry next month
+//   check_trial_expiry         : send reminders, downgrade expired trials
+//   check_subscription_renewals : charge renewals due today
+//   process_dunning            : retry failed payments, escalate emails
+//   process_scheduled_downgrades : apply pending plan changes
+//   reset_ai_usage             : reset AI chat counters
+//   flag_expiring_cards        : warn on card expiry next month
 // ===================================================================
 
 import cron from "node-cron";
@@ -34,7 +34,7 @@ let _started = false;
 
 /**
  * Start all billing cron jobs.
- * Safe to call multiple times — only initialises once.
+ * Safe to call multiple times : only initialises once.
  */
 export function startBillingCron() {
   if (_started) return;

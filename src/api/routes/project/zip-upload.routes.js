@@ -1,8 +1,8 @@
 // =============================================================
 // ZIP Upload Routes
 //
-// POST   /projects/zip/upload     — create project from ZIP
-// POST   /projects/zip/validate   — validate ZIP without creating
+// POST   /projects/zip/upload     : create project from ZIP
+// POST   /projects/zip/validate   : validate ZIP without creating
 // =============================================================
 
 import { Router } from "express";

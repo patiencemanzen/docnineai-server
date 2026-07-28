@@ -1,16 +1,16 @@
 // ===================================================================
-// Job Registry — in-memory job store + Redis persistence layer.
+// Job Registry : in-memory job store + Redis persistence layer.
 //
 // Architecture:
 //   jobs Map    = per-instance cache for fast synchronous SSE delivery.
-//   streams Map = active SSE connections — in-memory always (non-transferable).
+//   streams Map = active SSE connections : in-memory always (non-transferable).
 //   Redis       = cross-instance source of truth.  Survives cold starts and
 //                 is visible to every Vercel instance serving the same app.
 //
 // Redis data model (all keys TTL'd to 24 h):
 //   job:{id}         Hash  { status, startTime, lastHeartbeat, vercelTimeout, resultJson }
-//   job:{id}:events  List  [ ...JSON strings ]  — append-only event stream
-//   vercel-timeouts  Set   { jobId, … }          — timeout registry
+//   job:{id}:events  List  [ ...JSON strings ]  : append-only event stream
+//   vercel-timeouts  Set   { jobId, … }          : timeout registry
 //
 // Graceful degradation:
 //   If redis is not set (or Redis is down), all Redis ops are no-ops
@@ -20,7 +20,7 @@
 import { getRedis, isRedisAvailable } from "../config/redis.js";
 
 // ── Key helpers ───────────────────────────────────────────────
-const JOB_TTL = 86_400; // seconds — 24 h auto-expiry on all job keys
+const JOB_TTL = 86_400; // seconds : 24 h auto-expiry on all job keys
 
 const K = {
   job: (id) => `job:${id}`,
@@ -31,13 +31,13 @@ const K = {
 // ── In-memory stores ──────────────────────────────────────────
 
 /**
- * jobs Map — jobId → { status, events[], result, startTime, lastHeartbeat, vercelTimeout }
+ * jobs Map : jobId → { status, events[], result, startTime, lastHeartbeat, vercelTimeout }
  * Per-instance cache. Redis is the authoritative cross-instance store.
  */
 export const jobs = new Map();
 
 /**
- * streams Map — jobId → Set<express.Response>
+ * streams Map : jobId → Set<express.Response>
  * Active SSE client connections. Cannot be stored outside this process.
  */
 export const streams = new Map();
@@ -110,7 +110,7 @@ export function pushEvent(jobId, event) {
   job.events.push(event);
   job.lastHeartbeat = Date.now();
 
-  // Synchronous SSE delivery — must not await anything here.
+  // Synchronous SSE delivery : must not await anything here.
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of streams.get(jobId) || new Set()) {
     try {
@@ -190,7 +190,7 @@ export function failJob(jobId, err) {
 
 /**
  * Mark a job as Vercel-timed-out. The pipeline may still be running in
- * another invocation — don't set status=error yet. Notify and close SSE clients.
+ * another invocation : don't set status=error yet. Notify and close SSE clients.
  */
 export function flagVercelTimeout(jobId) {
   const job = jobs.get(jobId);
@@ -248,7 +248,7 @@ export function recoverLostJob(
     lastHeartbeat: Date.now(),
     vercelTimeout: false,
   });
-  // No streams slot — any connecting client sees the buffered error immediately.
+  // No streams slot : any connecting client sees the buffered error immediately.
 }
 
 // ── Redis-backed recovery (async) ─────────────────────────────
@@ -264,7 +264,7 @@ export function recoverLostJob(
  * @returns {Promise<object|null>}
  */
 export async function hydrateJobFromRedis(jobId) {
-  if (jobs.has(jobId)) return jobs.get(jobId); // local cache hit — no-op
+  if (jobs.has(jobId)) return jobs.get(jobId); // local cache hit : no-op
 
   if (!isRedisAvailable()) return null;
 
@@ -327,7 +327,7 @@ export async function hydrateJobFromRedis(jobId) {
  * Used by streamProject after hydrateJobFromRedis returns null.
  *
  * @param {string}   jobId
- * @param {object[]} dbEvents — project.events from MongoDB
+ * @param {object[]} dbEvents : project.events from MongoDB
  * @returns {object}
  */
 export function hydrateJobFromDb(jobId, dbEvents = []) {

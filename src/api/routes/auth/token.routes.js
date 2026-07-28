@@ -37,7 +37,7 @@ export async function createTokenHandler(req, res) {
     return ok(
       res,
       result,
-      "Token created. Save it now — you won't see it again!",
+      "Token created. Save it now : you won't see it again!",
       201
     );
   } catch (err) {

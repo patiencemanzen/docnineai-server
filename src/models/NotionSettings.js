@@ -1,9 +1,9 @@
 // ===================================================================
 // Stores per-user Notion integration settings.
-// One document per user — upserted on connect.
+// One document per user : upserted on connect.
 //
 // Security: apiKey is AES-256-GCM encrypted before storage.
-// The decrypt() call happens in notion.service.js — never here.
+// The decrypt() call happens in notion.service.js : never here.
 // ===================================================================
 
 import mongoose from "mongoose";

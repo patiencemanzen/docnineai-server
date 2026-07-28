@@ -1,7 +1,7 @@
 // ===================================================================
-// Notification model — in-app notification feed for all users.
+// Notification model : in-app notification feed for all users.
 //
-// Notifications are fire-and-forget — they never block request flows.
+// Notifications are fire-and-forget : they never block request flows.
 // TTL index on expiresAt auto-deletes documents after 90 days.
 //
 // Priority levels (UI mapping):
@@ -16,7 +16,7 @@ import mongoose from "mongoose";
 const { Schema, model } = mongoose;
 
 // ── Notification type enum ────────────────────────────────────────
-// Extend here — never allow free-form strings.
+// Extend here : never allow free-form strings.
 
 export const NOTIFICATION_TYPES = [
   // Pipeline & Documentation
@@ -168,7 +168,7 @@ const NotificationSchema = new Schema(
 
 // ── Indexes ───────────────────────────────────────────────────────
 
-// Primary feed query — unread notifications for a user
+// Primary feed query : unread notifications for a user
 NotificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
 
 // Full feed query
@@ -180,7 +180,7 @@ NotificationSchema.index({ userId: 1, isArchived: 1, createdAt: -1 });
 // Project-scoped notifications
 NotificationSchema.index({ projectId: 1, createdAt: -1 });
 
-// TTL — MongoDB deletes documents past expiresAt automatically
+// TTL : MongoDB deletes documents past expiresAt automatically
 NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 // ── Duplicate-prevention compound index ──────────────────────────

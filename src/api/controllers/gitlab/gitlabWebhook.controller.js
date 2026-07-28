@@ -9,7 +9,7 @@
 //      We compare it against the project's webhookSecret.
 //
 //   2. Payload shape: GitLab push events have a different structure
-//      than GitHub — we normalise it to the same internal shape
+//      than GitHub : we normalise it to the same internal shape
 //      before passing to syncProject.
 //
 // GitLab push event reference:

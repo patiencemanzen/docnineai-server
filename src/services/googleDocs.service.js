@@ -2,9 +2,9 @@
 // Google Docs export service.
 //
 // Flow:
-//  1. getGoogleDocsOAuthUrl(userId) — generate consent URL
-//  2. handleGoogleDocsCallback(code, userId) — exchange code → store tokens
-//  3. exportToGoogleDocs({ output, meta, ... , userId }) — create Doc
+//  1. getGoogleDocsOAuthUrl(userId) : generate consent URL
+//  2. handleGoogleDocsCallback(code, userId) : exchange code → store tokens
+//  3. exportToGoogleDocs({ output, meta, ... , userId }) : create Doc
 //
 // Required env vars:
 //   GOOGLE_DOCS_CLIENT_ID
@@ -197,12 +197,12 @@ function buildDocRequests(output, meta) {
   let sections = [];
 
   if (Array.isArray(output?.tabs) && output.tabs.length > 0) {
-    // Frontend ExportDocumentData format — use as-is (already cleaned by frontend)
+    // Frontend ExportDocumentData format : use as-is (already cleaned by frontend)
     sections = output.tabs
       .filter((t) => t.content && t.content.trim())
       .map((t) => ({ title: t.label, content: t.content }));
   } else {
-    // Project effectiveOutput format — map to correct field names
+    // Project effectiveOutput format : map to correct field names
     const EFFECTIVE_OUTPUT_SECTIONS = [
       { key: "readme",         title: "README" },
       { key: "apiReference",   title: "API Reference" },
@@ -278,7 +278,7 @@ export async function exportToGoogleDocs({
   const drive = google.drive({ version: "v3", auth });
 
   const repoName = meta?.name || "Untitled Documentation";
-  const docTitle = `${repoName} — Docnine Documentation`;
+  const docTitle = `${repoName} : Docnine Documentation`;
 
   // 1. Create an empty Google Doc
   const { data: created } = await docs.documents.create({

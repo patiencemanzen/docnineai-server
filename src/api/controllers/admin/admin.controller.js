@@ -1,5 +1,5 @@
 // ===================================================================
-// Admin controller — super-admin only endpoints.
+// Admin controller : super-admin only endpoints.
 // All routes protected by protect + requireRole('super-admin').
 // ===================================================================
 

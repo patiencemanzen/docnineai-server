@@ -79,7 +79,7 @@ export async function pollCliSession(sessionId) {
 
   const plan = await getUserPlan(session.userId);
 
-  // Capture token before clearing it — one-time retrieval prevents any future
+  // Capture token before clearing it : one-time retrieval prevents any future
   // poll (even with the correct sessionId) from re-fetching the token.
   const token = session.cliToken;
   session.status = "expired";

@@ -1,5 +1,5 @@
 // ===================================================================
-// Plans — single source of truth for every pricing tier.
+// Plans : single source of truth for every pricing tier.
 //
 // NEVER store pricing logic in the database. The DB stores which plan
 // a subscription is on (id string). This file owns all rules.
@@ -40,7 +40,7 @@
 
 export const PLAN_IDS = ["free", "starter", "pro", "team"];
 
-// Hierarchy level — higher = more powerful
+// Hierarchy level : higher = more powerful
 export const PLAN_LEVEL = { free: 0, starter: 1, pro: 2, team: 3 };
 export const TRIAL_DAYS = 7; // trial length for new users (who have never had a subscription before)
 export const DUNNING_MAX_DAYS = 10; // after this, consider subscription lost and stop retrying

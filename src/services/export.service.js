@@ -1,5 +1,5 @@
 // ==============================================================
-// Export Service — PDF & Notion
+// Export Service : PDF & Notion
 //
 // IMPORTANT: pdfkit and @notionhq/client are loaded with dynamic
 // import() inside each function, not at the top of the file.
@@ -12,7 +12,7 @@
 // ── PDF Export ────────────────────────────────────────────────
 // Streams a multi-section PDF directly to an Express response.
 export async function exportToPDF(res, { meta, output, stats, securityScore }) {
-  // Dynamic import — throws a clear error if pdfkit is not installed
+  // Dynamic import : throws a clear error if pdfkit is not installed
   let PDFDocument;
   try {
     ({ default: PDFDocument } = await import("pdfkit"));
@@ -115,7 +115,7 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
     // ── Sections ─────────────────────────────────────────────────
   // Accept both ExportDocumentData (tabs array) and effectiveOutput formats.
   if (Array.isArray(output?.tabs) && output.tabs.length > 0) {
-    // Frontend ExportDocumentData format — iterate all exported tabs
+    // Frontend ExportDocumentData format : iterate all exported tabs
     for (const tab of output.tabs) {
       if (!tab.content?.trim()) continue;
       heading1(tab.label);
@@ -174,7 +174,7 @@ export async function exportToNotion({
   apiKey,
   parentPageId,
 }) {
-  // Dynamic import — throws a clear error if @notionhq/client is not installed
+  // Dynamic import : throws a clear error if @notionhq/client is not installed
   let NotionClient;
   try {
     ({ Client: NotionClient } = await import("@notionhq/client"));
@@ -196,7 +196,7 @@ export async function exportToNotion({
     properties: {
       title: {
         title: [
-          { text: { content: `📄 ${meta.name || "Project"} — Documentation` } },
+          { text: { content: `📄 ${meta.name || "Project"} : Documentation` } },
         ],
       },
     },

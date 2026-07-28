@@ -535,7 +535,7 @@ function flattenPostmanItems(items, folderName = "") {
 /**
  * Parse a raw spec string (JSON or YAML) into the normalised shape.
  *
- * @param {string} text — raw spec content
+ * @param {string} text : raw spec content
  * @returns {{ specVersion, info, servers, tags, endpoints, schemas, securitySchemes }}
  */
 export function parseSpec(text) {

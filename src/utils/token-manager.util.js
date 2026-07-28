@@ -49,7 +49,7 @@ export function formatBatch(chunks) {
   return chunks.map((c, i) => `[CHUNK ${i + 1}]\n${c}`).join("\n\n---\n\n");
 }
 
-// File relevance scoring — prioritise important files
+// File relevance scoring : prioritise important files
 const HIGH_PRIORITY = [
   /package\.json$/,
   /requirements\.txt$/,

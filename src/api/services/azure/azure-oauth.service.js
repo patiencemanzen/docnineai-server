@@ -50,13 +50,13 @@ export function buildOAuthUrl(userId) {
   // then register that same URL in https://app.vsaex.visualstudio.com/app/register.
   if (REDIRECT_URI?.includes("localhost")) {
     console.warn(
-      "[Azure OAuth] AZURE_DEVOPS_REDIRECT_URI is a localhost URL — Azure DevOps " +
+      "[Azure OAuth] AZURE_DEVOPS_REDIRECT_URI is a localhost URL : Azure DevOps " +
         "OAuth will reject this with 400. Use a public URL (ngrok, deployed server, etc.).",
     );
   }
 
-  // vso.code  — read source code, commits, branches
-  // vso.project — list projects (required by /_apis/projects used in repo listing)
+  // vso.code  : read source code, commits, branches
+  // vso.project : list projects (required by /_apis/projects used in repo listing)
   const scope = "vso.code vso.project";
 
   console.log("[Azure OAuth] Building authorization URL", {
@@ -68,7 +68,7 @@ export function buildOAuthUrl(userId) {
   // Azure DevOps OAuth2 authorization request
   // Azure DevOps uses response_type=Assertion (not "code").
   // Note: scope is appended separately with encodeURIComponent so spaces become
-  // %20 — Azure DevOps rejects the + encoding that URLSearchParams produces.
+  // %20 : Azure DevOps rejects the + encoding that URLSearchParams produces.
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     response_type: "Assertion",

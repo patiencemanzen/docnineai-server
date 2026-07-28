@@ -1,5 +1,5 @@
 // ===================================================================
-// Admin routes — all protected by protect + requireRole('super-admin')
+// Admin routes : all protected by protect + requireRole('super-admin')
 // ===================================================================
 
 import { Router } from "express";

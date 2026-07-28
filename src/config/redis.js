@@ -1,12 +1,12 @@
 // ===================================================================
-// Redis client — singleton with graceful degradation.
+// Redis client : singleton with graceful degradation.
 //
 // If REDIS_URL is not set, all operations are no-ops and the
 // application falls back to pure in-memory behavior (dev / local).
 //
 // Recommended providers:
-//   Upstash Redis — https://upstash.com  (set REDIS_URL=rediss://...)
-//   Redis Cloud   — https://redis.com
+//   Upstash Redis : https://upstash.com  (set REDIS_URL=rediss://...)
+//   Redis Cloud   : https://redis.com
 // ===================================================================
 
 import Redis from "ioredis";
@@ -25,7 +25,7 @@ if (process.env.REDIS_URL) {
     _client = new Redis(redisUrl, {
       // Fail commands quickly so a Redis hiccup never stalls a pipeline.
       maxRetriesPerRequest: 1,
-      // Don't wait for the "ready" probe on startup — commands will
+      // Don't wait for the "ready" probe on startup : commands will
       // queue internally until the connection resolves.
       enableReadyCheck: false,
       // Vercel serverless: connections are short-lived, keep timeouts tight.
@@ -48,7 +48,7 @@ if (process.env.REDIS_URL) {
     });
 
     _client.on("error", (err) => {
-      // Non-fatal — log once per class of error, don't flood logs.
+      // Non-fatal : log once per class of error, don't flood logs.
       if (!_client._lastErrCode || _client._lastErrCode !== err.code) {
         console.warn("[redis] Connection error (non-fatal):", err.message);
         _client._lastErrCode = err.code;
@@ -69,7 +69,7 @@ if (process.env.REDIS_URL) {
   }
 } else {
   console.log(
-    "[redis] redis not set — running in-memory only (set REDIS_URL to enable cross-instance job state)",
+    "[redis] redis not set : running in-memory only (set REDIS_URL to enable cross-instance job state)",
   );
 }
 

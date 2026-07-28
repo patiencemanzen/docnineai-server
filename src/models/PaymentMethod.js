@@ -1,5 +1,5 @@
 // ===================================================================
-// PaymentMethod — saved payment methods per user.
+// PaymentMethod : saved payment methods per user.
 //
 // Security:
 //   • Docnine NEVER stores raw card numbers, CVVs, or PINs.
@@ -62,7 +62,7 @@ const PaymentMethodSchema = new Schema(
 
     // ── Flutterwave opaque charge token ───────────────────────
     // Used to re-charge without the user re-entering details.
-    // select:false — NEVER returned in API responses.
+    // select:false : NEVER returned in API responses.
     flutterwaveToken: {
       type: String,
       required: true,

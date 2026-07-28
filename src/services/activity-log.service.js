@@ -1,7 +1,7 @@
 /**
  * ActivityLogService
  *
- * All writes are fire-and-forget via setImmediate — callers never await this
+ * All writes are fire-and-forget via setImmediate : callers never await this
  * service, so a failure here never blocks a request or crashes a pipeline.
  *
  * Pipeline agent events are batched in-memory per jobId, then flushed as a
@@ -65,7 +65,7 @@ async function _write(opts) {
       userAgent,
     });
   } catch (err) {
-    // Never propagate — logging must never disrupt business logic
+    // Never propagate : logging must never disrupt business logic
     console.error("[ActivityLog] write error:", err?.message ?? err);
   }
 }

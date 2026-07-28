@@ -35,7 +35,7 @@ function domainError(msg, code, status = 400) {
   return e;
 }
 
-/** Any access level (owner, editor, viewer) — just needs to be a member */
+/** Any access level (owner, editor, viewer) : just needs to be a member */
 async function assertReadAccess(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);

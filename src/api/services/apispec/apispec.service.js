@@ -19,7 +19,7 @@ function isPrivateUrl(urlString) {
   try {
     parsed = new URL(urlString);
   } catch {
-    return true; // unparseable — reject
+    return true; // unparseable : reject
   }
   const h = parsed.hostname.toLowerCase().replace(/^\[|]$/g, ""); // strip IPv6 brackets
   return (

@@ -26,7 +26,7 @@ const apiTokenSchema = new mongoose.Schema(
       trim: true,
       maxlength: 500,
     },
-    // Never store plain token — only hash
+    // Never store plain token : only hash
     tokenHash: {
       type: String,
       required: true,

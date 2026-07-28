@@ -1,21 +1,21 @@
 // ===================================================================
-// Billing routes — mounted at /billing in the main router.
+// Billing routes : mounted at /billing in the main router.
 //
 // Route map:
-//   GET  /billing/plans                    — public plan list
-//   GET  /billing/subscription             — current user's subscription + usage
-//   POST /billing/checkout                 — start trial or get payment link
-//   POST /billing/verify-payment           — verify FW payment after redirect
-//   POST /billing/change-plan              — upgrade / downgrade
-//   POST /billing/cancel                   — cancel at period end
-//   POST /billing/pause                    — pause subscription
-//   POST /billing/seats                    — add extra seats (Pro/Team)
-//   GET  /billing/payment-methods          — list saved payment methods
-//   DELETE /billing/payment-methods/:id    — remove payment method
-//   PATCH  /billing/payment-methods/:id/default — set default
-//   GET  /billing/history                  — paginated invoice list
-//   GET  /billing/invoices/:id/pdf         — download invoice PDF
-//   PATCH /billing/invoices/:id/details    — update company/VAT on invoice
+//   GET  /billing/plans                    : public plan list
+//   GET  /billing/subscription             : current user's subscription + usage
+//   POST /billing/checkout                 : start trial or get payment link
+//   POST /billing/verify-payment           : verify FW payment after redirect
+//   POST /billing/change-plan              : upgrade / downgrade
+//   POST /billing/cancel                   : cancel at period end
+//   POST /billing/pause                    : pause subscription
+//   POST /billing/seats                    : add extra seats (Pro/Team)
+//   GET  /billing/payment-methods          : list saved payment methods
+//   DELETE /billing/payment-methods/:id    : remove payment method
+//   PATCH  /billing/payment-methods/:id/default : set default
+//   GET  /billing/history                  : paginated invoice list
+//   GET  /billing/invoices/:id/pdf         : download invoice PDF
+//   PATCH /billing/invoices/:id/details    : update company/VAT on invoice
 // ===================================================================
 
 import { Router } from "express";
@@ -49,7 +49,7 @@ router.patch(
 );
 
 router.get("/history", wrap(ctrl.getBillingHistoryHandler));
-router.get("/invoices/:id/pdf", ctrl.downloadInvoicePdf); // not wrapped — streams binary
+router.get("/invoices/:id/pdf", ctrl.downloadInvoicePdf); // not wrapped : streams binary
 router.patch("/invoices/:id/details", wrap(ctrl.updateInvoiceDetails));
 
 export default router;

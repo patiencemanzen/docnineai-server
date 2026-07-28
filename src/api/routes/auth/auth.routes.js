@@ -1,5 +1,5 @@
 // ===================================================================
-// Auth router — mounted at /auth in server.js
+// Auth router : mounted at /auth in server.js
 //
 // Middleware chain per route:
 //   [rateLimiter?] → [validation rules] → validate → controller
@@ -68,7 +68,7 @@ router.post(
   wrap(ctrl.resetPassword),
 );
 
-// Uses httpOnly refresh token cookie — no Bearer token needed
+// Uses httpOnly refresh token cookie : no Bearer token needed
 router.post("/refresh", refreshLimiter, wrap(ctrl.refresh));
 
 // CLI login flow (browser-assisted, cookie-based approval)
@@ -77,23 +77,23 @@ router.get("/cli/poll/:sessionId", cliPollLimiter, wrap(ctrl.cliPoll));
 router.post("/cli/approve", wrap(ctrl.cliApprove));
 router.post("/cli/cancel", cliPollLimiter, wrap(ctrl.cliCancel));
 
-// ── OAuth — Social Login (GitHub) ─────────────────────────────
+// ── OAuth : Social Login (GitHub) ─────────────────────────────
 // The callbacks use redirect so they must NOT be JSON-wrapped.
 router.get("/github/start", ctrl.githubLoginStart);
 router.get("/github/callback", wrap(ctrl.githubLoginCallback));
 
-// ── OAuth — Popup flows for provider connection (GitHub, GitLab, Bitbucket, Azure) ─
+// ── OAuth : Popup flows for provider connection (GitHub, GitLab, Bitbucket, Azure) ─
 // These serve an HTML page that initiates OAuth flow in a popup window
 router.get("/github", ctrl.githubPopup);
 router.get("/gitlab", ctrl.gitlabPopup);
 router.get("/bitbucket", ctrl.bitbucketPopup);
 router.get("/azure", ctrl.azurePopup);
 
-// ── OAuth — Social Login (Google) ────────────────────────────
+// ── OAuth : Social Login (Google) ────────────────────────────
 router.get("/google/start", ctrl.googleLoginStart);
 router.get("/google/callback", wrap(ctrl.googleLoginCallback));
 
-// ── OAuth — Google Docs export ────────────────────────────────
+// ── OAuth : Google Docs export ────────────────────────────────
 router.get("/google-docs/callback", wrap(ctrl.googleDocsCallback));
 router.get("/google-docs/status", protect, wrap(ctrl.googleDocsStatusForUser));
 router.get("/google-docs/start", protect, wrap(ctrl.googleDocsStart));

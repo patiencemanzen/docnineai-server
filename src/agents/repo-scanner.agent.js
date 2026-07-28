@@ -20,13 +20,13 @@ Your entire response must start with [ and end with ].
 ## SCHEMA (every object must follow this exactly)
 [
   {
-    "path": string,               // Exact file path as provided — do not modify
+    "path": string,               // Exact file path as provided : do not modify
     "role": string,               // One role from the allowed list below
     "layer": string,              // One of: frontend | backend | shared | infrastructure | database | test | other
     "language": string,           // Detected language: typescript | javascript | python | go | rust | java | ruby | php | css | html | json | yaml | other
     "importance": string,         // "critical" | "high" | "medium" | "low"
-    "summary": string,            // One sentence: what this file does — be specific, no generic phrases
-    "exports": string[],          // Top-level exports detected from snippet — [] if none visible
+    "summary": string,            // One sentence: what this file does : be specific, no generic phrases
+    "exports": string[],          // Top-level exports detected from snippet : [] if none visible
     "flags": string[]             // Notable flags from: "has_auth" | "has_db" | "has_side_effects" | "has_env_usage" | "has_error_handling" | "is_entry_point" | "is_barrel" | "is_deprecated" | "has_todos" | "has_hardcoded_values"
   }
 ]
@@ -34,15 +34,15 @@ Your entire response must start with [ and end with ].
 ## ALLOWED ROLES
 | Role         | When to use |
 |--------------|-------------|
-| entry        | Application entry point — main.ts, index.js, app.py, server.go, wsgi.py |
+| entry        | Application entry point : main.ts, index.js, app.py, server.go, wsgi.py |
 | controller   | Handles HTTP request/response cycle, delegates to services |
-| route        | Defines URL routing — may overlap with controller in some frameworks |
+| route        | Defines URL routing : may overlap with controller in some frameworks |
 | service      | Contains business logic, called by controllers or other services |
 | model        | Data model class or interface definition |
 | schema       | Validation schema or serializer (Zod, Joi, Yup, Pydantic, Marshmallow) |
 | middleware   | Request/response pipeline function (auth, logging, rate limiting) |
 | utility      | Pure helper functions with no side effects or framework coupling |
-| helper       | Impure helpers — may have dependencies but not a full service |
+| helper       | Impure helpers : may have dependencies but not a full service |
 | config       | App configuration, environment loading, constants |
 | migration    | Database migration file |
 | seed         | Database seed or fixture file |
@@ -60,17 +60,17 @@ Your entire response must start with [ and end with ].
 | other        | Doesn't fit any role above |
 
 ## CLASSIFICATION RULES
-1. Assign the MOST SPECIFIC role available — never use "other" if a more specific role fits.
+1. Assign the MOST SPECIFIC role available : never use "other" if a more specific role fits.
 2. For "importance":
    - critical = entry points, auth middleware, core services called by many others
    - high = controllers, models, primary services
    - medium = utilities, configs, helpers, hooks
    - low = tests, migrations, seeds, barrel files, generated files
 3. For "summary", be specific: "Defines the User Prisma model with fields for auth and profile data" is correct. "User model file" is not acceptable.
-4. For "exports", extract named or default export identifiers visible in the snippet — do not fabricate.
-5. For "flags", only set flags you can actually observe in the snippet — do not guess.
-6. If you cannot determine a value confidently, use "unknown" for strings and [] for arrays — never fabricate.
-7. Always return one object per file — even if the snippet is minimal.
+4. For "exports", extract named or default export identifiers visible in the snippet : do not fabricate.
+5. For "flags", only set flags you can actually observe in the snippet : do not guess.
+6. If you cannot determine a value confidently, use "unknown" for strings and [] for arrays : never fabricate.
+7. Always return one object per file : even if the snippet is minimal.
 
 ## FRAMEWORK HINTS
 - NestJS: @Controller(), @Injectable(), @Module(), @Guard() → use controller/service/guard/interceptor
@@ -95,7 +95,7 @@ Your entire response must start with [ and end with ].
 // ─── Constants ────────────────────────────────────────────────────
 
 const BATCH_SIZE = 10; // files per LLM call
-const SNIPPET_SIZE = 1200; // chars per file — richer context since fewer ambiguous files go to LLM
+const SNIPPET_SIZE = 1200; // chars per file : richer context since fewer ambiguous files go to LLM
 const MAX_FILES = 200; // hard cap before filtering
 const MAX_RETRIES = 2;
 
@@ -328,7 +328,7 @@ function heuristicClassify(file) {
     summary: "", // heuristic can't write a meaningful summary
     exports: [],
     flags,
-    _heuristic: true, // internal marker — stripped before returning
+    _heuristic: true, // internal marker : stripped before returning
   };
 }
 
@@ -624,7 +624,7 @@ function detectTechStack(files) {
 }
 
 /**
- * Detect testing frameworks separately — useful for the report.
+ * Detect testing frameworks separately : useful for the report.
  */
 function detectTestFrameworks(files) {
   const combined = files
@@ -766,7 +766,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
   notify(`Classifying ${relevant.length} files…`, "Running heuristic pre-filter…");
 
   // ── 2. Classification ─────────────────────────────────────────
-  // fastMode (Vercel): use pure heuristics — zero LLM calls, completes in < 100ms.
+  // fastMode (Vercel): use pure heuristics : zero LLM calls, completes in < 100ms.
   // The heuristic engine is comprehensive enough to correctly route all downstream
   // agents for any standard project layout.
   //
@@ -778,7 +778,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
   if (fastMode) {
     notify(
       `Classifying ${relevant.length} files via heuristics…`,
-      "Fast mode — LLM skipped to fit within Vercel timeout budget",
+      "Fast mode : LLM skipped to fit within Vercel timeout budget",
     );
     for (const f of relevant) {
       const r = heuristicClassify(f);
@@ -798,7 +798,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
     if (ambiguous.length === 0) {
       notify(
         `All ${relevant.length} files classified via heuristics`,
-        "No ambiguous files — LLM not needed",
+        "No ambiguous files : LLM not needed",
       );
     } else {
       notify(
@@ -844,7 +844,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
 
           if (!Array.isArray(parsed)) {
             batchErrors.push({ batch: batchNum, error: "Response was not a JSON array" });
-            // Heuristic classification already in classifiedMap — nothing to do
+            // Heuristic classification already in classifiedMap : nothing to do
             continue;
           }
 
@@ -864,7 +864,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
           }
         } catch (err) {
           batchErrors.push({ batch: batchNum, error: err.message });
-          // Heuristic classification already in classifiedMap — graceful degradation
+          // Heuristic classification already in classifiedMap : graceful degradation
         }
       }
     }

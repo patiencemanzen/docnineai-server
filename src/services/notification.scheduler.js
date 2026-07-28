@@ -20,14 +20,14 @@ let _started = false;
 
 /**
  * Start all notification cron jobs.
- * Safe to call multiple times — only initialises once.
+ * Safe to call multiple times : only initialises once.
  */
 export function startNotificationScheduler() {
   if (_started) return;
   _started = true;
   console.log("-- Notification scheduler starting…");
 
-  // Daily at 09:00 UTC — friendly morning delivery
+  // Daily at 09:00 UTC : friendly morning delivery
   cron.schedule("0 9 * * *", runNotificationJobs, { timezone: "UTC" });
 
   console.log("-- Notification scheduler registered (daily @ 09:00 UTC)");
@@ -138,7 +138,7 @@ async function runPlanLimitAlerts() {
       if (!plan) continue;
 
       const limit = plan.limits?.projects;
-      if (!limit || limit === null) continue; // unlimited plan — skip
+      if (!limit || limit === null) continue; // unlimited plan : skip
 
       const percent = (usage.projectCount / limit) * 100;
 

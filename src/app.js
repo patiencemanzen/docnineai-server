@@ -13,7 +13,7 @@ import { startNotificationScheduler } from "./services/notification.scheduler.js
 const app = express();
 
 // ── Trust proxy ────────────────────────────
-// Required on Vercel — without this, express-rate-limit throws
+// Required on Vercel : without this, express-rate-limit throws
 // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR because Vercel's edge injects
 // X-Forwarded-For but Express "trust proxy" is false by default.
 // Setting to 1 means trust the first hop (eg: Vercel's edge proxy).
@@ -51,7 +51,7 @@ async function initOnce() {
 
   await connectDB();
 
-  // Best-effort recovery — don't block the request if it fails
+  // Best-effort recovery : don't block the request if it fails
   await recoverOrphanedJobs();
 
   // Load optional services (webhook, chat, export, etc)
@@ -95,7 +95,7 @@ app.use(
   cors({
     origin: (incomingOrigin, callback) => {
       // Requests without an Origin header (curl, Postman, server-to-server webhooks)
-      // are allowed — but only for non-credentialed paths. Express CORS middleware
+      // are allowed : but only for non-credentialed paths. Express CORS middleware
       // will NOT set credentials:true when origin is not reflected, so cookies are
       // still protected. Auth routes that require cookie handling always have an Origin.
       if (!incomingOrigin) return callback(null, true);
@@ -116,12 +116,12 @@ app.use(
 
 // ── Body parsing ───────────────────────────
 
-// Webhook routes need the raw Buffer for signature verification —
+// Webhook routes need the raw Buffer for signature verification :
 // must be registered BEFORE express.json() consumes the body.
 // The /webhook/github prefix covers both GitHub and Flutterwave webhooks,
 app.use("/webhook/github", express.raw({ type: "*/*", limit: "10mb" }));
 
-// Slack commands come as form-encoded, not JSON — use urlencoded parser.
+// Slack commands come as form-encoded, not JSON : use urlencoded parser.
 // Both parsers capture rawBody so Slack signature verification works.
 // This must come BEFORE the JSON parser to avoid stream consumption issues.
 app.use(

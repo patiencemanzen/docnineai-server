@@ -1,12 +1,12 @@
 // ===================================================================
-// User model — stores all auth-related state.
+// User model : stores all auth-related state.
 //
 // Security notes:
-//   • password     — bcrypt hashed (NEVER stored in plain text)
-//   • refreshTokenHash — SHA-256 hash of the refresh JWT
+//   • password     : bcrypt hashed (NEVER stored in plain text)
+//   • refreshTokenHash : SHA-256 hash of the refresh JWT
 //                        (raw token lives in httpOnly cookie only)
-//   • emailVerificationToken — SHA-256 hash of the raw token sent in email
-//   • passwordResetToken     — SHA-256 hash of the raw token sent in email
+//   • emailVerificationToken : SHA-256 hash of the raw token sent in email
+//   • passwordResetToken     : SHA-256 hash of the raw token sent in email
 //   All *Token fields store hashes. Raw values are only in transit.
 // ===================================================================
 
@@ -71,7 +71,7 @@ const UserSchema = new Schema(
     },
 
     // ── Session management ────────────────────────────────────
-    // Hash of the current refresh JWT — allows server-side invalidation.
+    // Hash of the current refresh JWT : allows server-side invalidation.
     // Set to null on logout. One active session per user.
     refreshTokenHash: {
       type: String,
@@ -189,7 +189,7 @@ const UserSchema = new Schema(
   },
 );
 
-// ── Pre-save validation — password required for email provider ──
+// ── Pre-save validation : password required for email provider ──
 UserSchema.pre("validate", function (next) {
   if (this.provider === "email" && this.isNew && !this.password) {
     this.invalidate("password", "Password is required for email sign-up");
@@ -197,23 +197,23 @@ UserSchema.pre("validate", function (next) {
   next();
 });
 
-// ── Pre-save hook — hash password if modified ─────────────────
+// ── Pre-save hook : hash password if modified ─────────────────
 UserSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
-// ── Instance method — compare candidate password ──────────────
+// ── Instance method : compare candidate password ──────────────
 UserSchema.methods.comparePassword = async function (candidate) {
   if (!this.password) {
-    // OAuth-only account — password login not allowed
+    // OAuth-only account : password login not allowed
     throw new Error("PASSWORD_LOGIN_NOT_AVAILABLE");
   }
   return bcrypt.compare(candidate, this.password);
 };
 
-// ── toJSON transform — strip internal fields from API responses ─
+// ── toJSON transform : strip internal fields from API responses ─
 UserSchema.set("toJSON", {
   transform(doc, ret) {
     delete ret.password;

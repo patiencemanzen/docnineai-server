@@ -59,7 +59,7 @@ export async function oauthCallback(req, res) {
 
   if (!code || !state) {
     console.error("[GitLab OAuth] Missing code or state");
-    const msg = "Missing code or state — please try again.";
+    const msg = "Missing code or state : please try again.";
     return res.send(`
       <!DOCTYPE html>
       <html>
@@ -193,7 +193,7 @@ export async function listRepos(req, res) {
     } catch (apiErr) {
       if (!isExpiredTokenError(apiErr)) throw apiErr;
 
-      console.log("[gitlab.controller] Token expired — attempting refresh", {
+      console.log("[gitlab.controller] Token expired : attempting refresh", {
         userId: req.user.userId,
       });
       try {

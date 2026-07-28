@@ -773,7 +773,7 @@ export class MCPController {
     try {
       const { projectId } = req.params;
 
-      // Only confirm the project exists — do not leak project name to unauthenticated callers.
+      // Only confirm the project exists : do not leak project name to unauthenticated callers.
       const exists = await Project.exists({ _id: projectId });
       if (!exists) {
         return res.status(404).json({ status: 'unhealthy', error: 'Project not found' });

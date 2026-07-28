@@ -63,7 +63,7 @@ export async function oauthCallback(req, res) {
 
   if (!code || !state) {
     console.error("[Azure OAuth] Missing code or state");
-    const msg = "Missing code or state — please try again.";
+    const msg = "Missing code or state : please try again.";
     return res.send(`
       <!DOCTYPE html>
       <html>

@@ -18,21 +18,21 @@
 //   error | done → running  (via retryProject or syncProject)
 //
 // Operations:
-//   createProject      — start full pipeline for a new repo
-//   retryProject       — re-run full pipeline on an existing project
-//   syncProject        — incremental or forced full re-run
-//   listProjects       — paginated project list with filtering/sorting
-//   getProjectById     — owner or shared-member access
-//   getProjectEvents   — SSE event log
-//   deleteProject      — owner-only hard delete
-//   updateProject      — archive or soft update
-//   editDocSection     — save user edit for one doc section
-//   revertDocSection   — restore latest AI content, clear user edit
-//   acceptAISection    — accept AI regeneration (clears stale flag)
-//   listVersions       — paginated version history
-//   getVersion         — single version with full content
-//   restoreVersion     — restore a historical version as current edit
-//   recoverOrphanedJobs — startup recovery for interrupted pipelines
+//   createProject      : start full pipeline for a new repo
+//   retryProject       : re-run full pipeline on an existing project
+//   syncProject        : incremental or forced full re-run
+//   listProjects       : paginated project list with filtering/sorting
+//   getProjectById     : owner or shared-member access
+//   getProjectEvents   : SSE event log
+//   deleteProject      : owner-only hard delete
+//   updateProject      : archive or soft update
+//   editDocSection     : save user edit for one doc section
+//   revertDocSection   : restore latest AI content, clear user edit
+//   acceptAISection    : accept AI regeneration (clears stale flag)
+//   listVersions       : paginated version history
+//   getVersion         : single version with full content
+//   restoreVersion     : restore a historical version as current edit
+//   recoverOrphanedJobs : startup recovery for interrupted pipelines
 // ===================================================================
 
 import { randomUUID, randomBytes, createHash } from "crypto";
@@ -59,7 +59,7 @@ import {
 } from "../../../adapters/provider.adapter.js";
 
 // ─── All known output sections ────────────────────────────────────
-// Superset of SECTIONS from the model — includes new sections added
+// Superset of SECTIONS from the model : includes new sections added
 // by the improved Doc Writer and Security Auditor.
 // The model's SECTIONS constant is the source of truth for validation;
 // this list is used for iteration in pipeline persistence.
@@ -69,10 +69,10 @@ const ALL_OUTPUT_SECTIONS = [
   "internalDocs",
   "apiReference",
   "schemaDocs",
-  "componentRef", // new — LLM-written component reference
-  "componentIndex", // new — static component index table
+  "componentRef", // new : LLM-written component reference
+  "componentIndex", // new : static component index table
   "securityReport",
-  "remediationReport", // new — prioritised remediation checklist
+  "remediationReport", // new : prioritised remediation checklist
 ];
 
 // ─── Lazy loaders ─────────────────────────────────────────────────
@@ -297,7 +297,7 @@ function makeProgressHandler(projectId, jobId) {
       lastCheckpointTime = Date.now();
     }
 
-    // Persist to DB — non-critical, swallow errors
+    // Persist to DB : non-critical, swallow errors
     try {
       await Project.updateOne(
         { _id: projectId },
@@ -311,7 +311,7 @@ function makeProgressHandler(projectId, jobId) {
         },
       );
     } catch {
-      /* non-critical — SSE still delivered via in-memory registry */
+      /* non-critical : SSE still delivered via in-memory registry */
     }
   };
 }
@@ -418,7 +418,7 @@ export async function recoverOrphanedJobs() {
     let recovered = 0;
 
     for (const p of orphans) {
-      // Skip if already registered — genuine in-flight pipeline
+      // Skip if already registered : genuine in-flight pipeline
       if (p.jobId && jobs.has(p.jobId)) {
         console.log(`[recovery] Job ${p.jobId} still in memory, not orphaned`);
         continue;
@@ -466,7 +466,7 @@ export async function recoverOrphanedJobs() {
 
 /**
  * Create a new project and start the full documentation pipeline.
- * Returns immediately with the project document — pipeline runs async.
+ * Returns immediately with the project document : pipeline runs async.
  */
 /**
  * Create a new documentation project for a GitHub/GitLab/Azure DevOps repository.
@@ -592,7 +592,7 @@ export async function createProject({ userId, repoUrl }) {
         console.warn("[createProject] GitHub token not found for user", {
           userId,
         });
-        // GitHub token is optional — public repos can be accessed without it
+        // GitHub token is optional : public repos can be accessed without it
         // but rate limits are much lower (60 req/hour vs 5000 req/hour with token)
         console.log("[createProject] Proceeding without GitHub token (rate limits will apply)");
       }
@@ -659,7 +659,7 @@ export async function createProject({ userId, repoUrl }) {
 
 /**
  * Create a blank "from scratch" project.
- * No repository, no pipeline — just an empty documentation project.
+ * No repository, no pipeline : just an empty documentation project.
  */
 export async function createFromScratchProject({ userId, projectName }) {
   if (!projectName || projectName.trim().length === 0) {
@@ -923,13 +923,13 @@ export async function updateProject({ projectId, userId, updates }) {
  *   - forceFullRun = true
  *   - Changed file count exceeds FULL_RUN_THRESHOLD
  *
- * Accessible to owner only — sync mutates project state.
+ * Accessible to owner only : sync mutates project state.
  *
  * @param {{ projectId, userId, forceFullRun, webhookChangedFiles }}
  * @returns {{ project, streamUrl }}
  */
 /**
- * Sync a project — check for new commits and re-document.
+ * Sync a project : check for new commits and re-document.
  * Logs the sync operation to changelog.
  */
 export async function syncProject({
@@ -982,7 +982,7 @@ export async function syncProject({
     console.warn("[changelog] Failed to log sync:", err.message);
   }
 
-  // Fire-and-forget — caller streams progress via SSE
+  // Fire-and-forget : caller streams progress via SSE
   runSync({ project, jobId, forceFullRun, webhookChangedFiles }).catch((err) =>
     console.error(`❌ Sync crash [${jobId}]:`, err.message),
   );
@@ -1106,7 +1106,7 @@ export async function revertDocSection({ projectId, userId, section }) {
 
 /**
  * Accept the new AI-generated content for a stale section.
- * Semantically identical to revertDocSection — clears the user edit
+ * Semantically identical to revertDocSection : clears the user edit
  * and the stale flag, making the AI version the active content.
  * Requires editor or owner access.
  */
@@ -1147,7 +1147,7 @@ export async function acceptAISection({ projectId, userId, section }) {
 // ─── Version History ──────────────────────────────────────────────
 
 /**
- * List version history for a section — newest first.
+ * List version history for a section : newest first.
  * Content is excluded from list results (too large); use getVersion for full content.
  * Accessible to owner and shared members (viewer+).
  */
@@ -1439,7 +1439,7 @@ async function runPipeline({ project, normalised, jobId }) {
   } catch (err) {
     // Detect Vercel timeout scenario
     if (err.message === "VERCEL_HTTP_TIMEOUT") {
-      console.warn(`[pipeline:${jobId}] Vercel 55s timeout — marking project as error (retryable).`);
+      console.warn(`[pipeline:${jobId}] Vercel 55s timeout : marking project as error (retryable).`);
       const { flagVercelTimeout } =
         await import("../../../services/job-registry.service.js");
       flagVercelTimeout(jobId);
@@ -1466,7 +1466,7 @@ async function runPipeline({ project, normalised, jobId }) {
       return;
     }
 
-    // Real error — mark as failed
+    // Real error : mark as failed
     console.error(`[pipeline:${jobId}] Fatal error:`, err);
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
@@ -1566,7 +1566,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     // ── Outcome: full run fallback ────────────────────────────
     if (syncResult.isFullRun) {
       console.log(
-        `[sync:${jobId}] Fell back to full run — applying full pipeline result`,
+        `[sync:${jobId}] Fell back to full run : applying full pipeline result`,
       );
       const result = syncResult._fullResult;
 
@@ -1613,7 +1613,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
     const { _update, ...syncMeta } = syncResult;
 
     if (!_update) {
-      // Shouldn't happen — guard against malformed sync result
+      // Shouldn't happen : guard against malformed sync result
       const errorMsg = "Sync returned no update payload";
       console.error(`[sync:${jobId}] ${errorMsg}`);
       await Project.findByIdAndUpdate(project._id, {
@@ -1715,7 +1715,7 @@ export async function runZipPipeline({ project, jobId }) {
       },
       branch: "main",
       commits: [],
-      files: extractedFiles, // Already [{path, content}] — no mapping needed
+      files: extractedFiles, // Already [{path, content}] : no mapping needed
       fileTree: buildFileTree(extractedFiles),
       fileManifest: extractedFiles.reduce((acc, f) => {
         acc[f.path] = {
@@ -1834,7 +1834,7 @@ export async function createCustomTab({
 }) {
   const project = await assertAccess(projectId, userId, "editor");
 
-  // Validate tab name — must be unique per project
+  // Validate tab name : must be unique per project
   if (!name || name.trim().length === 0) {
     throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
   }

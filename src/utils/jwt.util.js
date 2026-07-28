@@ -1,8 +1,8 @@
 // ===================================================================
 // Two-token strategy:
-//   Access token  — 2 days, signed with JWT_ACCESS_SECRET
+//   Access token  : 2 days, signed with JWT_ACCESS_SECRET
 //                   sent in response body, stored in memory by client
-//   Refresh token — 14 days, signed with JWT_REFRESH_SECRET
+//   Refresh token : 14 days, signed with JWT_REFRESH_SECRET
 //                   sent as httpOnly Secure cookie
 //                   hash stored in User.refreshTokenHash for revocation
 //
@@ -12,7 +12,7 @@
 // WHY lazy env reads (no module-level constants for secrets):
 //   In ESM, every `import` is resolved and evaluated BEFORE the calling
 //   module's body runs. This means dotenv.config() in server.js fires
-//   AFTER this module is evaluated — so module-level process.env reads
+//   AFTER this module is evaluated : so module-level process.env reads
 //   always see undefined for .env file values.
 //   Reading inside functions defers evaluation to call-time, after dotenv.
 // ===================================================================
@@ -118,7 +118,7 @@ export function getRefreshCookieOpts() {
 
 // ── Token denylist (server-side revocation) ───────────────────
 // Uses Redis when available. Falls back to no-ops when Redis is
-// not configured (graceful degradation — logout still clears the
+// not configured (graceful degradation : logout still clears the
 // client-side token; revocation just isn't enforced server-side).
 // WARNING: In production, set REDIS_URL so token revocation is enforced.
 
@@ -143,7 +143,7 @@ function tokenKey(token) {
 /**
  * Add a token to the server-side denylist. TTL is set to the token's
  * remaining lifetime so Redis expires the entry automatically.
- * @param {string} token — raw JWT access token
+ * @param {string} token : raw JWT access token
  */
 export async function denylistToken(token) {
   if (!isRedisAvailable()) return;
@@ -155,13 +155,13 @@ export async function denylistToken(token) {
       await getRedis().set(tokenKey(token), "1", "EX", ttlSeconds);
     }
   } catch {
-    // Non-fatal — Redis failure must never break the logout flow.
+    // Non-fatal : Redis failure must never break the logout flow.
   }
 }
 
 /**
  * Returns true if the token has been server-side revoked.
- * @param {string} token — raw JWT access token
+ * @param {string} token : raw JWT access token
  */
 export async function isTokenDenylisted(token) {
   if (!isRedisAvailable()) return false;

@@ -1,13 +1,13 @@
 // =============================================================
-// Portal service — business logic for the public docs portal.
+// Portal service : business logic for the public docs portal.
 //
 // Functions:
-//   getOrCreate(projectId, userId)      — load/init portal record
-//   getPortalForOwner(projectId, userId)— gate-checked read for owner
-//   updatePortal(projectId, userId, body) — gate-checked mutation
-//   togglePublish(projectId, userId)    — flip isPublished
-//   getPublicPortal(slug, password?)    — public read, content included
-//   verifyPortalPassword(slug, attempt) — check portal password
+//   getOrCreate(projectId, userId)      : load/init portal record
+//   getPortalForOwner(projectId, userId): gate-checked read for owner
+//   updatePortal(projectId, userId, body) : gate-checked mutation
+//   togglePublish(projectId, userId)    : flip isPublished
+//   getPublicPortal(slug, password?)    : public read, content included
+//   verifyPortalPassword(slug, attempt) : check portal password
 // =============================================================
 
 import bcrypt from "bcryptjs";
@@ -114,7 +114,7 @@ export async function getPortalForOwner(projectId, userId) {
 /**
  * Update portal settings.  Body fields accepted:
  *   branding, sections, seoTitle, seoDescription, customDomain,
- *   accessMode, password (raw — will be hashed)
+ *   accessMode, password (raw : will be hashed)
  */
 export async function updatePortal(projectId, userId, body) {
   await requireOwner(projectId, userId);
@@ -209,9 +209,9 @@ export async function togglePublish(projectId, userId) {
 }
 
 /**
- * Public read — returns portal metadata + published section content.
+ * Public read : returns portal metadata + published section content.
  * Throws if the portal is not found or not published.
- * Does NOT check the password here — password checking is separate.
+ * Does NOT check the password here : password checking is separate.
  */
 export async function getPublicPortal(slug) {
   const portal = await Portal.findOne({ slug });
@@ -245,7 +245,7 @@ export async function getPublicPortal(slug) {
   // Merge effective content
   const effectiveOutput = mergeOutput(project);
 
-  // Build content object — only non-internal sections
+  // Build content object : only non-internal sections
   const content = {};
   for (const key of SECTION_KEYS) {
     if (sectionVisMap[key] === "internal") continue;

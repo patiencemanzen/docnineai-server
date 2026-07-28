@@ -97,7 +97,7 @@ export async function createProject(req, res) {
       userId: req.user.userId,
       repoUrl: req.body.repoUrl,
     });
-    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    // checkProjectLimit already reserved the slot atomically : only increment for unlimited plans.
     if (!req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
     }
@@ -122,7 +122,7 @@ export async function createFromScratchProject(req, res) {
       userId: req.user.userId,
       projectName: req.body.projectName,
     });
-    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    // checkProjectLimit already reserved the slot atomically : only increment for unlimited plans.
     if (!req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
     }
@@ -327,7 +327,7 @@ export async function streamProject(req, res) {
       return res.end();
     }
 
-    // Project is "running" — try Redis first, then MongoDB events fallback.
+    // Project is "running" : try Redis first, then MongoDB events fallback.
     job = await hydrateJobFromRedis(jobId);
 
     if (!job && project.events?.length) {
@@ -335,7 +335,7 @@ export async function streamProject(req, res) {
     }
 
     if (!job) {
-      // No events anywhere — pipeline is dead (server restart / Vercel kill).
+      // No events anywhere : pipeline is dead (server restart / Vercel kill).
       const isLikelyVercelTimeout = project.meta?.vercelTimedOut === true;
       const message = isLikelyVercelTimeout
         ? "Pipeline was interrupted by Vercel's 60s HTTP timeout. It may still be running in the background. Please retry."

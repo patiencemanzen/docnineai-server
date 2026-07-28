@@ -18,7 +18,7 @@ export async function authenticateAPIToken(req, res, next) {
   const header = req.headers.authorization || "";
 
   if (!header.startsWith("Bearer ")) {
-    // No API token — fall back to session auth (if user is logged in)
+    // No API token : fall back to session auth (if user is logged in)
     if (req.user) {
       return next();
     }

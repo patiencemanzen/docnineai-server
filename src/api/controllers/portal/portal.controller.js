@@ -1,5 +1,5 @@
 // =============================================================
-// Portal controller — thin HTTP layer.
+// Portal controller : thin HTTP layer.
 // All business logic lives in portal.service.js.
 // =============================================================
 
@@ -70,10 +70,10 @@ export async function togglePublish(req, res) {
 /**
  * GET /portal/:slug
  * Returns portal metadata + published section content.
- * Password-protected portals return metadata only — the client must
+ * Password-protected portals return metadata only : the client must
  * call POST /portal/:slug/auth to get a session token, then re-fetch.
  *
- * Query param:  ?_pt=<token>  — portal password token (set by /auth endpoint)
+ * Query param:  ?_pt=<token>  : portal password token (set by /auth endpoint)
  * For simplicity in this implementation we use a query param approach:
  * the client sends the raw password in the body of the auth endpoint,
  * and on success we return a short-lived signed indicator.
@@ -89,7 +89,7 @@ export async function getPublicPortal(req, res) {
     if (data.portal.accessMode === "password") {
       const provided = req.headers["x-portal-password"] || req.query._pt;
       if (!provided) {
-        // Return portal metadata but no content — client shows password gate
+        // Return portal metadata but no content : client shows password gate
         return ok(res, {
           portal: data.portal,
           project: data.project,

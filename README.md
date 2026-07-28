@@ -1,6 +1,6 @@
 # Docnine API
 
-> **An AI-powered documentation tool for developers and Project Manager.** — SaaS platform with authentication, persistent projects, and live pipeline streaming.
+> **An AI-powered documentation tool for developers and Project Manager.** : SaaS platform with authentication, persistent projects, and live pipeline streaming.
 
 ![Node.js](https://img.shields.io/badge/Node.js-20+-green)
 ![MongoDB](https://img.shields.io/badge/MongoDB-8+-green)
@@ -58,8 +58,8 @@ server.js  ──  import "dotenv/config"  (first import, ESM race-free)
                            └── same orchestrator + jobRegistry
 ```
 
-**Shared SSE infrastructure** — `jobRegistry.js` is the single in-memory store for running jobs and SSE clients. Both `/projects/:id/stream` and `/api/stream/:jobId` use it.  
-**Event persistence** — every pipeline event is also written to `Project.events` in MongoDB (last 200 kept), so the stream can be replayed after a page refresh or server restart.
+**Shared SSE infrastructure** : `jobRegistry.js` is the single in-memory store for running jobs and SSE clients. Both `/projects/:id/stream` and `/api/stream/:jobId` use it.  
+**Event persistence** : every pipeline event is also written to `Project.events` in MongoDB (last 200 kept), so the stream can be replayed after a page refresh or server restart.
 
 ---
 
@@ -102,9 +102,9 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 - Security (OWASP audit, critical findings, security score)
 - Project (list projects, summaries, diffs)
 
-✅ **Token-based authentication** — Secure API tokens created from dashboard  
-✅ **Per-project isolation** — Each token scoped to specific projects  
-✅ **Zero setup overhead** — One line in your MCP config  
+✅ **Token-based authentication** : Secure API tokens created from dashboard  
+✅ **Per-project isolation** : Each token scoped to specific projects  
+✅ **Zero setup overhead** : One line in your MCP config  
 
 ### Quick Example
 
@@ -132,7 +132,7 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 
 ### Full Documentation
 
-👉 **[MCP-TOKEN.md](./MCP-TOKEN.md)** — Complete MCP setup guide with:
+👉 **[MCP-TOKEN.md](./MCP-TOKEN.md)** : Complete MCP setup guide with:
 - Step-by-step configuration for Claude, Cursor, VS Code
 - All 12 available tools reference
 - HTTP API for raw requests
@@ -151,7 +151,7 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 
 ### Testing
 
-👉 **[TESTING.md](./TESTING.md)** — Complete testing guide with:
+👉 **[TESTING.md](./TESTING.md)** : Complete testing guide with:
 - Step-by-step test cases
 - API request examples with curl
 - Authentication error scenarios
@@ -172,7 +172,7 @@ See `.env.example` for the full annotated list. Key variables:
 | `JWT_ACCESS_SECRET`                        | ✅             | Signs 15-min access tokens                                |
 | `JWT_REFRESH_SECRET`                       | ✅             | Signs 7-day refresh tokens                                |
 | `ENCRYPTION_KEY`                           | ✅             | AES-256-GCM key for GitHub token storage (64 hex chars)   |
-| `GITHUB_TOKEN`                             | ⚠️ Recommended | Server-level PAT — raises GitHub API limit 60→5000 req/hr |
+| `GITHUB_TOKEN`                             | ⚠️ Recommended | Server-level PAT : raises GitHub API limit 60→5000 req/hr |
 | `GITHUB_CLIENT_ID`                         | OAuth only    | Required for GitHub repo picker                           |
 | `GITHUB_CLIENT_SECRET`                     | OAuth only    | Required for GitHub repo picker                           |
 | `GITHUB_REDIRECT_URI`                      | OAuth only    | Must match GitHub OAuth App settings                      |
@@ -237,7 +237,7 @@ curl -X POST /auth/login \
 ---
 
 #### `POST /auth/refresh`
-Exchange the refresh-token cookie for a new access token. Rotates the refresh token — each use invalidates the previous one.
+Exchange the refresh-token cookie for a new access token. Rotates the refresh token : each use invalidates the previous one.
 
 ```bash
 curl -X POST /auth/refresh --cookie "refreshToken=<token>"
@@ -257,10 +257,10 @@ curl -X POST /auth/logout -H "Authorization: Bearer <token>"
 ---
 
 #### `POST /auth/verify-email`
-**Body:** `{ token }` — the raw token from the email link  
+**Body:** `{ token }` : the raw token from the email link  
 
 #### `POST /auth/forgot-password`
-**Body:** `{ email }` — always returns 200 (no email enumeration)  
+**Body:** `{ email }` : always returns 200 (no email enumeration)  
 
 #### `POST /auth/reset-password`
 **Body:** `{ token, password, confirmPassword }`  
@@ -283,7 +283,7 @@ curl /github/oauth/start -H "Authorization: Bearer <token>"
 ---
 
 #### `GET /github/oauth/callback`
-**Public — no Authorization header.** GitHub redirects the browser here after the user grants access. Redirects to `FRONTEND_URL/?github=connected&user=<username>` on success, or `?github=error&msg=<message>` on failure.
+**Public : no Authorization header.** GitHub redirects the browser here after the user grants access. Redirects to `FRONTEND_URL/?github=connected&user=<username>` on success, or `?github=error&msg=<message>` on failure.
 
 ---
 
@@ -324,7 +324,7 @@ curl -X POST /projects \
   -d '{"repoUrl":"https://github.com/owner/repo"}'
 ```
 
-**Request body:** `{ repoUrl }` — full GitHub URL, SSH URL, or `owner/repo` shorthand  
+**Request body:** `{ repoUrl }` : full GitHub URL, SSH URL, or `owner/repo` shorthand  
 **Response 201:** `{ project, streamUrl: "/projects/:id/stream" }`  
 **Error 409:** `DUPLICATE_PROJECT` if a pipeline is already running for this repo
 
@@ -344,9 +344,9 @@ curl "/projects?page=1&limit=20&status=done&sort=-createdAt&search=express" \
 | -------- | ------------ | ------------------------------------------------------------------------------------ |
 | `page`   | 1            | Page number                                                                          |
 | `limit`  | 20 (max 100) | Results per page                                                                     |
-| `status` | —            | Filter: `queued` `running` `done` `error` `archived`                                 |
+| `status` | :            | Filter: `queued` `running` `done` `error` `archived`                                 |
 | `sort`   | `-createdAt` | Sort field: `createdAt` `-createdAt` `updatedAt` `-updatedAt` `repoName` `-repoName` |
-| `search` | —            | Full-text search across repo name, owner, and description                            |
+| `search` | :            | Full-text search across repo name, owner, and description                            |
 
 **Response:** `{ projects[], total, page, limit, totalPages }`
 
@@ -392,7 +392,7 @@ curl -X POST /projects/:id/retry -H "Authorization: Bearer <token>"
 ---
 
 #### `GET /projects/:id/stream` 🔒
-SSE stream of live pipeline events. Replays all buffered events for late-connecting clients. Works after server restarts — reconstructs a synthetic done event from MongoDB if the in-memory job is gone.
+SSE stream of live pipeline events. Replays all buffered events for late-connecting clients. Works after server restarts : reconstructs a synthetic done event from MongoDB if the in-memory job is gone.
 
 ```javascript
 const es = new EventSource(`/projects/${id}/stream`, {
@@ -411,7 +411,7 @@ es.onmessage = (e) => {
 
 ### Export Routes
 
-All export routes read from MongoDB — they work even after a server restart, unlike the legacy `/api/export/*` routes which require the in-memory job to still exist.
+All export routes read from MongoDB : they work even after a server restart, unlike the legacy `/api/export/*` routes which require the in-memory job to still exist.
 
 #### `GET /projects/:id/export/pdf` 🔒
 Stream a multi-section PDF of the documentation.
@@ -530,7 +530,7 @@ Download a pre-configured workflow from `GET /projects/:id/export/yaml` and plac
 
 ## Deployment
 
-The server has no filesystem state — all data lives in MongoDB. It can be deployed to any platform that supports Node.js and environment variables.
+The server has no filesystem state : all data lives in MongoDB. It can be deployed to any platform that supports Node.js and environment variables.
 
 ### Railway
 ```bash
@@ -572,5 +572,5 @@ docker run -p 3000:3000 --env-file .env project-documentor
 | Password reset tokens     | Raw token in email, SHA-256 hash in DB, 1-hour expiry                                      |
 | GitHub OAuth tokens       | AES-256-GCM encrypted at rest with `ENCRYPTION_KEY`                                        |
 | Email enumeration         | `forgot-password` always returns 200 regardless of whether the email exists                |
-| Webhook validation        | HMAC-SHA256 with `timingSafeEqual` — prevents both forged requests and timing attacks      |
+| Webhook validation        | HMAC-SHA256 with `timingSafeEqual` : prevents both forged requests and timing attacks      |
 | Rate limiting             | Auth: 10 req/15 min; Signup: 20 req/hr; API: 300 req/5 min                                 |

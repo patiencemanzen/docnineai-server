@@ -1,19 +1,19 @@
 // ===================================================================
-// Dunning service — handles failed payment retry flow.
+// Dunning service : handles failed payment retry flow.
 //
 // When a payment fails, the subscription enters 'past_due' status.
 // Over 14 days, we retry automatically and send escalating emails.
 //
 // Retry schedule:
-//   Day 0  — payment fails → first retry immediately
-//   Day 3  — second retry
-//   Day 7  — third (final) retry
+//   Day 0  : payment fails → first retry immediately
+//   Day 3  : second retry
+//   Day 7  : third (final) retry
 //
 // Email schedule:
-//   Day 1  — "payment failed" notification
-//   Day 5  — "please update payment method"
-//   Day 10 — "account downgrade in 4 days" warning
-//   Day 14 — downgrade to Free if still unresolved
+//   Day 1  : "payment failed" notification
+//   Day 5  : "please update payment method"
+//   Day 10 : "account downgrade in 4 days" warning
+//   Day 14 : downgrade to Free if still unresolved
 // ===================================================================
 
 import { Subscription } from "../models/Subscription.js";
@@ -79,7 +79,7 @@ async function processSingleDunning(sub) {
   // ── Automatic retry ──────────────────────────────────────────
   if (DUNNING_RETRY_DAYS.includes(dunningDay)) {
     const recharged = await attemptRetryCharge(sub, user);
-    if (recharged) return; // dunning resolved — charge succeeded
+    if (recharged) return; // dunning resolved : charge succeeded
   }
 
   // ── Email reminders ──────────────────────────────────────────
@@ -116,7 +116,7 @@ async function attemptRetryCharge(sub, user) {
       amount: centsToUsd(amountCents),
       currency: savedMethod.currency || "USD",
       email: user.email,
-      narration: `Docnine ${plan.name} — retry`,
+      narration: `Docnine ${plan.name} : retry`,
     });
 
     // Create a paid invoice
@@ -135,7 +135,7 @@ async function attemptRetryCharge(sub, user) {
       customerEmail: user.email,
     });
 
-    // Resolve dunning — restore to active
+    // Resolve dunning : restore to active
     const addPeriod = (date, cycle) => {
       const d = new Date(date);
       if (cycle === "annual") d.setFullYear(d.getFullYear() + 1);

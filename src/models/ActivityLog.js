@@ -234,7 +234,7 @@ const activityLogSchema = new mongoose.Schema(
   },
 );
 
-// TTL — auto-delete after 90 days
+// TTL : auto-delete after 90 days
 activityLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 const ActivityLog = mongoose.model("ActivityLog", activityLogSchema);

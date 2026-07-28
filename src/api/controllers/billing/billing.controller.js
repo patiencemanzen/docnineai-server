@@ -1,5 +1,5 @@
 // ===================================================================
-// Billing controller — handles all billing-related HTTP requests.
+// Billing controller : handles all billing-related HTTP requests.
 //
 // Every handler returns using ok() / fail() / serverError() for
 // consistency with the rest of the API.
@@ -280,7 +280,7 @@ export async function verifyPayment(req, res) {
     await activateFromPayment(fwTx);
     const sub = await getOrCreateSubscription(req.user.userId);
 
-    return ok(res, { subscription: sub }, "Payment verified — plan activated");
+    return ok(res, { subscription: sub }, "Payment verified : plan activated");
   } catch (err) {
     return serverError(res, err, "verifyPayment");
   }
@@ -362,7 +362,7 @@ export async function addSeatsHandler(req, res) {
 // ── GET /billing/payment-methods ──────────────────────────────────
 export async function getPaymentMethods(req, res) {
   try {
-    // Do NOT use .lean() — we need Mongoose virtuals (displayLabel) serialized.
+    // Do NOT use .lean() : we need Mongoose virtuals (displayLabel) serialized.
     const methods = await PaymentMethod.find({
       userId: req.user.userId,
       deletedAt: null,

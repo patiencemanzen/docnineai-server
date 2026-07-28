@@ -66,7 +66,7 @@ const ApiSpecSchema = new Schema(
       default: "unknown",
     },
 
-    // Original text — excluded from default projection to avoid size issues
+    // Original text : excluded from default projection to avoid size issues
     rawContent: { type: String, select: false },
 
     // Normalised metadata from info block

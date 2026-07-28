@@ -1,12 +1,12 @@
 // ===================================================================
-// PlanUsage — per-user, per-cycle usage counters.
+// PlanUsage : per-user, per-cycle usage counters.
 //
 // One document per user (upserted). Counters reset by cron on
 // the user's billing cycle reset date (ai_reset_at).
 //
 // Why not use Subscription for this?
 //   Subscription tracks billing state. Usage is operational data
-//   that resets independently — keeping them separate avoids race
+//   that resets independently : keeping them separate avoids race
 //   conditions when cron jobs update both on the same midnight run.
 // ===================================================================
 

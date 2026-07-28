@@ -244,7 +244,7 @@ export async function handleSlackCallback(req, res) {
       oauthState: state,
     });
     if (!integration) {
-      // CSRF check — don't return exact reason for security
+      // CSRF check : don't return exact reason for security
       return fail(res, "INVALID_STATE", "Invalid OAuth state", 403);
     }
 
@@ -699,12 +699,12 @@ async function handleCommandAsync(
               text: {
                 type: "mrkdwn",
                 text: [
-                  "`/docnine ask [question]` — Ask about this codebase",
-                  "`/docnine audit` — Run a security audit",
-                  "`/docnine security` — Show critical/high findings",
-                  "`/docnine diff` — Show documentation changes",
-                  "`/docnine docs [topic]` — Search documentation",
-                  "`/docnine help` — Show this help message",
+                  "`/docnine ask [question]` : Ask about this codebase",
+                  "`/docnine audit` : Run a security audit",
+                  "`/docnine security` : Show critical/high findings",
+                  "`/docnine diff` : Show documentation changes",
+                  "`/docnine docs [topic]` : Search documentation",
+                  "`/docnine help` : Show this help message",
                 ].join("\n"),
               },
             },
@@ -813,14 +813,14 @@ export async function getSlackConfig(req, res) {
       !integration.workspaceName ||
       !integration.botTokenEncrypted
     ) {
-      // Credentials saved but OAuth not yet completed — tell the UI
+      // Credentials saved but OAuth not yet completed : tell the UI
       if (integration?.isCustomApp && integration?.slackClientIdEncrypted) {
         let clientIdLast4 = "";
         let signingSecretLast4 = "";
         try {
           const clientId = await integration.getDecryptedClientId();
           clientIdLast4 = clientId ? clientId.slice(-4) : "";
-        } catch { /* decryption failed — still show pending state */ }
+        } catch { /* decryption failed : still show pending state */ }
         try {
           const signingSecret = await integration.getDecryptedSigningSecret();
           signingSecretLast4 = signingSecret ? signingSecret.slice(-4) : "";

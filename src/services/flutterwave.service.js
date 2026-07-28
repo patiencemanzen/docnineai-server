@@ -1,13 +1,13 @@
 // ===================================================================
-// Flutterwave service — thin REST client over the FW v3 API.
+// Flutterwave service : thin REST client over the FW v3 API.
 //
 // Never import this module on the client side. It uses the secret key.
 //
 // Required env vars:
-//   FLW_SECRET_KEY        — Flutterwave secret key (sk_live_... or sk_test_...)
-//   FLW_PUBLIC_KEY        — Flutterwave public key (PK_live_... or PK_...)
-//   FLW_WEBHOOK_HASH      — Custom webhook hash set in FW dashboard
-//   FRONTEND_URL          — Used to construct redirect URLs
+//   FLW_SECRET_KEY        : Flutterwave secret key (sk_live_... or sk_test_...)
+//   FLW_PUBLIC_KEY        : Flutterwave public key (PK_live_... or PK_...)
+//   FLW_WEBHOOK_HASH      : Custom webhook hash set in FW dashboard
+//   FRONTEND_URL          : Used to construct redirect URLs
 //
 // Docs: https://developer.flutterwave.com/docs
 // ===================================================================
@@ -226,7 +226,7 @@ export async function refundTransaction(transactionId, amount) {
 export function verifyWebhookSignature(headerHash) {
   const expected = process.env.FLW_WEBHOOK_HASH;
   if (!expected) {
-    console.warn("⚠️  FLW_WEBHOOK_HASH not set — webhook verification skipped");
+    console.warn("⚠️  FLW_WEBHOOK_HASH not set : webhook verification skipped");
     return true;
   }
   // For extra safety, use timingSafeEqual to prevent timing attacks

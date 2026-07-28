@@ -1,5 +1,5 @@
 // =============================================================
-// Azure DevOps API client — mirrors github/gitlab.service.js
+// Azure DevOps API client : mirrors github/gitlab.service.js
 //
 // Azure DevOps REST API: https://learn.microsoft.com/en-us/rest/api/azure/devops/
 //

@@ -1,5 +1,5 @@
 // ===================================================================
-// Mongoose connection — connect once, reuse everywhere.
+// Mongoose connection : connect once, reuse everywhere.
 //
 // FIX: MONGODB_URI check is now INSIDE connectDB(), not at module
 // load time. In ESM, top-level module code runs before dotenv.config()
@@ -10,7 +10,7 @@
 
 import mongoose from "mongoose";
 
-// Cached connection promise — reused across hot invocations on Vercel
+// Cached connection promise : reused across hot invocations on Vercel
 let _connectionPromise = null;
 
 export async function connectDB() {
@@ -20,10 +20,10 @@ export async function connectDB() {
     throw new Error("MONGODB_URI is required in environment variables.\n");
   }
 
-  // Already fully connected — reuse
+  // Already fully connected : reuse
   if (mongoose.connection.readyState === 1) return;
 
-  // Already connecting — wait for the same promise (handles concurrent requests)
+  // Already connecting : wait for the same promise (handles concurrent requests)
   if (_connectionPromise) return _connectionPromise;
 
   _connectionPromise = _connect(URI).finally(() => {
@@ -79,7 +79,7 @@ async function migrateIndexes() {
           clearTimeout(deadline);
           resolve();
         });
-        // If already in connected state the event won't fire — check again
+        // If already in connected state the event won't fire : check again
         if (mongoose.connection.readyState === 1) {
           clearTimeout(deadline);
           resolve();
@@ -89,7 +89,7 @@ async function migrateIndexes() {
     }
 
     if (!db) {
-      console.warn("⚠️  Skipping index migration — connection.db unavailable");
+      console.warn("⚠️  Skipping index migration : connection.db unavailable");
       return;
     }
 
@@ -98,12 +98,12 @@ async function migrateIndexes() {
     const textIdx = indexes.find((idx) => idx.name === "project_search");
 
     if (!textIdx) {
-      // Not yet created — Mongoose will create it correctly on first use
+      // Not yet created : Mongoose will create it correctly on first use
       return;
     }
 
     if (textIdx.language_override === "search_language") {
-      // Already fixed — nothing to do
+      // Already fixed : nothing to do
       return;
     }
 
@@ -112,14 +112,14 @@ async function migrateIndexes() {
     );
     await collection.dropIndex("project_search");
     console.log(
-      "Stale index dropped — will be recreated with language_override",
+      "Stale index dropped : will be recreated with language_override",
     );
 
     const { Project } = await import("../models/Project.js");
     await Project.ensureIndexes();
     console.log("✅ project_search index recreated");
   } catch (err) {
-    // Non-fatal — server keeps running, index will be fixed on next deploy
+    // Non-fatal : server keeps running, index will be fixed on next deploy
     console.warn("Index migration skipped:", err.message);
   }
 }
