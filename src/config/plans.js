@@ -86,16 +86,16 @@ export const PLANS = {
   },
 
   // ── Starter ───────────────────────────────────────────────────
-  // Monthly:  $10.89/mo
-  // Annual:   $8.82/mo → $105.84/yr  (Save 19%)
+  // Monthly:  $6.00/mo
+  // Annual:   $4.86/mo → $58.32/yr  (Save 19%)
   starter: {
     id: "starter",
     name: "Starter",
     tagline: "Freelancers & solo developers",
     prices: {
-      monthly: 1089, // $10.89/mo
-      annual: 882, // $8.82/mo billed annually
-      annualTotal: 10584, // $105.84/yr
+      monthly: 600, // $6.00/mo
+      annual: 486, // $4.86/mo billed annually
+      annualTotal: 5832, // $58.32/yr
       annualSavingsPct: 19,
     },
     limits: {
@@ -124,16 +124,16 @@ export const PLANS = {
   },
 
   // ── Pro ───────────────────────────────────────────────────────
-  // Monthly:  $32.00/mo
-  // Annual:   $24.32/mo → $291.84/yr  (Save 24%)
+  // Monthly:  $10.00/mo
+  // Annual:   $7.60/mo → $91.20/yr  (Save 24%)
   pro: {
     id: "pro",
     name: "Pro",
     tagline: "Small teams up to 5 seats",
     prices: {
-      monthly: 3200, // $32.00/mo
-      annual: 2432, // $24.32/mo billed annually
-      annualTotal: 29184, // $291.84/yr
+      monthly: 1000, // $10.00/mo
+      annual: 760, // $7.60/mo billed annually
+      annualTotal: 9120, // $91.20/yr
       annualSavingsPct: 24,
     },
     limits: {
@@ -162,23 +162,23 @@ export const PLANS = {
   },
 
   // ── Team ──────────────────────────────────────────────────────
-  // Monthly:  $20.00/user/mo
-  // Annual:   $17.00/user/mo → $204.00/user/yr  (Save 15%)
-  // annualTotal is computed at runtime: 1700 * 12 * seats
+  // Monthly:  $12.00/user/mo
+  // Annual:   $10.20/user/mo → $122.40/user/yr  (Save 15%)
+  // annualTotal is computed at runtime: 1020 * 12 * seats
   team: {
     id: "team",
     name: "Team",
     tagline: "Mid-size companies (6+ users)",
     prices: {
-      monthly: 2000, // $20.00/user/mo
-      annual: 1700, // $17.00/user/mo billed annually
-      annualTotal: null, // computed: 1700 * 12 * seats = $204.00/user/yr
+      monthly: 1200, // $12.00/user/mo
+      annual: 1020, // $10.20/user/mo billed annually
+      annualTotal: null, // computed: 1020 * 12 * seats = $122.40/user/yr
       annualSavingsPct: 15,
     },
     limits: {
       projects: null,
       seats: null, // unlimited
-      extraSeatPriceMonthly: 2000, // $20.00/mo per extra seat (monthly plan)
+      extraSeatPriceMonthly: 1200, // $12.00/mo per extra seat (monthly plan)
       attachmentsPerProject: null,
       maxFileSizeMb: 100,
       aiChatsPerMonth: null, // unlimited

@@ -160,7 +160,7 @@ export async function getTeamSeatsDetails(req, res) {
     const collaboratorList = Object.values(uniqueCollaborators);
 
     // Calculate monthly costs (exact decimal, no rounding)
-    const TEAM_RATE_PER_USER = 20.0; // $20/user/mo
+    const TEAM_RATE_PER_USER = 12.0; // $12/user/mo
     const monthlyRate = currentSeats * TEAM_RATE_PER_USER;
 
     // If mid-cycle, calculate prorated amount for this period

@@ -866,7 +866,7 @@ export function computeTeamPlanCharge({
   daysRemaining,
   include_proration = true,
 }) {
-  const TEAM_MONTHLY_RATE = 2000; // $20.00/user/mo in cents
+  const TEAM_MONTHLY_RATE = 1200; // $12.00/user/mo in cents
   const totalDaysInCycle = daysBetween(cycleStartDate, cycleEndDate);
 
   if (!include_proration) {
