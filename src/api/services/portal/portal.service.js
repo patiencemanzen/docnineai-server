@@ -136,6 +136,7 @@ export async function updatePortal(projectId, userId, body) {
     "seoDescription",
     "customDomain",
     "accessMode",
+    "templateId",
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) portal[key] = body[key];
@@ -258,6 +259,7 @@ export async function getPublicPortal(slug) {
       slug: portal.slug,
       isPublished: portal.isPublished,
       accessMode: portal.accessMode,
+      templateId: portal.templateId || "classic",
       branding: portal.branding,
       sections: portal.sections,
       seoTitle: portal.seoTitle,

@@ -107,6 +107,23 @@ const PortalSchema = new Schema(
 
     branding: { type: BrandingSchema, default: () => ({}) },
 
+    templateId: {
+      type: String,
+      enum: [
+        "classic",
+        "teal-studio",
+        "midnight",
+        "minimal",
+        "company-showcase",
+        "developer-terminal",
+        "enterprise-handbook",
+        "startup-guide",
+        "product-manual",
+        "agency-portfolio",
+      ],
+      default: "classic",
+    },
+
     // Per-section visibility overrides. Sections not listed → treated as "public"
     sections: { type: [PortalSectionSchema], default: [] },
 
