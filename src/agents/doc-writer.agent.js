@@ -12,37 +12,37 @@ const README_SYSTEM_PROMPT = `You are a senior technical writer who specializes 
 Before writing, reason through these questions silently (do NOT output this reasoning):
 1. What is the core problem this project solves? Who is the primary user?
 2. What are the 3 most important things a developer cloning this repo needs to know first?
-3. What architecture pattern does this use — and why does it matter for setup instructions?
+3. What architecture pattern does this use : and why does it matter for setup instructions?
 4. Which environment variables are actually required (not optional) to run this at all?
-5. What would a developer get wrong on their first attempt — and how do I pre-empt that?
+5. What would a developer get wrong on their first attempt : and how do I pre-empt that?
 Then write the README with those answers informing every sentence.
 
 ## YOUR TASK
 Write a complete, production-ready README.md in Markdown for the project described in the provided JSON context.
 
 ## REQUIRED SECTIONS (in this order)
-1. **Header** — Project name as H1, one-line tagline, and a badge row (build status, license, language, version — use shields.io format)
-2. **Overview** — 2–3 sentences on what the project is, what problem it solves, and who it's for
-3. **Features** — Bulleted list of 5–8 key capabilities, specific and concrete (not "easy to use")
-4. **Tech Stack** — Table with columns: Category | Technology | Purpose
-5. **Prerequisites** — Runtime versions, required tools (Node >=18, Docker, etc.)
-6. **Installation** — Numbered steps with actual shell commands in fenced code blocks
-7. **Environment Variables** — Table: Variable | Required | Default | Description
-8. **Running the Project** — Dev, test, and production start commands
-9. **API Summary** — Table: Method | Endpoint | Auth | Description (top 10 endpoints max)
-10. **Data Models** — Brief table per model: Field | Type | Required — keep to 3–4 most important models
-11. **Project Structure** — Annotated directory tree using a fenced code block
-12. **Contributing** — Fork → branch → PR flow in 4–5 numbered steps
-13. **License** — One line
+1. **Header** : Project name as H1, one-line tagline, and a badge row (build status, license, language, version : use shields.io format)
+2. **Overview** : 2–3 sentences on what the project is, what problem it solves, and who it's for
+3. **Features** : Bulleted list of 5–8 key capabilities, specific and concrete (not "easy to use")
+4. **Tech Stack** : Table with columns: Category | Technology | Purpose
+5. **Prerequisites** : Runtime versions, required tools (Node >=18, Docker, etc.)
+6. **Installation** : Numbered steps with actual shell commands in fenced code blocks
+7. **Environment Variables** : Table: Variable | Required | Default | Description
+8. **Running the Project** : Dev, test, and production start commands
+9. **API Summary** : Table: Method | Endpoint | Auth | Description (top 10 endpoints max)
+10. **Data Models** : Brief table per model: Field | Type | Required : keep to 3–4 most important models
+11. **Project Structure** : Annotated directory tree using a fenced code block
+12. **Contributing** : Fork → branch → PR flow in 4–5 numbered steps
+13. **License** : One line
 
 ## WRITING RULES
-- Use real, specific language based on the provided context — no placeholder text like "your project name" or "add description here"
+- Use real, specific language based on the provided context : no placeholder text like "your project name" or "add description here"
 - Every code block must have a language tag: \`\`\`bash, \`\`\`typescript, \`\`\`env etc.
 - Shell commands must be copy-pasteable and realistic for the detected stack
 - Badges must use the actual repo owner/name from context
-- Do NOT pad with filler sentences — every sentence must add information
+- Do NOT pad with filler sentences : every sentence must add information
 - Do NOT add sections not listed above
-- Target 700–900 words — dense and complete, not minimal
+- Target 700–900 words : dense and complete, not minimal
 - Write in present tense, active voice`;
 
 const INTERNAL_SYSTEM_PROMPT = `You are a principal software architect writing internal developer onboarding documentation for a technical audience (senior engineers joining the team).
@@ -50,9 +50,9 @@ const INTERNAL_SYSTEM_PROMPT = `You are a principal software architect writing i
 ## YOUR REASONING PROCESS
 Before writing, reason through these questions silently (do NOT output this reasoning):
 1. What is the single most important architectural decision in this codebase and what are its implications?
-2. What is NOT obvious from reading the code — what implicit conventions exist that trip up new engineers?
+2. What is NOT obvious from reading the code : what implicit conventions exist that trip up new engineers?
 3. Where are the most likely places a bug would be introduced in this codebase, and why?
-4. What is the critical path from an API request to the database — which components own each step?
+4. What is the critical path from an API request to the database : which components own each step?
 5. If the entry points or key services failed, what would break first?
 Write the internal guide with answers to these questions embedded throughout.
 
@@ -60,21 +60,21 @@ Write the internal guide with answers to these questions embedded throughout.
 Write a concise internal developer guide in Markdown based on the provided project context. Assume the reader can read code but needs architectural context and tribal knowledge they can't get from reading files alone.
 
 ## REQUIRED SECTIONS (in this order)
-1. **Architecture Overview** — 1 diagram in Mermaid (flowchart LR or TD) showing the major layers/services and how they connect, followed by 2–3 sentences of explanation
-2. **Technology Decisions** — Table: Decision | Choice | Rationale | Alternatives Considered — explain WHY this stack, not just what it is
-3. **Component Responsibilities** — One subsection per major component type (services, middleware, utilities). For each: what it owns, what it must NOT do, and who calls it
-4. **Data Flow** — Step-by-step numbered list of the primary request/response lifecycle from entry point to database and back. Be specific about which components handle each step.
-5. **Key Relationships & Dependencies** — Table showing the most important inter-component dependencies and why they exist
-6. **Entry Points** — List each entry point, what it initializes, and in what order
-7. **Environment & Configuration** — How config is loaded, where secrets live, what breaks if a variable is missing
-8. **Gotchas & Non-Obvious Behaviour** — Bulleted list of at least 4 things that will surprise a new developer: quirks, implicit conventions, performance traps, things that look wrong but aren't
-9. **Development Workflow** — How to run locally, run tests, and simulate production — specific commands
-10. **Where to Start** — If a new developer needs to add a feature, trace the exact files they need to touch in order
+1. **Architecture Overview** : 1 diagram in Mermaid (flowchart LR or TD) showing the major layers/services and how they connect, followed by 2–3 sentences of explanation
+2. **Technology Decisions** : Table: Decision | Choice | Rationale | Alternatives Considered : explain WHY this stack, not just what it is
+3. **Component Responsibilities** : One subsection per major component type (services, middleware, utilities). For each: what it owns, what it must NOT do, and who calls it
+4. **Data Flow** : Step-by-step numbered list of the primary request/response lifecycle from entry point to database and back. Be specific about which components handle each step.
+5. **Key Relationships & Dependencies** : Table showing the most important inter-component dependencies and why they exist
+6. **Entry Points** : List each entry point, what it initializes, and in what order
+7. **Environment & Configuration** : How config is loaded, where secrets live, what breaks if a variable is missing
+8. **Gotchas & Non-Obvious Behaviour** : Bulleted list of at least 4 things that will surprise a new developer: quirks, implicit conventions, performance traps, things that look wrong but aren't
+9. **Development Workflow** : How to run locally, run tests, and simulate production : specific commands
+10. **Where to Start** : If a new developer needs to add a feature, trace the exact files they need to touch in order
 
 ## WRITING RULES
-- Be direct — write for someone who will be reading this at 11pm trying to debug production
+- Be direct : write for someone who will be reading this at 11pm trying to debug production
 - Mermaid diagram must use actual component names from the provided context, not generic placeholders
-- "Gotchas" must be specific to this codebase — not generic advice
+- "Gotchas" must be specific to this codebase : not generic advice
 - Target 600–800 words
 - No filler, no preamble, no "this document covers..."`;
 
@@ -91,7 +91,7 @@ Write a structured Markdown component reference document based on the provided c
 **Description:** What it does in 1–2 sentences.
 **Responsibilities:**
 - Active verb bullet points
-**Dependencies:** internal and external — comma separated
+**Dependencies:** internal and external : comma separated
 **Side Effects:** list or "None"
 **Notes:** gotchas, TODOs, security concerns or "None"
 ---
@@ -100,7 +100,7 @@ Write a structured Markdown component reference document based on the provided c
 - Group components by type (Services first, then Middleware, Hooks, Utilities, Config, Other)
 - Within each group, sort alphabetically by name
 - Use a H2 heading per group, H3 per component
-- Keep each component entry tight — no padding
+- Keep each component entry tight : no padding
 - If deprecated, add a ⚠️ DEPRECATED badge after the name`;
 
 // ─── Context Builders ─────────────────────────────────────────────
@@ -222,7 +222,7 @@ function buildInternalContext({
     });
   }
 
-  // Top relationships (highest value — most connected nodes first)
+  // Top relationships (highest value : most connected nodes first)
   const relSummary = (relationships || []).slice(0, 30).map((r) => ({
     from: r.from,
     type: r.type,
@@ -266,7 +266,7 @@ function buildInternalContext({
 }
 
 function buildComponentRefContext(components) {
-  // Pass full component data — the LLM needs all fields for a proper reference
+  // Pass full component data : the LLM needs all fields for a proper reference
   const grouped = {};
   const typeOrder = [
     "service",
@@ -320,7 +320,7 @@ function buildComponentRefContext(components) {
 
 /**
  * Build a rich API reference from the improved Agent 2 schema.
- * Fully static — no LLM cost.
+ * Fully static : no LLM cost.
  */
 export function buildApiReference(endpoints) {
   if (!endpoints?.length)
@@ -367,7 +367,7 @@ export function buildApiReference(endpoints) {
 
       if (ep.handler && ep.handler !== "unknown") {
         md += `**Handler:** \`${ep.handler}\``;
-        if (ep.file) md += ` — \`${ep.file}\``;
+        if (ep.file) md += ` : \`${ep.file}\``;
         if (ep.line) md += ` (line ${ep.line})`;
         md += "\n\n";
       }
@@ -376,7 +376,7 @@ export function buildApiReference(endpoints) {
       const authRequired = ep.auth?.required ?? ep.auth ?? false;
       const authType = ep.auth?.type || (authRequired ? "required" : "none");
       const authRoles = ep.auth?.roles || [];
-      md += `**Authentication:** ${authRequired ? `✅ Required — \`${authType}\`` : "❌ Public"}`;
+      md += `**Authentication:** ${authRequired ? `✅ Required : \`${authType}\`` : "❌ Public"}`;
       if (authRoles.length)
         md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
       md += "\n\n";
@@ -395,7 +395,7 @@ export function buildApiReference(endpoints) {
       if (ep.request?.headers?.length) {
         md += `**Headers:**\n\n| Name | Type | Required | Description |\n|------|------|----------|-------------|\n`;
         ep.request.headers.forEach((h) => {
-          md += `| \`${h.name}\` | \`${h.type || "string"}\` | ${h.required ? "✅" : "❌"} | ${h.description || "—"} |\n`;
+          md += `| \`${h.name}\` | \`${h.type || "string"}\` | ${h.required ? "✅" : "❌"} | ${h.description || ":"} |\n`;
         });
         md += "\n";
       }
@@ -404,7 +404,7 @@ export function buildApiReference(endpoints) {
       if (ep.request?.params?.length) {
         md += `**Parameters:**\n\n| Name | In | Type | Required | Description | Validation |\n|------|-----|------|----------|-------------|------------|\n`;
         ep.request.params.forEach((p) => {
-          md += `| \`${p.name}\` | ${p.in} | \`${p.type || "string"}\` | ${p.required ? "✅" : "❌"} | ${p.description || "—"} | ${p.validation || "—"} |\n`;
+          md += `| \`${p.name}\` | ${p.in} | \`${p.type || "string"}\` | ${p.required ? "✅" : "❌"} | ${p.description || ":"} | ${p.validation || ":"} |\n`;
         });
         md += "\n";
       }
@@ -441,7 +441,7 @@ export function buildApiReference(endpoints) {
 
 /**
  * Build schema documentation from model and relationship data.
- * Fully static — no LLM cost.
+ * Fully static : no LLM cost.
  */
 export function buildSchemaDocs(models, relationships) {
   if (!models?.length) return "# Data Models\n\nNo data models detected.\n";
@@ -472,7 +472,7 @@ export function buildSchemaDocs(models, relationships) {
       md += `### Fields\n\n| Field | Type | Required | Unique | Default | Description |\n`;
       md += `|-------|------|----------|--------|---------|-------------|\n`;
       model.fields.forEach((f) => {
-        md += `| \`${f.name}\` | \`${f.type}\` | ${f.required ? "✅" : "❌"} | ${f.unique ? "✅" : "❌"} | ${f.default ?? "—"} | ${f.description || "—"} |\n`;
+        md += `| \`${f.name}\` | \`${f.type}\` | ${f.required ? "✅" : "❌"} | ${f.unique ? "✅" : "❌"} | ${f.default ?? ":"} | ${f.description || ":"} |\n`;
       });
       md += "\n";
     }
@@ -484,7 +484,7 @@ export function buildSchemaDocs(models, relationships) {
         const fields = Array.isArray(idx.fields)
           ? idx.fields.join(", ")
           : idx.fields;
-        md += `| \`${idx.name || "—"}\` | \`${fields}\` | ${idx.unique ? "✅" : "❌"} |\n`;
+        md += `| \`${idx.name || ":"}\` | \`${fields}\` | ${idx.unique ? "✅" : "❌"} |\n`;
       });
       md += "\n";
     }
@@ -498,7 +498,7 @@ export function buildSchemaDocs(models, relationships) {
       modelRels.forEach((r) => {
         const direction = r.from === model.name ? "→ out" : "← in";
         const other = r.from === model.name ? r.to : r.from;
-        md += `| ${direction} | ${other} | \`${r.type}\` | ${r.through || "—"} |\n`;
+        md += `| ${direction} | ${other} | \`${r.type}\` | ${r.through || ":"} |\n`;
       });
       md += "\n";
     }
@@ -511,7 +511,7 @@ export function buildSchemaDocs(models, relationships) {
     md += `## Relationship Overview\n\n`;
     md += `| From | Type | To | Via |\n|------|------|----|-----|\n`;
     relationships.forEach((r) => {
-      md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || "—"} |\n`;
+      md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`;
     });
     md += "\n";
   }
@@ -573,8 +573,8 @@ export function buildComponentIndex(components) {
         const complexity =
           { low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High" }[
           c.complexity
-          ] || "—";
-        md += `| \`${c.name}\`${deprecated} | \`${c.file}\` | ${c.layer || "—"} | ${async_} | ${complexity} | ${c.description ? c.description.slice(0, 80) + (c.description.length > 80 ? "…" : "") : "—"} |\n`;
+          ] || ":";
+        md += `| \`${c.name}\`${deprecated} | \`${c.file}\` | ${c.layer || ":"} | ${async_} | ${complexity} | ${c.description ? c.description.slice(0, 80) + (c.description.length > 80 ? "…" : "") : ":"} |\n`;
       });
     md += "\n";
   }
@@ -711,9 +711,9 @@ export async function docWriterAgent({
 
   // ── 2a. fastMode: sequential README-only (1 LLM call, fits in Vercel budget) ──
   // On Vercel (60s limit, 5000 TPM), we skip internal docs and component ref LLM
-  // calls to ensure the README — the most user-visible output — is always generated.
+  // calls to ensure the README : the most user-visible output : is always generated.
   if (fastMode) {
-    notify("Writing README.md…", "fast mode — 1 LLM call within Vercel budget");
+    notify("Writing README.md…", "fast mode : 1 LLM call within Vercel budget");
     try {
       const readmeCtx = buildReadmeContext({
         meta, techStack, endpoints, models, components, structure, owner, repo,
@@ -728,9 +728,9 @@ export async function docWriterAgent({
     } catch (err) {
       errors.push({ doc: "readme", error: err.message });
       docs.readme = buildFallbackReadme({ meta, owner, repo, techStack, endpoints });
-      notify("⚠ README.md generation failed — using fallback", err.message);
+      notify("⚠ README.md generation failed : using fallback", err.message);
     }
-    docs.internalDocs = "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode — regenerate without Vercel timeout constraints.\n";
+    docs.internalDocs = "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode : regenerate without Vercel timeout constraints.\n";
     docs.componentRef = buildComponentIndex(components || []);
     // Fall through to summary
   } else {
@@ -771,7 +771,7 @@ export async function docWriterAgent({
         return { doc: validateMarkdown(raw, "Internal Docs") };
       } catch (err) {
         return {
-          doc: "# Internal Developer Docs\n\n> ⚠️ Generation failed — please write this manually.\n",
+          doc: "# Internal Developer Docs\n\n> ⚠️ Generation failed : please write this manually.\n",
           error: err,
         };
       }
@@ -782,7 +782,7 @@ export async function docWriterAgent({
     docs.readme = readmeResult.doc;
     if (readmeResult.error) {
       errors.push({ doc: "readme", error: readmeResult.error.message });
-      notify("⚠ README.md generation failed — using fallback", readmeResult.error.message);
+      notify("⚠ README.md generation failed : using fallback", readmeResult.error.message);
     }
 
     docs.internalDocs = internalResult.doc;
@@ -814,7 +814,7 @@ export async function docWriterAgent({
         } catch (err) {
           errors.push({ doc: `componentRef_chunk_${i}`, error: err.message });
           compChunks.push(buildComponentIndex(chunks[i]));
-          notify(`⚠ Component ref chunk ${i + 1} failed — using static fallback`, err.message);
+          notify(`⚠ Component ref chunk ${i + 1} failed : using static fallback`, err.message);
         }
       }
 

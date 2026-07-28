@@ -257,7 +257,7 @@ export async function refreshAndStoreToken(userId) {
       status: err.response?.status,
       data: err.response?.data,
     });
-    // Refresh token is also invalid — user must re-authorise
+    // Refresh token is also invalid : user must re-authorise
     await User.findByIdAndUpdate(userId, {
       gitlabTokenEncrypted: null,
       gitlabRefreshTokenEncrypted: null,

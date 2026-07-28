@@ -6,18 +6,18 @@
 //   import { validate, rules } from "../middleware/validate.middleware.js";
 //   router.post("/signup", rules.signup, validate, controller.signup);
 //
-// IMPORTANT — PATCH route composition rule:
+// IMPORTANT : PATCH route composition rule:
 //   rules.updateProject validates the REQUEST BODY only.
 //   The :id param is validated separately by the validateMongoId array
 //   defined in project.routes.js.
-//   Never include a param("id") rule inside a rules.* body rule set —
+//   Never include a param("id") rule inside a rules.* body rule set :
 //   it will conflict with the id validation done at the router level.
 // ===================================================================
 
 import { body, query, param, validationResult } from "express-validator";
 
 /**
- * Run after rule chains — short-circuits with 422 if any rule failed.
+ * Run after rule chains : short-circuits with 422 if any rule failed.
  * Place this as the last item before the controller in a middleware array.
  */
 export function validate(req, res, next) {
@@ -82,7 +82,7 @@ const repoUrlField = () =>
       return true;
     });
 
-// ── Rule sets — one per endpoint ──────────────────────────────
+// ── Rule sets : one per endpoint ──────────────────────────────
 export const rules = {
   /** POST /auth/signup */
   signup: [nameField(), emailField(), passwordField()],
@@ -115,7 +115,7 @@ export const rules = {
   /** POST /projects */
   createProject: [repoUrlField()],
 
-  /** GET /projects — query params */
+  /** GET /projects : query params */
   listProjects: [
     query("page")
       .optional()
@@ -140,13 +140,13 @@ export const rules = {
         "-repoName",
       ])
       .withMessage(
-        "Invalid sort field — valid values: createdAt, -createdAt, updatedAt, -updatedAt, repoName, -repoName",
+        "Invalid sort field : valid values: createdAt, -createdAt, updatedAt, -updatedAt, repoName, -repoName",
       ),
     query("search").optional().isString().trim(),
   ],
 
   /**
-   * PATCH /projects/:id — REQUEST BODY ONLY.
+   * PATCH /projects/:id : REQUEST BODY ONLY.
    * The :id param is validated at the router level by validateMongoId.
    * Do NOT add a param("id") rule here.
    */

@@ -21,7 +21,7 @@ export const MODEL = "llama-3.1-8b-instant";
 
 // Lazy-init: the LLM client is created on first use rather than at import time.
 // This prevents a missing GROQ_API_KEY from crashing the entire server on cold
-// start — routes that don't use the LLM remain fully operational.
+// start : routes that don't use the LLM remain fully operational.
 let _client = null;
 
 export function getClient() {
@@ -38,7 +38,7 @@ export function getClient() {
   return _client;
 }
 
-/** @deprecated Use getClient() — kept for backward compat with existing imports. */
+/** @deprecated Use getClient() : kept for backward compat with existing imports. */
 export const client = new Proxy(
   {},
   {
@@ -49,7 +49,7 @@ export const client = new Proxy(
 );
 
 // ── Rate limit config ─────────────────────────────────────────
-const TPM_LIMIT = 5000; // stay under 6000 — leave 1000 buffer
+const TPM_LIMIT = 5000; // stay under 6000 : leave 1000 buffer
 const TPM_WINDOW_MS = 62000; // 62s window (slightly over 60s for safety)
 const MAX_TOKENS_PER_CALL = 1800; // input + output budget per call
 
@@ -99,7 +99,7 @@ function estimateTokens(systemPrompt, userContent) {
 // Allows up to MAX_CONCURRENT calls at once while still funnelling
 // each through the global TPM tracker inside executeCall().
 // Replaces the old fully-serial queuePromise chain that forced all
-// agents to wait in a single line — causing 37+ minute waits at
+// agents to wait in a single line : causing 37+ minute waits at
 // 5,000 TPM.  2 concurrent × ~1,800 tokens = 3,600 TPM peak burst,
 // which stays safely under the 5,000 limit; the per-call TPM gate
 // inside executeCall handles any remaining headroom logic.
@@ -132,7 +132,7 @@ export async function llmCall({ systemPrompt, userContent, temperature = 0 }) {
   const estimatedTotal = estimatedInput + 512;
 
   if (estimatedInput > 4000) {
-    console.warn(`Request ~${estimatedInput} tokens — trimming recommended`);
+    console.warn(`Request ~${estimatedInput} tokens : trimming recommended`);
   }
 
   // Wait for TPM headroom BEFORE acquiring a concurrency slot.

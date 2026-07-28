@@ -122,7 +122,7 @@ const STATIC_RULES = [
     id: "SEC011",
     category: "A02:CryptographicFailures",
     severity: "MEDIUM",
-    title: "Insecure cookie — missing Secure or HttpOnly flag",
+    title: "Insecure cookie : missing Secure or HttpOnly flag",
     regex:
       /res\.cookie\s*\([^)]+\)(?!.*(?:httpOnly\s*:\s*true|secure\s*:\s*true))/gi,
     advice:
@@ -176,7 +176,7 @@ const STATIC_RULES = [
     id: "SEC016",
     category: "A03:Injection",
     severity: "HIGH",
-    title: "NoSQL injection — MongoDB query built from user input",
+    title: "NoSQL injection : MongoDB query built from user input",
     regex:
       /(?:findOne|find|updateOne|deleteOne)\s*\(\s*req\.(?:body|params|query)/gi,
     advice:
@@ -221,7 +221,7 @@ const STATIC_RULES = [
     id: "SEC020",
     category: "A04:InsecureDesign",
     severity: "HIGH",
-    title: "CORS wildcard origin — all origins permitted",
+    title: "CORS wildcard origin : all origins permitted",
     regex: /origin\s*:\s*['"`]\*['"`]|cors\s*\(\s*\)/g,
     advice:
       "Restrict CORS to specific trusted origins. Never use '*' in production.",
@@ -242,7 +242,7 @@ const STATIC_RULES = [
     id: "SEC022",
     category: "A04:InsecureDesign",
     severity: "MEDIUM",
-    title: "Unrestricted file upload — no MIME type validation",
+    title: "Unrestricted file upload : no MIME type validation",
     regex:
       /(?:multer|formidable|busboy|upload)\s*\((?!.*(?:mimetype|fileFilter|allowedTypes|accept))/gi,
     advice:
@@ -310,7 +310,7 @@ const STATIC_RULES = [
     id: "SEC028",
     category: "A07:AuthFailures",
     severity: "HIGH",
-    title: "JWT verification missing — token decoded without verify",
+    title: "JWT verification missing : token decoded without verify",
     regex: /jwt\.decode\s*\((?![\s\S]{0,50}jwt\.verify)/gi,
     advice:
       "Use jwt.verify() not jwt.decode(). decode() does NOT validate the signature.",
@@ -379,7 +379,7 @@ const LLM_SYSTEM_PROMPT = `You are a principal application security engineer wit
 ## YOUR REASONING PROCESS
 Before reporting any finding, reason through these questions explicitly in your head (do NOT include this reasoning in output):
 1. What is this code actually trying to do? What is the developer's intent?
-2. What could go wrong at runtime — not just statically? Who calls this and with what inputs?
+2. What could go wrong at runtime : not just statically? Who calls this and with what inputs?
 3. Is this a real exploitable issue, or a false positive because context is missing?
 4. Would a competent attacker actually be able to exploit this in this codebase's threat model?
 5. Is there already a mitigation in place that I haven't seen (e.g. validation upstream, separate middleware)?
@@ -407,28 +407,28 @@ If no vulnerabilities are found, return: []
 ## SCHEMA
 [
   {
-    "id": string,              // e.g. "LLM001", "LLM002" — sequential within this file
+    "id": string,              // e.g. "LLM001", "LLM002" : sequential within this file
     "category": string,        // OWASP category: "A01:BrokenAccessControl" | "A02:CryptographicFailures" | "A03:Injection" | "A04:InsecureDesign" | "A05:SecurityMisconfiguration" | "A06:VulnerableComponents" | "A07:AuthFailures" | "A08:DataIntegrity" | "A09:LoggingFailures" | "A10:SSRF"
     "severity": string,        // "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
     "title": string,           // Short vulnerability name e.g. "Missing ownership check on resource update"
     "file": string,            // File path
     "line": string,            // The specific code snippet (max 120 chars) that demonstrates the issue
-    "description": string,     // 2–3 sentences: what the vulnerability is, how it could be exploited — include the specific attack vector
+    "description": string,     // 2–3 sentences: what the vulnerability is, how it could be exploited : include the specific attack vector
     "impact": string,          // Concrete impact: "Attacker can read any user's appointment records by iterating IDs"
     "advice": string,          // Specific, actionable fix referencing actual variable/function names in this file
     "cwe": string,             // CWE identifier e.g. "CWE-639"
-    "confidence": string       // "HIGH" | "MEDIUM" | "LOW" — how confident you are this is a real, exploitable issue
+    "confidence": string       // "HIGH" | "MEDIUM" | "LOW" : how confident you are this is a real, exploitable issue
   }
 ]
 
 ## ANALYSIS RULES
-1. Only report real, demonstrable vulnerabilities — not theoretical or best-practice suggestions.
+1. Only report real, demonstrable vulnerabilities : not theoretical or best-practice suggestions.
 2. Set confidence "LOW" if the issue depends on untested assumptions about how the function is called.
 3. For "line", quote the most relevant snippet verbatim (truncated to 120 chars).
 4. For "advice", refer to actual variable names, function names, or line patterns in the provided code.
 5. Do NOT re-report issues that are clearly caught by static analysis (hardcoded secrets, basic eval usage).
 6. Do NOT report missing documentation, code style, or non-security concerns.
-7. If you are reviewing an auth, payment, or permission-related function — scrutinise it more thoroughly.
+7. If you are reviewing an auth, payment, or permission-related function : scrutinise it more thoroughly.
 8. Prefer HIGH confidence, fewer findings over LOW confidence, many findings. Quality over quantity.`;
 
 // ─── Constants ────────────────────────────────────────────────────
@@ -442,7 +442,7 @@ const HIGH_RISK_PATH_REGEX =
 const HIGH_RISK_CONTENT_KEYWORDS =
   /jwt\.sign|jwt\.verify|bcrypt\.hash|createHash|Bearer|Authorization|role|permission|admin|stripe\.charges|payment|session\.secret|passport\./i;
 
-const CHUNK_SIZE = 6000; // was 400 — far too small for any real security analysis
+const CHUNK_SIZE = 6000; // was 400 : far too small for any real security analysis
 const MAX_LLM_FILES = 15; // increased from 8
 const MAX_RETRIES = 2;
 
@@ -520,7 +520,7 @@ async function llmCallWithRetry({
 }
 
 /**
- * Deduplicate findings — prefer the richer version of any two
+ * Deduplicate findings : prefer the richer version of any two
  * findings with the same title in the same file.
  */
 function deduplicateFindings(findings) {
@@ -534,7 +534,7 @@ function deduplicateFindings(findings) {
     if (!existing) {
       map.set(key, f);
     } else {
-      // Keep the richer finding (LLM findings over static — more context)
+      // Keep the richer finding (LLM findings over static : more context)
       const scoreF = scoreFinding(f);
       const scoreE = scoreFinding(existing);
       if (scoreF > scoreE) map.set(key, f);
@@ -564,7 +564,7 @@ function scoreFinding(f) {
  * Calculate security score and grade from findings.
  */
 function calculateScore(findings) {
-  // Deduct points per finding — CRITICAL findings have diminishing returns
+  // Deduct points per finding : CRITICAL findings have diminishing returns
   // to prevent a single file from dominating the score
   const criticalCount = findings.filter(
     (f) => f.severity === "CRITICAL",
@@ -573,7 +573,7 @@ function calculateScore(findings) {
   const mediumCount = findings.filter((f) => f.severity === "MEDIUM").length;
   const lowCount = findings.filter((f) => f.severity === "LOW").length;
 
-  // Diminishing deductions — first occurrence hurts more than the 10th
+  // Diminishing deductions : first occurrence hurts more than the 10th
   const deductCritical =
     Math.min(criticalCount, 3) * 25 + Math.max(0, criticalCount - 3) * 10;
   const deductHigh =
@@ -666,7 +666,7 @@ function buildReport(
     const count = counts[sev] ?? 0;
     const bar =
       "█".repeat(Math.min(count, 10)) + (count > 10 ? `+${count - 10}` : "");
-    md += `| ${SEVERITY_EMOJI[sev]} **${sev}** | ${count} | ${bar || "—"} |\n`;
+    md += `| ${SEVERITY_EMOJI[sev]} **${sev}** | ${count} | ${bar || ":"} |\n`;
   }
   md += "\n";
 
@@ -695,11 +695,11 @@ function buildReport(
   // ── Score Guide ───────────────────────────────────────────────
   md += `## Score Guide\n\n`;
   md += `| Grade | Score | Meaning |\n|-------|-------|----------|\n`;
-  md += `| A | 90–100 | Production ready — address Low findings |\n`;
-  md += `| B | 80–89  | Minor issues — fix High findings before release |\n`;
-  md += `| C | 65–79  | Significant risk — fix Critical + High before release |\n`;
-  md += `| D | 45–64  | High risk — do not deploy to production |\n`;
-  md += `| F | 0–44   | Critical risk — security review required |\n\n`;
+  md += `| A | 90–100 | Production ready : address Low findings |\n`;
+  md += `| B | 80–89  | Minor issues : fix High findings before release |\n`;
+  md += `| C | 65–79  | Significant risk : fix Critical + High before release |\n`;
+  md += `| D | 45–64  | High risk : do not deploy to production |\n`;
+  md += `| F | 0–44   | Critical risk : security review required |\n\n`;
 
   // ── Findings Detail ───────────────────────────────────────────
   if (!findings.length) {
@@ -757,7 +757,7 @@ function buildRemediationPlan(findings) {
       MEDIUM: "Next sprint",
       LOW: "Backlog",
     };
-    md += `## ${SEVERITY_EMOJI[sev]} ${sev} — ${effort[sev]}\n\n`;
+    md += `## ${SEVERITY_EMOJI[sev]} ${sev} : ${effort[sev]}\n\n`;
 
     group.forEach((f, idx) => {
       md += `${idx + 1}. **[${f.id}] ${f.title}**\n`;
@@ -777,7 +777,7 @@ function buildRemediationPlan(findings) {
 export async function securityAuditorAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
-  notify("Starting security audit…", "Agent 6 — Security Auditor");
+  notify("Starting security audit…", "Agent 6 : Security Auditor");
 
   // ── 1. Filter scannable code files ────────────────────────────
   const codeFiles = files.filter(
@@ -794,7 +794,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     `${codeFiles.length} code files · ${STATIC_RULES.length} rules`,
   );
 
-  // ── 2. Static scan — all files, zero LLM cost ─────────────────
+  // ── 2. Static scan : all files, zero LLM cost ─────────────────
   const staticFindings = [];
 
   for (const file of codeFiles) {
@@ -834,7 +834,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   const staticCountBySev = countBySeverity(staticFindings);
   notify(
-    `Static scan complete — ${staticFindings.length} findings`,
+    `Static scan complete : ${staticFindings.length} findings`,
     `Critical:${staticCountBySev.CRITICAL} · High:${staticCountBySev.HIGH} · Medium:${staticCountBySev.MEDIUM} · Low:${staticCountBySev.LOW}`,
   );
 
@@ -866,7 +866,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
       llmErrors: 0,
       fastMode: true,
     };
-    notify(`Audit complete (static only) — ${score}/100 (${grade})`, `${findings.length} findings · AI deep scan skipped (fast mode)`);
+    notify(`Audit complete (static only) : ${score}/100 (${grade})`, `${findings.length} findings · AI deep scan skipped (fast mode)`);
     return {
       findings,
       score,
@@ -918,7 +918,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   notify(`AI deep scan…`, `${highRiskFiles.length} high-risk files selected`);
 
-  // ── 4. LLM deep scan — high-risk files only (parallel) ───────
+  // ── 4. LLM deep scan : high-risk files only (parallel) ───────
   // Flatten all file×chunk combinations into a single task list and run
   // them all concurrently. The global LLM semaphore (MAX_CONCURRENT=2)
   // in llm.js throttles the actual API calls without blocking the loop.
@@ -982,7 +982,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   const llmCountBySev = countBySeverity(llmFindings);
   notify(
-    `AI scan complete — ${llmFindings.length} additional findings`,
+    `AI scan complete : ${llmFindings.length} additional findings`,
     `Critical:${llmCountBySev.CRITICAL} · High:${llmCountBySev.HIGH} · Medium:${llmCountBySev.MEDIUM} · Low:${llmCountBySev.LOW}`,
   );
 
@@ -1026,7 +1026,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
   }
 
   notify(
-    `Audit complete — ${score}/100 (${grade})`,
+    `Audit complete : ${score}/100 (${grade})`,
     [
       `${findings.length} total findings`,
       `Critical:${counts.CRITICAL}`,

@@ -1,15 +1,15 @@
 // =============================================================
 // Exports:
-//   inviteUsers          — send one or more email invites
-//   listAccess           — all shares for a project (owner only)
-//   changeRole           — owner updates a share's role
-//   revokeAccess         — owner revokes a specific share
-//   resendInvite         — resend a pending invite
-//   cancelInvite         — delete a pending invite before acceptance
-//   acceptInvite         — invitee clicks the accept link
-//   getSharedProjects    — projects shared WITH the current user
-//   assertProjectAccess  — throws 403/404 if user has no access
-//   getShareRole         — returns the role of a user on a project (or null)
+//   inviteUsers          : send one or more email invites
+//   listAccess           : all shares for a project (owner only)
+//   changeRole           : owner updates a share's role
+//   revokeAccess         : owner revokes a specific share
+//   resendInvite         : resend a pending invite
+//   cancelInvite         : delete a pending invite before acceptance
+//   acceptInvite         : invitee clicks the accept link
+//   getSharedProjects    : projects shared WITH the current user
+//   assertProjectAccess  : throws 403/404 if user has no access
+//   getShareRole         : returns the role of a user on a project (or null)
 // =============================================================
 
 import { randomUUID } from "crypto";
@@ -116,7 +116,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
       continue;
     }
 
-    // Check for a previously revoked invite — create fresh
+    // Check for a previously revoked invite : create fresh
     await ProjectShare.deleteOne({
       projectId,
       inviteeEmail: lc,
@@ -314,8 +314,8 @@ export async function cancelInvite(projectId, shareId, ownerId) {
 
 /**
  * Accept an invite via token (invitee calls this).
- * @param {string} token   — UUID from the invite link
- * @param {string|null} userId — logged-in user ID (null = not logged in)
+ * @param {string} token   : UUID from the invite link
+ * @param {string|null} userId : logged-in user ID (null = not logged in)
  * @returns {{ projectId: string, role: string }}
  */
 export async function acceptInvite(token, userId) {
@@ -443,7 +443,7 @@ export async function getShareRole(projectId, userId) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Serializer — strips internal fields for API responses
+// Serializer : strips internal fields for API responses
 // ─────────────────────────────────────────────────────────────
 
 function _serialize(share) {

@@ -64,7 +64,7 @@ export function parseRepoUrl(provider, repoUrl) {
  *   Azure DevOps                 →  (org,   project, repo, ...)
  *
  * This factory parses the URL once and returns thin wrappers that always
- * accept `(branch, token)` or `(paths, onProgress, token)` — no more
+ * accept `(branch, token)` or `(paths, onProgress, token)` : no more
  * caller-side conditionals.
  *
  * @param {"github"|"gitlab"|"bitbucket"|"azure"} provider
@@ -82,7 +82,7 @@ export function createRepoAdapter(provider, repoUrl) {
     : [parsed.owner, parsed.repo];
 
   return {
-    /** URL components — useful for logging */
+    /** URL components : useful for logging */
     owner:   parsed.owner,
     repo:    parsed.repo,
     project: parsed.project, // Azure only; undefined for other providers
@@ -101,7 +101,7 @@ export function createRepoAdapter(provider, repoUrl) {
 
     /**
      * Batch-fetch file contents.
-     * Uniform signature: (paths, onProgress, token) — provider quirks hidden here.
+     * Uniform signature: (paths, onProgress, token) : provider quirks hidden here.
      */
     fetchFileContents: (paths, onProgress, token) =>
       svc.fetchFileContents(...rp, paths, onProgress, token),

@@ -9,7 +9,7 @@ import { llmCall } from "../config/llm.js";
 const SYSTEM_PROMPT = `You are a principal database architect and ORM specialist with deep expertise in extracting and documenting data models across all major database frameworks and ORMs (Prisma, TypeORM, Sequelize, Mongoose, SQLAlchemy, Django ORM, ActiveRecord, Eloquent, GORM, Hibernate, and raw SQL schemas).
 
 ## YOUR TASK
-Analyze the provided source files and extract every data model, schema, entity, and table definition — including all fields, constraints, indexes, relationships, and validation rules.
+Analyze the provided source files and extract every data model, schema, entity, and table definition : including all fields, constraints, indexes, relationships, and validation rules.
 
 ## OUTPUT FORMAT
 Return ONLY a valid JSON object.
@@ -23,30 +23,30 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
     {
       "name": string,               // Exact model/class/table name e.g. "User", "OrderItem"
       "file": string,               // Source file path where this model is defined
-      "line": number | null,        // Line number of the model definition — null if not determinable
+      "line": number | null,        // Line number of the model definition : null if not determinable
       "orm": string,                // ORM/framework: "prisma" | "typeorm" | "sequelize" | "mongoose" | "sqlalchemy" | "django" | "activerecord" | "eloquent" | "gorm" | "hibernate" | "zod" | "joi" | "yup" | "raw_sql" | "other"
       "database": string,           // Target database: "postgresql" | "mysql" | "sqlite" | "mongodb" | "mssql" | "unknown"
-      "table": string,              // Actual DB table/collection name if different from model name — "" if same
+      "table": string,              // Actual DB table/collection name if different from model name : "" if same
       "description": string,        // 1–2 sentences: what this model represents and its role in the domain
       "fields": [
         {
           "name": string,           // Field/column name
           "type": string,           // ORM type e.g. "String", "Int", "DateTime", "ObjectId", "jsonb"
-          "db_type": string,        // Actual DB column type if specified e.g. "VARCHAR(255)", "BIGINT" — "" if not specified
+          "db_type": string,        // Actual DB column type if specified e.g. "VARCHAR(255)", "BIGINT" : "" if not specified
           "required": boolean,      // true if NOT NULL / required
           "unique": boolean,        // true if unique constraint exists
           "primary": boolean,       // true if this is a primary key field
-          "default": string,        // Default value if specified — "" if none
+          "default": string,        // Default value if specified : "" if none
           "auto": boolean,          // true if auto-generated (autoIncrement, @default(uuid()), @updatedAt, etc.)
           "index": boolean,         // true if individually indexed
-          "enum_values": string[],  // Possible values if field is an enum — [] if not
-          "relation": string,       // Name of related model if this is a FK/relation field — "" if not
-          "description": string     // What this field stores — "" if self-evident
+          "enum_values": string[],  // Possible values if field is an enum : [] if not
+          "relation": string,       // Name of related model if this is a FK/relation field : "" if not
+          "description": string     // What this field stores : "" if self-evident
         }
       ],
       "indexes": [                  // Composite and named indexes
         {
-          "name": string,           // Index name — "" if anonymous
+          "name": string,           // Index name : "" if anonymous
           "fields": string[],       // Field names included in this index
           "unique": boolean,        // true if unique index
           "type": string            // "btree" | "hash" | "gin" | "gist" | "fulltext" | "spatial" | "" if not specified
@@ -56,10 +56,10 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
         {
           "type": string,           // "unique" | "check" | "foreign_key" | "primary_key"
           "fields": string[],       // Fields involved
-          "expression": string      // Constraint expression if applicable — "" if none
+          "expression": string      // Constraint expression if applicable : "" if none
         }
       ],
-      "hooks": string[],            // Lifecycle hooks: "beforeCreate" | "afterSave" | "beforeDestroy" etc. — [] if none
+      "hooks": string[],            // Lifecycle hooks: "beforeCreate" | "afterSave" | "beforeDestroy" etc. : [] if none
       "soft_delete": boolean,       // true if model uses soft deletes (deletedAt, paranoid, etc.)
       "timestamps": boolean,        // true if model has createdAt/updatedAt auto fields
       "tags": string[]              // Inferred domain tags e.g. ["auth", "billing", "inventory"]
@@ -70,9 +70,9 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
       "from": string,               // Source model name
       "to": string,                 // Target model name
       "type": string,               // "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many"
-      "through": string | null,     // Junction table/model name for many-to-many — null if direct
-      "from_field": string,         // FK field on the source model — "" if not determinable
-      "to_field": string,           // Referenced field on target model — "" if not determinable
+      "through": string | null,     // Junction table/model name for many-to-many : null if direct
+      "from_field": string,         // FK field on the source model : "" if not determinable
+      "to_field": string,           // Referenced field on target model : "" if not determinable
       "cascade": string,            // "CASCADE" | "SET_NULL" | "RESTRICT" | "NO_ACTION" | "" if not specified
       "optional": boolean,          // true if relation is optional (nullable FK)
       "description": string         // One sentence explaining what this relationship means in domain terms
@@ -81,39 +81,39 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
 }
 
 ## EXTRACTION RULES
-1. Extract EVERY model — do not skip any, including junction/pivot tables and embedded sub-schemas.
+1. Extract EVERY model : do not skip any, including junction/pivot tables and embedded sub-schemas.
 2. For "table", only populate if the model uses @Table(), tableName, or collection() to override the default name.
-3. For "orm", detect from decorators, imports, or syntax patterns — see framework hints below.
+3. For "orm", detect from decorators, imports, or syntax patterns : see framework hints below.
 4. For "fields", include ALL fields including auto-generated ones (id, createdAt, updatedAt, deletedAt).
 5. For "relationships", create one entry per directional relationship. A User hasMany Posts → one entry from User to Post (one-to-many).
 6. For many-to-many via junction table, set "through" to the junction table/model name.
 7. For "description", be domain-specific: "Represents a customer's subscription to a plan, tracking billing cycle and status" not "User model".
 8. For "hooks", list any @BeforeInsert, @AfterUpdate, beforeCreate, signal handlers visible in the snippet.
 9. For "soft_delete", detect: deletedAt field, paranoid: true, SoftDelete decorator, @DeleteDateColumn.
-10. If a value cannot be determined confidently, use null for numbers, "" for strings, [] for arrays — never fabricate.
+10. If a value cannot be determined confidently, use null for numbers, "" for strings, [] for arrays : never fabricate.
 
 ## FRAMEWORK DETECTION HINTS
 
-**Prisma** — model User { }, @default(), @relation(), @@index(), @@unique()
-**TypeORM** — @Entity(), @Column(), @PrimaryGeneratedColumn(), @OneToMany(), @ManyToOne(), @JoinTable()
-**Sequelize** — sequelize.define(), DataTypes.STRING, belongsTo(), hasMany(), hasOne(), belongsToMany()
-**Mongoose** — new Schema({ }), mongoose.model(), SchemaTypes, ref: 'ModelName'
-**SQLAlchemy** — class Model(Base), Column(), relationship(), ForeignKey(), declarative_base()
-**Pydantic** — BaseModel, Field(), field_validator(), ConfigDict, model_validate()
-**Marshmallow** — Schema class, fields.String(), post_load(), pre_load()
-**Django ORM** — class Model(models.Model), models.CharField(), ForeignKey(), ManyToManyField()
-**ActiveRecord (Rails)** — class Model < ApplicationRecord, belongs_to, has_many, has_one, has_and_belongs_to_many
-**Eloquent (Laravel)** — class Model extends Model, $fillable, $casts, belongsTo(), hasMany()
-**Doctrine (PHP)** — #[ORM\Entity], #[ORM\Column], #[ORM\ManyToOne], #[ORM\OneToMany], #[ORM\ManyToMany]
-**GORM (Go)** — type Model struct { gorm:"..." }, gorm.Model embedding, has_many, belongs_to
-**Hibernate (Java)** — @Entity, @Table, @Column, @OneToMany, @ManyToOne, @JoinColumn
-**JPA (Java)** — @Entity, @Id, @GeneratedValue, @ManyToOne, @OneToMany, @JoinColumn
-**Spring Data JPA** — extends JpaRepository/CrudRepository, @Repository, custom query methods
-**MyBatis (Java)** — @Mapper, @Select, @Insert, @Update, @Delete, @Results, @Result
-**Kotlin Data Classes** — data class User(...), @Entity, @Table, @Column with annotations
-**Swift Codable** — struct: Codable, @Model (SwiftData), @Relationship, @Attribute
-**Entity Framework (.NET/C#)** — DbSet<Model>, protected override void OnModelCreating(), HasKey(), HasMany()
-**Zod/Joi/Yup** — validation schemas — treat as "schema" orm type, extract field shapes
+**Prisma** : model User { }, @default(), @relation(), @@index(), @@unique()
+**TypeORM** : @Entity(), @Column(), @PrimaryGeneratedColumn(), @OneToMany(), @ManyToOne(), @JoinTable()
+**Sequelize** : sequelize.define(), DataTypes.STRING, belongsTo(), hasMany(), hasOne(), belongsToMany()
+**Mongoose** : new Schema({ }), mongoose.model(), SchemaTypes, ref: 'ModelName'
+**SQLAlchemy** : class Model(Base), Column(), relationship(), ForeignKey(), declarative_base()
+**Pydantic** : BaseModel, Field(), field_validator(), ConfigDict, model_validate()
+**Marshmallow** : Schema class, fields.String(), post_load(), pre_load()
+**Django ORM** : class Model(models.Model), models.CharField(), ForeignKey(), ManyToManyField()
+**ActiveRecord (Rails)** : class Model < ApplicationRecord, belongs_to, has_many, has_one, has_and_belongs_to_many
+**Eloquent (Laravel)** : class Model extends Model, $fillable, $casts, belongsTo(), hasMany()
+**Doctrine (PHP)** : #[ORM\Entity], #[ORM\Column], #[ORM\ManyToOne], #[ORM\OneToMany], #[ORM\ManyToMany]
+**GORM (Go)** : type Model struct { gorm:"..." }, gorm.Model embedding, has_many, belongs_to
+**Hibernate (Java)** : @Entity, @Table, @Column, @OneToMany, @ManyToOne, @JoinColumn
+**JPA (Java)** : @Entity, @Id, @GeneratedValue, @ManyToOne, @OneToMany, @JoinColumn
+**Spring Data JPA** : extends JpaRepository/CrudRepository, @Repository, custom query methods
+**MyBatis (Java)** : @Mapper, @Select, @Insert, @Update, @Delete, @Results, @Result
+**Kotlin Data Classes** : data class User(...), @Entity, @Table, @Column with annotations
+**Swift Codable** : struct: Codable, @Model (SwiftData), @Relationship, @Attribute
+**Entity Framework (.NET/C#)** : DbSet<Model>, protected override void OnModelCreating(), HasKey(), HasMany()
+**Zod/Joi/Yup** : validation schemas : treat as "schema" orm type, extract field shapes
 
 ## STRICT OUTPUT RULES
 - No markdown of any kind
@@ -200,7 +200,7 @@ const PATH_REGEX =
 const EXCLUDE_REGEX = /\.test\.|\.spec\.|__mock|fixture|\.d\.ts$/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 8000; // was 280 — completely inadequate for real schema files
+const CHARS_PER_FILE = 8000; // was 280 : completely inadequate for real schema files
 const MAX_FILES = 50;
 const MAX_RETRIES = 2;
 
@@ -591,7 +591,7 @@ function buildSummary(models, relationships) {
 // ─── Agent ────────────────────────────────────────────────────────
 
 // ─── Heuristic Model Extraction ──────────────────────────────────
-// Used in fastMode — extracts model names and basic field shapes via
+// Used in fastMode : extracts model names and basic field shapes via
 // regex pattern matching, zero LLM cost.
 
 function heuristicExtractModels(files, projectMap) {
@@ -714,7 +714,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
         return [
           `=== FILE: ${f.path} ===`,
           truncated
-            ? `[Truncated at ${CHARS_PER_FILE} chars — ${f.content.length} total]`
+            ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]`
             : "",
           f.content.slice(0, CHARS_PER_FILE),
         ]
@@ -785,7 +785,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     }
   }
 
-  // ── 3. Deduplicate models — keep the most complete version ────
+  // ── 3. Deduplicate models : keep the most complete version ────
   const modelMap = new Map();
 
   for (const model of rawModels) {
@@ -808,12 +808,12 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
   // ── 4. Extract static relationships from model fields ─────────
   const staticRels = extractStaticRelationships(models);
 
-  // ── 5. Deduplicate relationships — keep the richer version ────
+  // ── 5. Deduplicate relationships : keep the richer version ────
   const relMap = new Map();
 
   const allRels = [...rawRelationships, ...staticRels];
   for (const rel of allRels) {
-    // Key includes direction — User→Post (one-to-many) and Post→User (many-to-one) are different
+    // Key includes direction : User→Post (one-to-many) and Post→User (many-to-one) are different
     const key = `${rel.from}→${rel.to}:${rel.type}`;
     const existing = relMap.get(key);
 
@@ -873,7 +873,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
 
 /**
  * Merge two field arrays from duplicate model extractions.
- * Union by field name — keeps the more complete version of each field.
+ * Union by field name : keeps the more complete version of each field.
  */
 function mergeFields(fieldsA, fieldsB) {
   const fieldMap = new Map();

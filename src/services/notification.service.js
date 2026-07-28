@@ -31,13 +31,13 @@ import {
 
 const VALID_TYPES = new Set(NOTIFICATION_TYPES);
 
-// Duplicate suppression window — 5 minutes (ms)
+// Duplicate suppression window : 5 minutes (ms)
 const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 
 // ─── Internal helpers ─────────────────────────────────────────────
 
 /**
- * Core writer — called from setImmediate, never propagates.
+ * Core writer : called from setImmediate, never propagates.
  * @param {object} opts
  */
 async function _write(opts) {
@@ -109,11 +109,11 @@ class _NotificationService {
    * @param {object} opts
    * @param {string|mongoose.Types.ObjectId} opts.userId
    * @param {string} opts.type
-   * @param {object} [opts.metadata]   — passed to title/message templates as ctx
-   * @param {string} [opts.title]      — override auto-resolved title
-   * @param {string} [opts.message]    — override auto-resolved message
-   * @param {string} [opts.priority]    — override auto-resolved priority
-   * @param {string} [opts.entityType] — override auto-resolved entityType
+   * @param {object} [opts.metadata]   : passed to title/message templates as ctx
+   * @param {string} [opts.title]      : override auto-resolved title
+   * @param {string} [opts.message]    : override auto-resolved message
+   * @param {string} [opts.priority]    : override auto-resolved priority
+   * @param {string} [opts.entityType] : override auto-resolved entityType
    * @param {string} [opts.projectId]
    * @param {string} [opts.entityId]
    * @param {string} [opts.actionUrl]

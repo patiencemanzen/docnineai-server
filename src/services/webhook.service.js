@@ -251,7 +251,7 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
       body: {
         received: true,
         action: "ignored",
-        reason: `Event '${githubEvent}' not handled — only push and ping events trigger sync.`,
+        reason: `Event '${githubEvent}' not handled : only push and ping events trigger sync.`,
       },
     };
   }

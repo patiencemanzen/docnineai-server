@@ -1,5 +1,5 @@
 // =============================================================
-// GitLab API client — mirrors github.service.js interface exactly.
+// GitLab API client : mirrors github.service.js interface exactly.
 //
 // Every exported function has the same name and return shape as
 // its GitHub counterpart so provider.adapter.js can swap them
@@ -238,7 +238,7 @@ export async function getCommitSha(owner, repo, branch, accessToken) {
 
 /**
  * Fetch the recursive file tree with per-file blob SHAs.
- * GitLab's tree API paginates — we exhaust all pages.
+ * GitLab's tree API paginates : we exhaust all pages.
  * Same return shape as github.service.js → getFileTreeWithSha().
  */
 export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
@@ -265,7 +265,7 @@ export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
     .map((i) => ({ path: i.path, sha: i.id, size: null }));
 }
 
-/** Same as getFileTreeWithSha but drops SHA — used for full runs. */
+/** Same as getFileTreeWithSha but drops SHA : used for full runs. */
 export async function getFileTree(owner, repo, branch, accessToken) {
   const items = await getFileTreeWithSha(owner, repo, branch, accessToken);
   return items.map((i) => ({ path: i.path, size: i.size }));
@@ -438,7 +438,7 @@ export async function fetchRepoFilesWithProgress(
 
 /**
  * Validate a GitLab webhook token.
- * GitLab sends the configured secret as a plain X-Gitlab-Token header — no HMAC.
+ * GitLab sends the configured secret as a plain X-Gitlab-Token header : no HMAC.
  * We use constant-time comparison to prevent timing attacks.
  */
 export function validateWebhookToken(incomingToken, expectedSecret) {
@@ -476,7 +476,7 @@ export async function registerWebhook(
   return { hookId: data.id };
 }
 
-/** Delete a webhook — called on project delete or GitLab disconnect. */
+/** Delete a webhook : called on project delete or GitLab disconnect. */
 export async function deleteWebhook(owner, repo, accessToken, hookId) {
   try {
     await axios.delete(

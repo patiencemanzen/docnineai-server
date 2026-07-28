@@ -1,5 +1,5 @@
 // ===================================================================
-// Nodemailer transporter — configure via SMTP env vars.
+// Nodemailer transporter : configure via SMTP env vars.
 // Falls back gracefully so the server starts even without email config.
 //
 // Without SMTP config: emails are logged to console (dev mode).
@@ -10,7 +10,7 @@ import nodemailer from "nodemailer";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const FROM = process.env.EMAIL_FROM || "Docnine <noreply@docnineai.com>";
 
-// Lazy singleton — created on first use
+// Lazy singleton : created on first use
 let _transporter = null;
 
 function getTransporter() {
@@ -22,7 +22,7 @@ function getTransporter() {
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     _transporter = {
       sendMail: async (opts) => {
-        console.log("\n [EMAIL — not sent, SMTP unconfigured]");
+        console.log("\n [EMAIL : not sent, SMTP unconfigured]");
         console.log(`   To:      ${opts.to}`);
         console.log(`   Subject: ${opts.subject}`);
         console.log(`   Body:    ${opts.text || "(html only)"}\n`);
@@ -164,7 +164,7 @@ export async function sendTrialExpiryReminderEmail({
     text: `Hi ${name},\n\nYour Docnine trial ends in ${daysLeft} day${daysLeft > 1 ? "s" : ""} (${endDate}). Add a payment method to keep your access:\n${billingUrl}`,
     html: emailTemplate({
       title: `Your trial ends in ${daysLeft} day${daysLeft > 1 ? "s" : ""}`,
-      body: `<p>Hi <strong>${name}</strong>,</p><p>Your Docnine free trial ends on <strong>${endDate}</strong>. Add a payment method now to keep your access to all paid features.</p><p>If you don't add one, your account will move to the free plan. <strong>Your data will be kept — no deletions.</strong></p>`,
+      body: `<p>Hi <strong>${name}</strong>,</p><p>Your Docnine free trial ends on <strong>${endDate}</strong>. Add a payment method now to keep your access to all paid features.</p><p>If you don't add one, your account will move to the free plan. <strong>Your data will be kept : no deletions.</strong></p>`,
       ctaText: "Add Payment Method",
       ctaUrl: billingUrl,
       footer: "No action needed if you want to continue on the Free plan.",
@@ -181,7 +181,7 @@ export async function sendTrialExpiredEmail({ to, name }) {
     text: `Hi ${name},\n\nYour Docnine trial has ended and your account has moved to the Free plan. Your projects and documents are safe. Resubscribe anytime:\n${billingUrl}`,
     html: emailTemplate({
       title: "Your trial has ended",
-      body: `<p>Hi <strong>${name}</strong>,</p><p>Your 14-day free trial has ended and your account has moved to the <strong>Free plan</strong>.</p><p>Don't worry — all your projects and documents are still there. Upgrade anytime to restore full access instantly.</p>`,
+      body: `<p>Hi <strong>${name}</strong>,</p><p>Your 14-day free trial has ended and your account has moved to the <strong>Free plan</strong>.</p><p>Don't worry : all your projects and documents are still there. Upgrade anytime to restore full access instantly.</p>`,
       ctaText: "Resubscribe",
       ctaUrl: billingUrl,
       footer: "No data has been deleted.",
@@ -233,7 +233,7 @@ export async function sendPaymentReceiptEmail({
   await getTransporter().sendMail({
     from: FROM,
     to,
-    subject: `Receipt for $${amount.toFixed(2)} — Docnine`,
+    subject: `Receipt for $${amount.toFixed(2)} : Docnine`,
     text: `Hi ${name},\n\nPayment received: $${amount.toFixed(2)} for ${description} on ${dateStr}.\n\nInvoice #${invoiceNumber}. Download your invoice: ${billingUrl}`,
     html: emailTemplate({
       title: "Payment received",
@@ -288,7 +288,7 @@ export async function sendPlanDowngradeScheduledEmail({
   await getTransporter().sendMail({
     from: FROM,
     to,
-    subject: `Your plan change is scheduled — Docnine`,
+    subject: `Your plan change is scheduled : Docnine`,
     text: `Hi ${name},\n\nYour plan will change from ${currentPlanName} to ${newPlanName} on ${effectiveDate}. You keep full access until then.\n\nCancel the downgrade anytime: ${billingUrl}`,
     html: emailTemplate({
       title: "Plan change scheduled",
@@ -336,7 +336,7 @@ export async function sendPaymentFailedEmail({
   await getTransporter().sendMail({
     from: FROM,
     to,
-    subject: "Payment failed — action required",
+    subject: "Payment failed : action required",
     text: `Hi ${name},\n\nWe couldn't process your payment for Docnine ${planName}. Please update your payment method to avoid losing access:\n${billingUrl}`,
     html: emailTemplate({
       title: "Payment failed",
@@ -352,7 +352,7 @@ export async function sendPaymentUpdateReminderEmail({ to, name, billingUrl }) {
   await getTransporter().sendMail({
     from: FROM,
     to,
-    subject: "Reminder: Update your payment method — Docnine",
+    subject: "Reminder: Update your payment method : Docnine",
     text: `Hi ${name},\n\nA reminder to update your payment method to avoid losing access to Docnine:\n${billingUrl}`,
     html: emailTemplate({
       title: "Update your payment method",
@@ -378,7 +378,7 @@ export async function sendDowngradeWarningEmail({
     text: `Hi ${name},\n\nIf we don't receive payment in the next ${daysLeft} days, your account will move to the Free plan. Update your payment method:\n${billingUrl}`,
     html: emailTemplate({
       title: `Account downgrade in ${daysLeft} days`,
-      body: `<p>Hi <strong>${name}</strong>,</p><p>We've been unable to process your payment. If this isn't resolved in the next <strong>${daysLeft} days</strong>, your account will be moved to the <strong>Free plan</strong>.</p><p>Your projects and documents are safe — only premium features will be locked.</p>`,
+      body: `<p>Hi <strong>${name}</strong>,</p><p>We've been unable to process your payment. If this isn't resolved in the next <strong>${daysLeft} days</strong>, your account will be moved to the <strong>Free plan</strong>.</p><p>Your projects and documents are safe : only premium features will be locked.</p>`,
       ctaText: "Update Payment Method Now",
       ctaUrl: billingUrl,
       footer:

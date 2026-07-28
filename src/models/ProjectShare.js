@@ -1,14 +1,14 @@
 // =============================================================
-// ProjectShare — tracks every share invitation for a project.
+// ProjectShare : tracks every share invitation for a project.
 //
 // Lifecycle:
-//   pending  — invite sent, user hasn't accepted yet
-//   accepted — user clicked the accept link
-//   revoked  — owner explicitly removed access
+//   pending  : invite sent, user hasn't accepted yet
+//   accepted : user clicked the accept link
+//   revoked  : owner explicitly removed access
 //
 // Roles:
-//   viewer — can read docs / attachments, cannot edit
-//   editor — can edit docs and upload attachments
+//   viewer : can read docs / attachments, cannot edit
+//   editor : can edit docs and upload attachments
 // =============================================================
 
 import mongoose from "mongoose";

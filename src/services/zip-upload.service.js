@@ -2,7 +2,7 @@
 // ZIP Upload Service
 //
 // Handles extraction and processing of uploaded ZIP files.
-// Simplified interface compared to git providers — no remote
+// Simplified interface compared to git providers : no remote
 // APIs, no OAuth, no incremental sync.
 //
 // ZIP projects:

@@ -1,5 +1,5 @@
 // ===================================================================
-// Subscription — tracks a user's active billing state.
+// Subscription : tracks a user's active billing state.
 //
 // One Subscription document per user. Even Free users have one
 // (plan = 'free', status = 'free') so gate queries are uniform.
@@ -11,7 +11,7 @@
 //   active     → past_due (payment fails at renewal)
 //   past_due   → active   (payment recovers within grace period)
 //   past_due   → free     (dunning window expires after 14 days)
-//   active     → cancelled (user cancels — stays active until period end)
+//   active     → cancelled (user cancels : stays active until period end)
 //   cancelled  → free     (period ends after cancelling)
 //   active     → paused   (user pauses)
 //   paused     → active   (pause period ends)
@@ -43,7 +43,7 @@ const SubscriptionSchema = new Schema(
       enum: ["monthly", "annual", null],
       default: null,
     },
-    // Number of seats — meaningful for pro & team plans
+    // Number of seats : meaningful for pro & team plans
     seats: {
       type: Number,
       default: 1,
@@ -128,7 +128,7 @@ const SubscriptionSchema = new Schema(
 
     // ── Flutterwave references ────────────────────────────────
     // The Flutterwave customer/transaction token for recurring charges.
-    // Never store raw card numbers — only FW-issued tokens.
+    // Never store raw card numbers : only FW-issued tokens.
     flutterwaveCustomerId: {
       type: String,
       default: null,
@@ -136,7 +136,7 @@ const SubscriptionSchema = new Schema(
     },
 
     // ── Misc ──────────────────────────────────────────────────
-    // Retention offer tracking — to avoid showing the same offer twice
+    // Retention offer tracking : to avoid showing the same offer twice
     retentionOfferUsed: {
       type: Boolean,
       default: false,

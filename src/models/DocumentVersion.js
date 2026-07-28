@@ -7,9 +7,9 @@
 //
 // Sections: readme | internalDocs | apiReference | schemaDocs | securityReport
 // Sources:
-//   ai_full          — complete pipeline run (first run or full retry)
-//   ai_incremental   — only the section was re-generated during a sync
-//   user             — user manually edited the section in the UI
+//   ai_full          : complete pipeline run (first run or full retry)
+//   ai_incremental   : only the section was re-generated during a sync
+//   user             : user manually edited the section in the UI
 //
 // Capped at MAX_VERSIONS_PER_SECTION per section per project.
 // Oldest versions are pruned synchronously after every write.

@@ -20,7 +20,7 @@ const router = express.Router();
 
 
 // ── Custom Slack App Setup ─────────────────────────────────────
-// Protected endpoints — auth required
+// Protected endpoints : auth required
 
 /**
  * Set custom Slack credentials for a project
@@ -43,7 +43,7 @@ router.post("/oauth/start", protect, initiateSlackOAuth);
 router.get("/oauth/callback", handleSlackCallback);
 
 // ── Slash Commands & Events ────────────────────────────────────
-// Public endpoints — verified via Slack signature
+// Public endpoints : verified via Slack signature
 
 /**
  * Handle slash commands
@@ -59,7 +59,7 @@ router.post("/commands", handleSlashCommand);
 router.post("/events", handleSlackEvent);
 
 // ── Configuration ──────────────────────────────────────────────
-// Protected endpoints — auth required
+// Protected endpoints : auth required
 
 /**
  * Get Slack integration config for a project

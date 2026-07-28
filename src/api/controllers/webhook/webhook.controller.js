@@ -9,8 +9,8 @@
 //   - Single global endpoint for all user webhooks
 //
 // Routes:
-//   POST /webhook             — GitHub push webhook (user-level)
-//   POST /webhook/flutterwave — Flutterwave billing webhook
+//   POST /webhook             : GitHub push webhook (user-level)
+//   POST /webhook/flutterwave : Flutterwave billing webhook
 // =============================================================
 
 import { serverError } from "../../../utils/response.util.js";

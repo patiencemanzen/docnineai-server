@@ -2,12 +2,12 @@
 // HTTP layer for OpenAPI / PostMan spec import & viewer.
 //
 // Routes (mounted under /projects/:id/apispec):
-//   GET    /          — get imported spec (metadata + endpoints)
-//   POST   /import    — import spec (file | url | raw)
-//   POST   /sync      — re-fetch from source URL
-//   DELETE /          — delete spec
-//   PATCH  /endpoint  — update custom note on an endpoint
-//   POST   /try       — proxy Try-It request
+//   GET    /          : get imported spec (metadata + endpoints)
+//   POST   /import    : import spec (file | url | raw)
+//   POST   /sync      : re-fetch from source URL
+//   DELETE /          : delete spec
+//   PATCH  /endpoint  : update custom note on an endpoint
+//   POST   /try       : proxy Try-It request
 // =============================================================
 
 import * as svc from "../../services/apispec/apispec.service.js";

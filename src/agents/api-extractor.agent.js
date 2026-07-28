@@ -9,7 +9,7 @@ import { llmCall } from "../config/llm.js";
 const SYSTEM_PROMPT = `You are a senior API documentation engineer specializing in extracting and documenting HTTP endpoints from source code across all major frameworks (Express, Fastify, NestJS, Django, FastAPI, Laravel, Rails, etc.).
 
 ## YOUR TASK
-Analyze the provided source files and extract every HTTP endpoint defined, implied, or registered — including nested routers, prefixed route groups, and decorator-based routes.
+Analyze the provided source files and extract every HTTP endpoint defined, implied, or registered : including nested routers, prefixed route groups, and decorator-based routes.
 
 ## OUTPUT FORMAT
 Return ONLY a valid JSON array.
@@ -29,7 +29,7 @@ If no endpoints are found, return exactly: []
     "auth": {
       "required": boolean,          // true if any auth guard/middleware is applied
       "type": string,               // "JWT" | "API_KEY" | "SESSION" | "OAUTH" | "BASIC" | "NONE" | "unknown"
-      "roles": string[]             // Required roles/permissions if determinable e.g. ["admin", "superuser"] — [] if none
+      "roles": string[]             // Required roles/permissions if determinable e.g. ["admin", "superuser"] : [] if none
     },
     "request": {
       "headers": [                  // Notable required/optional headers
@@ -47,16 +47,16 @@ If no endpoints are found, return exactly: []
           "type": string,           // e.g. "string" | "number" | "boolean" | "object" | "array"
           "required": boolean,
           "description": string,    // What this param represents
-          "validation": string      // Any validation rules observed e.g. "min:1", "email", "uuid" — "" if none
+          "validation": string      // Any validation rules observed e.g. "min:1", "email", "uuid" : "" if none
         }
       ],
-      "body_schema": string         // Name of the DTO/schema/interface used for body e.g. "CreateUserDto" — "" if none
+      "body_schema": string         // Name of the DTO/schema/interface used for body e.g. "CreateUserDto" : "" if none
     },
     "response": {
       "success": {
         "status": number,           // Expected success HTTP status code e.g. 200, 201
         "description": string,      // What the response contains e.g. "Returns the created user object"
-        "schema": string            // Response type/interface name if determinable — "" if none
+        "schema": string            // Response type/interface name if determinable : "" if none
       },
       "errors": [                   // All possible error responses
         {
@@ -66,24 +66,24 @@ If no endpoints are found, return exactly: []
       ]
     },
     "middleware": string[],         // Named middleware applied to this route e.g. ["rateLimiter", "validateBody"]
-    "rate_limit": string,           // Rate limit if specified e.g. "100/min" — "" if none
+    "rate_limit": string,           // Rate limit if specified e.g. "100/min" : "" if none
     "deprecated": boolean,          // true if marked as deprecated
     "tags": string[],               // Logical grouping tags inferred from path/controller e.g. ["users", "auth"]
-    "notes": string                 // Edge cases, TODOs, security concerns, important caveats — "" if none
+    "notes": string                 // Edge cases, TODOs, security concerns, important caveats : "" if none
   }
 ]
 
 ## EXTRACTION RULES
-1. Extract ALL endpoints — do not skip any route, including nested or prefixed ones.
+1. Extract ALL endpoints : do not skip any route, including nested or prefixed ones.
 2. Reconstruct FULL paths: if a router is mounted at "/api/v1/users" and defines "/:id", the full path is "/api/v1/users/:id".
 3. For decorator-based frameworks (NestJS, FastAPI, Django): read the controller prefix + method decorator to build the full path.
 4. Infer auth from: guard decorators (@UseGuards), middleware names (authMiddleware, requireAuth, isAuthenticated), or decorator names (@Roles, @Auth, @Protected).
 5. Infer roles from: @Roles(...), @Permissions(...), role checks in the handler body, or middleware name patterns.
 6. For "handler", use the format "ClassName.methodName" for class-based controllers, or just "functionName" for function-based handlers.
-7. If a route file imports and re-exports routes from another file, note this in "notes" — do not fabricate the re-exported routes.
+7. If a route file imports and re-exports routes from another file, note this in "notes" : do not fabricate the re-exported routes.
 8. For "tags", infer from the controller class name, router file name, or path prefix (e.g., "/api/users/..." → tag: "users").
-9. If a value cannot be determined with confidence, use null for numbers and "unknown" for strings — never fabricate.
-10. Do not merge different HTTP methods on the same path — each method is a separate endpoint object.
+9. If a value cannot be determined with confidence, use null for numbers and "unknown" for strings : never fabricate.
+10. Do not merge different HTTP methods on the same path : each method is a separate endpoint object.
 
 ## FRAMEWORK DETECTION HINTS
 - Express/Fastify: router.get(), app.post(), fastify.put()
@@ -154,7 +154,7 @@ const ROUTE_REGEX = new RegExp(
 const PATH_REGEX = /route|controller|handler|endpoint|api/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 6000; // was 400 — far too small for real route files
+const CHARS_PER_FILE = 6000; // was 400 : far too small for real route files
 const MAX_ROUTE_FILES = 40;
 const MAX_RETRIES = 2;
 
@@ -273,7 +273,7 @@ async function llmCallWithRetry({
 }
 
 // ─── Heuristic Endpoint Extraction ───────────────────────────────
-// Used in fastMode (Vercel) — no LLM needed. Extracts method + path
+// Used in fastMode (Vercel) : no LLM needed. Extracts method + path
 // from route definition patterns using regex matching.
 
 const HEURISTIC_ROUTE_MATCHERS = [
@@ -287,7 +287,7 @@ const HEURISTIC_ROUTE_MATCHERS = [
   { re: /@(?:app|blueprint|api)\.route\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: null, pIdx: 1 },
   // Laravel: Route::get('/path') or Route::post('/path')
   { re: /Route::(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
-  // Next.js API routes — infer from file path pattern (handled below)
+  // Next.js API routes : infer from file path pattern (handled below)
 ];
 
 function heuristicExtractEndpoints(file, projectMap) {
@@ -337,7 +337,7 @@ function heuristicExtractEndpoints(file, projectMap) {
     return endpoints.filter(Boolean);
   }
 
-  // Traditional frameworks — scan with regex matchers
+  // Traditional frameworks : scan with regex matchers
   for (const { re, mIdx, pIdx } of HEURISTIC_ROUTE_MATCHERS) {
     const regex = new RegExp(re.source, re.flags);
     let match;

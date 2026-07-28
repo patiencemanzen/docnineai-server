@@ -9,7 +9,7 @@ import { llmCall } from "../config/llm.js";
 const SYSTEM_PROMPT = `You are a senior software engineer and technical documentation specialist with deep expertise in reading and analyzing codebases across multiple languages and frameworks (Node.js, TypeScript, React, Vue, Python, Java, Go, PHP, Ruby, etc.).
 
 ## YOUR TASK
-Analyze the provided source files and generate precise, structured documentation for every identifiable component, service, utility, hook, middleware, provider, store, config, or helper found. Create one object per export — not one per file.
+Analyze the provided source files and generate precise, structured documentation for every identifiable component, service, utility, hook, middleware, provider, store, config, or helper found. Create one object per export : not one per file.
 
 ## OUTPUT FORMAT
 Return ONLY a valid JSON array.
@@ -22,13 +22,13 @@ If no components are found, return exactly: []
   {
     "name": string,                   // Exact exported name e.g. "useAuthStore", "EmailService", "formatDate"
     "file": string,                   // Relative file path e.g. "services/email.service.ts"
-    "line": number | null,            // Line number where this is defined — null if not determinable
+    "line": number | null,            // Line number where this is defined : null if not determinable
     "type": string,                   // One of: service | middleware | utility | config | helper | hook | component | provider | store | context | guard | interceptor | decorator | constant | type | other
     "layer": string,                  // One of: frontend | backend | shared | infrastructure | database
-    "description": string,            // 1–2 sentences: what it does and why it exists — be specific, avoid "handles logic"
+    "description": string,            // 1–2 sentences: what it does and why it exists : be specific, avoid "handles logic"
     "responsibilities": string[],     // 2–5 bullet points using active verbs: "Validates...", "Transforms...", "Emits..."
     "exports": {
-      "default": string | null,       // Default export name — null if none
+      "default": string | null,       // Default export name : null if none
       "named": string[]               // All named exports from this file
     },
     "parameters": [                   // Top-level function or constructor parameters
@@ -36,7 +36,7 @@ If no components are found, return exactly: []
         "name": string,
         "type": string,               // TypeScript/inferred type e.g. "string", "UserDto", "Request"
         "required": boolean,
-        "default": string,            // Default value if any — "" if none
+        "default": string,            // Default value if any : "" if none
         "description": string
       }
     ],
@@ -51,30 +51,30 @@ If no components are found, return exactly: []
     "state": {
       "manages": boolean,             // true if this component manages any state
       "type": string,                 // "local" | "global" | "server" | "none"
-      "description": string           // What state is managed — "" if none
+      "description": string           // What state is managed : "" if none
     },
-    "side_effects": string[],         // Explicit side effects: "Writes to users table", "Sends email via SMTP", "Publishes Redis event" — [] if none
-    "error_handling": string,         // How errors are handled: "Throws HttpException(401)", "Returns null on miss", "Catches and rethrows" — "none" if absent
+    "side_effects": string[],         // Explicit side effects: "Writes to users table", "Sends email via SMTP", "Publishes Redis event" : [] if none
+    "error_handling": string,         // How errors are handled: "Throws HttpException(401)", "Returns null on miss", "Catches and rethrows" : "none" if absent
     "async": boolean,                 // true if this is async/returns a Promise
     "singleton": boolean | null,      // true if instantiated once (e.g. NestJS @Injectable()), null if unknown
     "testable": boolean,              // true if it has no hard dependencies making unit testing difficult
     "deprecated": boolean,            // true if marked @deprecated or has a deprecation comment
-    "complexity": string,             // "low" | "medium" | "high" — based on logic branching and dependencies
+    "complexity": string,             // "low" | "medium" | "high" : based on logic branching and dependencies
     "tags": string[],                 // Inferred grouping tags e.g. ["auth", "email", "validation"]
-    "notes": string                   // TODOs, security concerns, known issues, important caveats — "" if none
+    "notes": string                   // TODOs, security concerns, known issues, important caveats : "" if none
   }
 ]
 
 ## ANALYSIS RULES
-1. Create ONE object per export — if a file has 4 named exports, return 4 objects.
-2. Be specific in "description" — "Hashes passwords using bcrypt with configurable salt rounds" is good. "Handles password logic" is not acceptable.
+1. Create ONE object per export : if a file has 4 named exports, return 4 objects.
+2. Be specific in "description" : "Hashes passwords using bcrypt with configurable salt rounds" is good. "Handles password logic" is not acceptable.
 3. For "responsibilities", use active verbs exclusively: "Validates...", "Normalizes...", "Caches...", "Emits...", "Queries...".
 4. For "dependencies.internal", copy the import path exactly as written in the source file.
 5. For "side_effects", be explicit about WHAT is written/read/emitted and WHERE.
 6. For "complexity": low = pure function or simple transform; medium = branching logic or 2–4 dependencies; high = orchestrates multiple services or has complex state.
 7. For "singleton": set true if @Injectable(), @Service(), exported as instance (export default new Foo()), or uses module-level state.
 8. For "testable": set false if the component directly instantiates external dependencies (new Database()), uses global state, or has no dependency injection.
-9. If a value cannot be determined with confidence, use null for booleans/numbers and "unknown" for strings — never fabricate.
+9. If a value cannot be determined with confidence, use null for booleans/numbers and "unknown" for strings : never fabricate.
 10. If a file only re-exports from other files (barrel file), create one object with type "other", note it as a barrel export in "notes", and list what it re-exports in "exports.named".
 
 ## FRAMEWORK-SPECIFIC HINTS
@@ -144,7 +144,7 @@ If no components are found, return exactly: []
     },
     "parameters": [
       { "name": "password", "type": "string", "required": true, "default": "", "description": "Plain-text password to hash" },
-      { "name": "rounds", "type": "number", "required": false, "default": "12", "description": "bcrypt salt rounds — higher is slower but more secure" }
+      { "name": "rounds", "type": "number", "required": false, "default": "12", "description": "bcrypt salt rounds : higher is slower but more secure" }
     ],
     "returns": {
       "type": "Promise<string>",
@@ -192,7 +192,7 @@ const EXCLUDE_REGEX =
   /route|controller|handler|model|schema|entity|migration|spec|test|\.d\.ts$|__mocks__|fixture/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 6000; // was 200 — completely insufficient for real files
+const CHARS_PER_FILE = 6000; // was 200 : completely insufficient for real files
 const MAX_FILES = 40;
 const MAX_RETRIES = 2;
 
@@ -395,7 +395,7 @@ function createFallbackComponent(file, projectMap) {
     deprecated: false,
     complexity: "unknown",
     tags: inferTags(name, file.path),
-    notes: "⚠ Auto-generated stub — LLM extraction failed for this file.",
+    notes: "⚠ Auto-generated stub : LLM extraction failed for this file.",
   };
 }
 
@@ -495,7 +495,7 @@ export async function componentMapperAgent({
           async: /async\s+function|=>\s*{|\.then\s*\(|await\s+/m.test(f.content.slice(0, 1000)),
           side_effects: meta?.flags?.includes("has_db") ? ["Database operations"] :
                         meta?.flags?.includes("has_side_effects") ? ["Side effects detected"] : [],
-          notes: meta ? "" : "⚠ Auto-generated stub — LLM extraction skipped (fast mode).",
+          notes: meta ? "" : "⚠ Auto-generated stub : LLM extraction skipped (fast mode).",
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -533,7 +533,7 @@ export async function componentMapperAgent({
         return [
           `=== FILE: ${f.path} ===`,
           truncated
-            ? `[Truncated at ${CHARS_PER_FILE} chars — ${f.content.length} total]`
+            ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]`
             : "",
           f.content.slice(0, CHARS_PER_FILE),
         ]
@@ -585,7 +585,7 @@ export async function componentMapperAgent({
     }
   }
 
-  // ── 3. Deduplicate — keep the richer of any two duplicates ────
+  // ── 3. Deduplicate : keep the richer of any two duplicates ────
   const componentMap = new Map();
 
   for (const comp of rawComponents) {

@@ -38,7 +38,7 @@ export function fail(res, code, message, status = 400, meta = undefined) {
 }
 
 /**
- * 5xx — logs the error, returns a sanitised message (never leaks stack)
+ * 5xx : logs the error, returns a sanitised message (never leaks stack)
  * @param {import('express').Response} res
  * @param {Error}  err
  * @param {string} context  - shown in server log, not in response
@@ -53,7 +53,7 @@ export function serverError(res, err, context = "") {
 }
 
 /**
- * Async route wrapper — eliminates try/catch boilerplate in controllers.
+ * Async route wrapper : eliminates try/catch boilerplate in controllers.
  * Usage:  router.post("/signup", wrap(authController.signup))
  */
 export function wrap(fn) {

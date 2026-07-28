@@ -1,5 +1,5 @@
 // ===================================================================
-// Billing service — core subscription lifecycle logic.
+// Billing service : core subscription lifecycle logic.
 //
 // All money amounts are in USD cents internally. Divide by 100 for display.
 //
@@ -416,7 +416,7 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
 
         return { type: "upgrade", immediate: true };
       } catch (tokenErr) {
-        // Token charge failed (e.g. currency mismatch) — fall back to payment link
+        // Token charge failed (e.g. currency mismatch) : fall back to payment link
         console.warn(
           "[changePlan] Token charge failed, falling back to payment link:",
           tokenErr.message,
@@ -505,7 +505,7 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
     return { type: "downgrade", effectiveAt: sub.currentPeriodEnd };
   }
 
-  // Same plan, same cycle — no-op
+  // Same plan, same cycle : no-op
   return { type: "none" };
 }
 
@@ -545,7 +545,7 @@ export async function addSeats(userId, additionalSeats) {
     subscriptionId: sub._id,
     amount: proratedCents,
     currency: "USD",
-    description: `${additionalSeats} extra seat(s) — prorated`,
+    description: `${additionalSeats} extra seat(s) : prorated`,
     status: "pending",
     flutterwaveRef: txRef,
     customerName: user.name,
@@ -577,7 +577,7 @@ export async function addSeats(userId, additionalSeats) {
         narration: `Docnine ${additionalSeats} extra seat(s)`,
       });
 
-      // Payment succeeded — mark invoice paid and grant seats now
+      // Payment succeeded : mark invoice paid and grant seats now
       invoice.status = "paid";
       invoice.paidAt = new Date();
       invoice.flutterwaveTxId = fwTx.id;
@@ -594,7 +594,7 @@ export async function addSeats(userId, additionalSeats) {
         totalSeats: sub.seats,
       };
     } catch (tokenErr) {
-      // Token charge failed (e.g. currency mismatch) — fall back to payment link
+      // Token charge failed (e.g. currency mismatch) : fall back to payment link
       console.warn(
         "[addSeats] Token charge failed, falling back to payment link:",
         tokenErr.message,
@@ -604,7 +604,7 @@ export async function addSeats(userId, additionalSeats) {
     }
   }
 
-  // ── No saved card or token failed — return a payment link ───
+  // ── No saved card or token failed : return a payment link ───
   // Create a fresh invoice for the redirect flow
   const redirectTxRef = buildTxRef("seat");
   await Invoice.create({
@@ -612,7 +612,7 @@ export async function addSeats(userId, additionalSeats) {
     subscriptionId: sub._id,
     amount: proratedCents,
     currency: "USD",
-    description: `${additionalSeats} extra seat(s) — prorated`,
+    description: `${additionalSeats} extra seat(s) : prorated`,
     status: "pending",
     flutterwaveRef: redirectTxRef,
     customerName: user.name,
@@ -714,7 +714,7 @@ export async function renewSubscription(subscriptionId) {
   }).select("+flutterwaveToken");
 
   if (!savedMethod?.flutterwaveToken) {
-    // No payment method — start dunning
+    // No payment method : start dunning
     await startDunning(sub);
     return { success: false, reason: "no_payment_method" };
   }
@@ -802,7 +802,7 @@ export async function applyScheduledDowngrade(subscriptionId) {
     sub.billingCycle = sub.pendingBillingCycle || sub.billingCycle;
     sub.pendingPlan = null;
     sub.pendingBillingCycle = null;
-    // Do not charge — they already paid through the period
+    // Do not charge : they already paid through the period
     // Extend their period if staying on the same plan type
   }
 
@@ -866,7 +866,7 @@ export function computeTeamPlanCharge({
   daysRemaining,
   include_proration = true,
 }) {
-  const TEAM_MONTHLY_RATE = 2000; // $20.00/user/mo in cents
+  const TEAM_MONTHLY_RATE = 1200; // $12.00/user/mo in cents
   const totalDaysInCycle = daysBetween(cycleStartDate, cycleEndDate);
 
   if (!include_proration) {
@@ -1123,7 +1123,7 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
     // Period
     if (invoice.periodStart && invoice.periodEnd) {
       doc.text(
-        `Period: ${formatDate(invoice.periodStart)} — ${formatDate(invoice.periodEnd)}`,
+        `Period: ${formatDate(invoice.periodStart)} : ${formatDate(invoice.periodEnd)}`,
         50,
         y + 80,
       );
@@ -1201,9 +1201,9 @@ function buildInvoiceDescription(planId, cycle, seats) {
   const plan = getPlan(planId);
   const cycleLabel = cycle === "annual" ? "Annual" : "Monthly";
   if (planId === "team") {
-    return `${plan.name} Plan — ${cycleLabel} (${seats} seat${seats > 1 ? "s" : ""})`;
+    return `${plan.name} Plan : ${cycleLabel} (${seats} seat${seats > 1 ? "s" : ""})`;
   }
-  return `${plan.name} Plan — ${cycleLabel}`;
+  return `${plan.name} Plan : ${cycleLabel}`;
 }
 
 function buildLineItems(planId, cycle, seats) {
@@ -1213,7 +1213,7 @@ function buildLineItems(planId, cycle, seats) {
 
   if (planId === "team") {
     items.push({
-      description: `${plan.name} Plan — ${seats} seat(s)`,
+      description: `${plan.name} Plan : ${seats} seat(s)`,
       amount: basePrice * seats * (cycle === "annual" ? 12 : 1),
     });
   } else {
@@ -1290,7 +1290,7 @@ function daysBetween(a, b) {
 }
 
 function formatDate(date) {
-  if (!date) return "—";
+  if (!date) return ":";
   return new Date(date).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",

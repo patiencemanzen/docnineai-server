@@ -1,24 +1,24 @@
 // =============================================================
-// Portal — public documentation portal settings for a project.
+// Portal : public documentation portal settings for a project.
 //
 // One portal per project (unique projectId index).
 // The slug is a URL-safe identifier auto-generated from the
 // repo owner + name on first creation. Guaranteed unique.
 //
 // accessMode:
-//   "public"   — anyone with the URL can read
-//   "password" — visitors must enter the portal password
+//   "public"   : anyone with the URL can read
+//   "password" : visitors must enter the portal password
 //
 // sections[]:
 //   Overrides per-section visibility. Sections not listed here
 //   default to "public" when the portal is published.
 //   visibility:
-//     "public"       — visible to everyone
-//     "internal"     — excluded from the portal output
-//     "coming_soon"  — shown in nav but content is a placeholder card
+//     "public"       : visible to everyone
+//     "internal"     : excluded from the portal output
+//     "coming_soon"  : shown in nav but content is a placeholder card
 //
 // branding:
-//   All fields optional — sensible defaults applied by the public
+//   All fields optional : sensible defaults applied by the public
 //   portal page when not set.
 // =============================================================
 
@@ -83,7 +83,7 @@ const PortalSchema = new Schema(
       index: true,
     },
 
-    // URL slug — e.g. "acme-my-api" → docnine.com/docs/acme-my-api
+    // URL slug : e.g. "acme-my-api" → docnine.com/docs/acme-my-api
     slug: {
       type: String,
       required: true,
@@ -102,10 +102,27 @@ const PortalSchema = new Schema(
     },
 
     // bcrypt hash of the portal password (only when accessMode === "password")
-    // select: false — never returned to clients
+    // select: false : never returned to clients
     passwordHash: { type: String, select: false },
 
     branding: { type: BrandingSchema, default: () => ({}) },
+
+    templateId: {
+      type: String,
+      enum: [
+        "classic",
+        "teal-studio",
+        "midnight",
+        "minimal",
+        "company-showcase",
+        "developer-terminal",
+        "enterprise-handbook",
+        "startup-guide",
+        "product-manual",
+        "agency-portfolio",
+      ],
+      default: "classic",
+    },
 
     // Per-section visibility overrides. Sections not listed → treated as "public"
     sections: { type: [PortalSectionSchema], default: [] },
@@ -113,7 +130,7 @@ const PortalSchema = new Schema(
     seoTitle: String,
     seoDescription: String,
 
-    // Custom domain — informational only (DNS is managed externally)
+    // Custom domain : informational only (DNS is managed externally)
     customDomain: { type: String, trim: true, lowercase: true },
   },
   {

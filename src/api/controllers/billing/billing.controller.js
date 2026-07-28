@@ -1,5 +1,5 @@
 // ===================================================================
-// Billing controller — handles all billing-related HTTP requests.
+// Billing controller : handles all billing-related HTTP requests.
 //
 // Every handler returns using ok() / fail() / serverError() for
 // consistency with the rest of the API.
@@ -160,7 +160,7 @@ export async function getTeamSeatsDetails(req, res) {
     const collaboratorList = Object.values(uniqueCollaborators);
 
     // Calculate monthly costs (exact decimal, no rounding)
-    const TEAM_RATE_PER_USER = 20.0; // $20/user/mo
+    const TEAM_RATE_PER_USER = 12.0; // $12/user/mo
     const monthlyRate = currentSeats * TEAM_RATE_PER_USER;
 
     // If mid-cycle, calculate prorated amount for this period
@@ -280,7 +280,7 @@ export async function verifyPayment(req, res) {
     await activateFromPayment(fwTx);
     const sub = await getOrCreateSubscription(req.user.userId);
 
-    return ok(res, { subscription: sub }, "Payment verified — plan activated");
+    return ok(res, { subscription: sub }, "Payment verified : plan activated");
   } catch (err) {
     return serverError(res, err, "verifyPayment");
   }
@@ -362,7 +362,7 @@ export async function addSeatsHandler(req, res) {
 // ── GET /billing/payment-methods ──────────────────────────────────
 export async function getPaymentMethods(req, res) {
   try {
-    // Do NOT use .lean() — we need Mongoose virtuals (displayLabel) serialized.
+    // Do NOT use .lean() : we need Mongoose virtuals (displayLabel) serialized.
     const methods = await PaymentMethod.find({
       userId: req.user.userId,
       deletedAt: null,

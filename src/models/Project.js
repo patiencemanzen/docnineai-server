@@ -3,23 +3,23 @@
 //
 // v3.1 additions:
 //
-//   editedOutput     — user overrides per section. Sparse: only
+//   editedOutput     : user overrides per section. Sparse: only
 //                      set sections are stored. The API merges
 //                      editedOutput on top of AI output when reading.
 //
-//   editedSections   — tracks which sections have user edits +
+//   editedSections   : tracks which sections have user edits +
 //                      whether each edit is stale (AI has newer
 //                      content the user hasn't reviewed yet).
 //
-//   lastDocumentedCommit — git SHA at the time of last successful
+//   lastDocumentedCommit : git SHA at the time of last successful
 //                      full or incremental pipeline run.
 //
-//   fileManifest     — [{path, sha, role}] snapshot of the repo
+//   fileManifest     : [{path, sha, role}] snapshot of the repo
 //                      tree as of lastDocumentedCommit. Used for
 //                      SHA-based diffing without GitHub compare API.
 //
-//   agentOutputs     — raw structured outputs from each agent.
-//                      select:false — not returned in queries.
+//   agentOutputs     : raw structured outputs from each agent.
+//                      select:false : not returned in queries.
 //                      Stored so incremental sync can surgically
 //                      remove/merge changed-file entries without
 //                      re-running agents on the whole repo.
@@ -76,9 +76,9 @@ const StatsSchema = new Schema(
   { _id: false },
 );
 
-// ── Output sub-schema — AI-generated documentation ────────────
+// ── Output sub-schema : AI-generated documentation ────────────
 // This always holds the latest AI content.
-// Do not write user edits here — use editedOutput.
+// Do not write user edits here : use editedOutput.
 
 const OutputSchema = new Schema(
   {
@@ -105,7 +105,7 @@ const EditedSectionSchema = new Schema(
   { _id: false },
 );
 
-// ── File manifest entry — for incremental diff ────────────────
+// ── File manifest entry : for incremental diff ────────────────
 
 const FileManifestEntrySchema = new Schema(
   {
@@ -116,7 +116,7 @@ const FileManifestEntrySchema = new Schema(
   { _id: false },
 );
 
-// ── Agent outputs — raw structured data for incremental merge ─
+// ── Agent outputs : raw structured data for incremental merge ─
 // Each entry has a `file` field so stale entries can be removed
 // when that file changes, without touching entries from other files.
 
@@ -192,7 +192,7 @@ const ProjectSchema = new Schema(
     output: { type: OutputSchema, default: () => ({}) },
 
     // ── User edits (v3.1) ─────────────────────────────────────
-    // Sparse — only sections the user has edited are set.
+    // Sparse : only sections the user has edited are set.
     // The API merges this on top of `output` when reading.
     editedOutput: {
       type: OutputSchema,
@@ -211,14 +211,14 @@ const ProjectSchema = new Schema(
     lastDocumentedCommit: { type: String, default: null },
 
     // File tree snapshot as of lastDocumentedCommit.
-    // Used to compute diffs via SHA comparison — no compare API needed.
+    // Used to compute diffs via SHA comparison : no compare API needed.
     fileManifest: {
       type: [FileManifestEntrySchema],
       default: [],
-      select: false, // large array — only fetched when needed
+      select: false, // large array : only fetched when needed
     },
 
-    // Raw structured agent outputs — needed for incremental merging.
+    // Raw structured agent outputs : needed for incremental merging.
     agentOutputs: {
       type: AgentOutputsSchema,
       default: () => ({}),

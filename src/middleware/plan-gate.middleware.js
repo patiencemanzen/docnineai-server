@@ -1,5 +1,5 @@
 // ===================================================================
-// Plan gate middleware — enforces feature access based on subscription.
+// Plan gate middleware : enforces feature access based on subscription.
 //
 // Usage in routes:
 //   router.post('/projects', gate.requirePlan('starter'), ...)
@@ -38,7 +38,7 @@ function effectivePlan(sub) {
   if (sub.status === "paused") return "free";
   // During active trial, plan is the trialing plan
   if (sub.status === "trialing" || sub.status === "active") return sub.plan;
-  // past_due — retain access during grace period
+  // past_due : retain access during grace period
   if (sub.status === "past_due") return sub.plan;
   return "free";
 }
@@ -134,7 +134,7 @@ export async function checkProjectLimit(req, res, next) {
     //     unique-key constraint suppresses the upsert → returns null → 403. ✓
     //
     // Two concurrent upserts for the same brand-new user produce an E11000 on the
-    // second one. We retry without upsert in that case — the doc now exists.
+    // second one. We retry without upsert in that case : the doc now exists.
     let reserved = null;
     try {
       reserved = await PlanUsage.findOneAndUpdate(
@@ -194,7 +194,7 @@ export async function checkPortalPublishLimit(req, res, next) {
       .lean();
     if (currentPortal?.isPublished) return next();
 
-    // User wants to publish — enforce limit
+    // User wants to publish : enforce limit
     if (maxPortals === 0) {
       return fail(
         res,
@@ -301,7 +301,7 @@ export function requireExportFormat(format) {
 }
 
 /**
- * Gate AI chat — check per-month quota.
+ * Gate AI chat : check per-month quota.
  */
 export async function checkAiChatLimit(req, res, next) {
   try {
@@ -343,7 +343,7 @@ export async function checkAiChatLimit(req, res, next) {
 }
 
 /**
- * Gate portal creation — check portal limit.
+ * Gate portal creation : check portal limit.
  */
 export async function checkPortalLimit(req, res, next) {
   try {

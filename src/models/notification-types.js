@@ -4,7 +4,7 @@
 // for every notification type defined in Notification.js.
 //
 // messageTemplate(ctx) receives a context object and returns a
-// human-readable string. All fields in ctx are optional — use
+// human-readable string. All fields in ctx are optional : use
 // fallbacks where needed.
 // ===================================================================
 

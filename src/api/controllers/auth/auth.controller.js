@@ -116,7 +116,7 @@ export async function verifyEmail(req, res) {
 export async function forgotPassword(req, res) {
   const { email } = req.body;
   try {
-    // Always 200 — prevents email enumeration
+    // Always 200 : prevents email enumeration
     await authService.forgotPassword(email);
     return ok(
       res,
@@ -177,7 +177,7 @@ export async function changePassword(req, res) {
       currentPassword,
       newPassword,
     });
-    // Clear the refresh cookie — user must log in again with the new password.
+    // Clear the refresh cookie : user must log in again with the new password.
     res.clearCookie("refreshToken", { ...getRefreshCookieOpts(), maxAge: 0 });
     return ok(res, null, "Password changed successfully. Please log in again.");
   } catch (err) {

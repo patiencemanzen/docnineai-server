@@ -78,7 +78,7 @@ export async function uploadZipProject(req, res) {
     // Save project to get ID
     await project.save();
 
-    // checkProjectLimit already reserved the slot atomically — only increment for unlimited plans.
+    // checkProjectLimit already reserved the slot atomically : only increment for unlimited plans.
     if (!req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
     }

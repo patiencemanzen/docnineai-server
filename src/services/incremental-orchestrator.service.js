@@ -1,5 +1,5 @@
 // ===================================================================
-// Incremental Sync Pipeline — Enhanced
+// Incremental Sync Pipeline : Enhanced
 // ===================================================================
 
 import { getAdapter, createRepoAdapter } from "../adapters/provider.adapter.js";
@@ -65,9 +65,9 @@ async function getDocWriter() {
  * Resolve the correct git service, decrypted access token, and a
  * repo-bound normalized adapter for a project.
  *
- * `git`         — raw service module (for fetchRepoFilesWithProgress)
- * `accessToken` — decrypted OAuth/PAT token (null for GitHub)
- * `ra`          — createRepoAdapter instance that hides Azure's extra
+ * `git`         : raw service module (for fetchRepoFilesWithProgress)
+ * `accessToken` : decrypted OAuth/PAT token (null for GitHub)
+ * `ra`          : createRepoAdapter instance that hides Azure's extra
  *                 `project` argument and other provider quirks
  */
 function resolveGit(project) {
@@ -75,7 +75,7 @@ function resolveGit(project) {
   const git = getAdapter(provider);
   const accessToken = project.providerToken
     ? decrypt(project.providerToken)
-    : null; // GitHub: null — github.service.js reads GITHUB_TOKEN internally
+    : null; // GitHub: null : github.service.js reads GITHUB_TOKEN internally
   const ra = createRepoAdapter(provider, project.repoUrl);
   return { git, accessToken, ra };
 }
@@ -109,7 +109,7 @@ async function withTimeout(fn, ms, label) {
 
 /**
  * Run a single agent with timeout, error isolation, and timing.
- * Always returns a valid object — never throws.
+ * Always returns a valid object : never throws.
  */
 async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const start = Date.now();
@@ -122,7 +122,7 @@ async function runAgent({ label, step, fn, timeout, fallback, emit }) {
     const reason = timedOut
       ? `${label} timed out after ${timeout / 1000}s`
       : error.message;
-    emit(step, "error", `${label} failed — using fallback`, reason);
+    emit(step, "error", `${label} failed : using fallback`, reason);
     console.error(
       `[sync:${step}:error] ${label}:`,
       error.stack ?? error.message,
@@ -321,7 +321,7 @@ function buildRemediationPlan(findings) {
   for (const sev of SEVERITY_ORDER) {
     const group = (findings ?? []).filter((f) => f.severity === sev);
     if (!group.length) continue;
-    md += `## ${SEVERITY_EMOJI[sev]} ${sev} — ${effort[sev]}\n\n`;
+    md += `## ${SEVERITY_EMOJI[sev]} ${sev} : ${effort[sev]}\n\n`;
     group.forEach((f, idx) => {
       md += `${idx + 1}. **[${f.id}] ${f.title}**\n`;
       md += `   - File: \`${f.file}\`\n`;
@@ -380,7 +380,7 @@ function buildApiReference(endpoints) {
         md += `**Parameters:**\n\n| Name | In | Type | Required | Description |\n|------|-----|------|----------|-------------|\n`;
         ep.request.params.forEach(
           (p) =>
-            (md += `| \`${p.name}\` | ${p.in} | \`${p.type || "string"}\` | ${p.required ? "✅" : "❌"} | ${p.description || "—"} |\n`),
+            (md += `| \`${p.name}\` | ${p.in} | \`${p.type || "string"}\` | ${p.required ? "✅" : "❌"} | ${p.description || ":"} |\n`),
         );
         md += "\n";
       }
@@ -431,7 +431,7 @@ function buildSchemaDocs(models, relationships) {
       md += `### Fields\n\n| Field | Type | Required | Unique | Default |\n|-------|------|----------|--------|----------|\n`;
       m.fields.forEach(
         (f) =>
-          (md += `| \`${f.name}\` | \`${f.type}\` | ${f.required ? "✅" : "❌"} | ${f.unique ? "✅" : "❌"} | ${f.default || "—"} |\n`),
+          (md += `| \`${f.name}\` | \`${f.type}\` | ${f.required ? "✅" : "❌"} | ${f.unique ? "✅" : "❌"} | ${f.default || ":"} |\n`),
       );
       md += "\n";
     }
@@ -440,7 +440,7 @@ function buildSchemaDocs(models, relationships) {
       md += `### Indexes\n\n| Name | Fields | Unique |\n|------|--------|--------|\n`;
       m.indexes.forEach(
         (idx) =>
-          (md += `| \`${idx.name || "—"}\` | \`${(idx.fields ?? []).join(", ")}\` | ${idx.unique ? "✅" : "❌"} |\n`),
+          (md += `| \`${idx.name || ":"}\` | \`${(idx.fields ?? []).join(", ")}\` | ${idx.unique ? "✅" : "❌"} |\n`),
       );
       md += "\n";
     }
@@ -453,7 +453,7 @@ function buildSchemaDocs(models, relationships) {
       modelRels.forEach((r) => {
         const dir = r.from === m.name ? "→ out" : "← in";
         const other = r.from === m.name ? r.to : r.from;
-        md += `| ${dir} | ${other} | \`${r.type}\` | ${r.through || "—"} |\n`;
+        md += `| ${dir} | ${other} | \`${r.type}\` | ${r.through || ":"} |\n`;
       });
       md += "\n";
     }
@@ -465,7 +465,7 @@ function buildSchemaDocs(models, relationships) {
     md += `## Relationship Overview\n\n| From | Type | To | Via |\n|------|------|----|-----|\n`;
     relationships.forEach(
       (r) =>
-        (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || "—"} |\n`),
+        (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`),
     );
   }
 
@@ -512,10 +512,10 @@ function buildComponentIndex(components) {
       .forEach((c) => {
         const dep = c.deprecated ? " ⚠️" : "";
         const cplx =
-          { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || "—";
+          { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || ":";
         const desc = c.description
           ? c.description.slice(0, 70) + (c.description.length > 70 ? "…" : "")
-          : "—";
+          : ":";
         md += `| \`${c.name}\`${dep} | \`${c.file}\` | ${c.async ? "✅" : "❌"} | ${cplx} | ${desc} |\n`;
       });
     md += "\n";
@@ -555,7 +555,7 @@ function determineSectionsToRegenerate(agentsRun, analysis) {
 
 /**
  * Build the complete MongoDB $set payload from sync results.
- * Single source of truth — no fields can be silently dropped.
+ * Single source of truth : no fields can be silently dropped.
  */
 function buildMongoUpdate({
   newOutput,
@@ -604,7 +604,7 @@ function buildMongoUpdate({
  * Run the incremental sync pipeline for a project.
  *
  * @param {Object}   project
- * @param {Function} onProgress            — SSE progress emitter
+ * @param {Function} onProgress            : SSE progress emitter
  * @param {Object}   options
  * @param {Array}    [options.webhookChangedFiles]
  * @param {boolean}  [options.forceFullRun]
@@ -614,12 +614,12 @@ export async function incrementalSync(project, onProgress, options = {}) {
   const syncStart = Date.now();
   const syncErrors = [];
 
-  // Structured emitter — always logs + fires SSE
+  // Structured emitter : always logs + fires SSE
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
     console.log(
       `[sync:${step}:${status}] ${msg}` +
-        (detail ? ` — ${detail}` : "") +
+        (detail ? ` : ${detail}` : "") +
         (duration ? ` (${(duration / 1000).toFixed(1)}s)` : ""),
     );
     onProgress?.(event);
@@ -658,7 +658,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       emit(
         "sync",
         "done",
-        "Repository unchanged — no sync needed",
+        "Repository unchanged : no sync needed",
         `SHA: ${currentSha.slice(0, 8)}`,
       );
       return {
@@ -687,7 +687,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         options.webhookChangedFiles,
       ));
       changedFileEntries = [...added, ...modified, ...removed];
-      // Fetch tree in background — needed for manifest update in Phase 8
+      // Fetch tree in background : needed for manifest update in Phase 8
       // We don't await here; it runs concurrently with the agent phase
       currentTree = await ra
         .getFileTreeWithSha(meta.defaultBranch, accessToken)
@@ -709,7 +709,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         emit(
           "sync:diff",
           "error",
-          "Diff computation failed — falling back to full run",
+          "Diff computation failed : falling back to full run",
           err.message,
         );
         return fullSyncFallback(
@@ -736,7 +736,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       emit(
         "sync",
         "done",
-        "No eligible files changed — commit SHA updated",
+        "No eligible files changed : commit SHA updated",
         `→ ${currentSha.slice(0, 8)}`,
       );
       return {
@@ -747,7 +747,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── Routing analysis (memoised — computed once, used everywhere) ──
+    // ── Routing analysis (memoised : computed once, used everywhere) ──
     const analysis = analyseChanges(changedFileEntries, project.fileManifest);
     const agentsNeeded = analysis.agentsNeeded; // Set<string>
 
@@ -815,7 +815,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       emit(
         "sync:fetch",
         "error",
-        "File fetch failed — falling back to full run",
+        "File fetch failed : falling back to full run",
         fetchErr.message,
       );
       return fullSyncFallback(
@@ -832,11 +832,11 @@ export async function incrementalSync(project, onProgress, options = {}) {
     emit("sync:fetch", "done", `${changedFiles.length} files downloaded`);
 
     // ── PHASE 4: Parallel Agent Execution ─────────────────────────
-    // Pre-compute shared values once — used by all agents
+    // Pre-compute shared values once : used by all agents
     const existingProjectMap = project.agentOutputs?.projectMap ?? [];
     const changedPathSet = new Set(changedPathsToFetch);
 
-    // Merge project map once — shared as read-only reference by all agent closures
+    // Merge project map once : shared as read-only reference by all agent closures
     // (agents that re-scan will override their portion via mergeProjectMap in Phase 5)
     const baselineProjectMap = mergeProjectMap(
       existingProjectMap,
@@ -1058,7 +1058,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         remediationMarkdown: buildRemediationPlan(mergedOutputs.findings),
       };
     } else {
-      // Security didn't run — carry forward stored values
+      // Security didn't run : carry forward stored values
       securitySummary = project.security ?? {
         score: 100,
         grade: "A",
@@ -1084,7 +1084,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ...(project.output?.toObject?.() ?? { ...project.output }),
     };
 
-    // Build shared context for doc writer — computed once
+    // Build shared context for doc writer : computed once
     const docContext = {
       meta,
       techStack: project.techStack ?? [],
@@ -1118,7 +1118,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       (project.editedSections ?? []).map((s) => s.section),
     );
 
-    // ── Static sections — parallel rebuild (no LLM cost) ──────────
+    // ── Static sections : parallel rebuild (no LLM cost) ──────────
     const staticResults = await Promise.allSettled(
       sectionsInfo.static.map(async (section) => {
         switch (section) {
@@ -1161,7 +1161,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       }
     }
 
-    // ── LLM sections — single batched doc writer call ──────────────
+    // ── LLM sections : single batched doc writer call ──────────────
     const llmSectionsNeeded = sectionsInfo.llm;
     if (llmSectionsNeeded.length > 0) {
       emit(
@@ -1194,7 +1194,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         emit(
           "sync:docs",
           "error",
-          "LLM doc generation failed — existing content preserved",
+          "LLM doc generation failed : existing content preserved",
           docErr.message,
         );
       } else {
@@ -1274,7 +1274,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
     emit(
       "sync",
       "done",
-      `Sync complete — ${regenerated.length} sections updated`,
+      `Sync complete : ${regenerated.length} sections updated`,
       [
         `${project.lastDocumentedCommit?.slice(0, 8) ?? "initial"} → ${currentSha.slice(0, 8)}`,
         `${changedPathsToFetch.length} files · ${(totalDuration / 1000).toFixed(1)}s`,
@@ -1298,7 +1298,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       removedFileCount: removedPathSet.size,
       totalDuration,
       errors: syncErrors.length > 0 ? syncErrors : undefined,
-      // Diagnostics — per-agent timings for monitoring
+      // Diagnostics : per-agent timings for monitoring
       _diagnostics: {
         scan: scanResult._duration,
         api: apiResult._duration,

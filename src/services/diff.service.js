@@ -6,12 +6,12 @@
 // sections those agents produce.
 //
 // Agent → File role mapping:
-//   repoScanner    — all files (role classification)
-//   apiExtractor   — route, controller, entry
-//   schemaAnalyser — model, schema, migration
-//   componentMapper— service, middleware, utility, config, helper
-//   securityAuditor— any code file
-//   docWriter      — runs on demand for changed sections only
+//   repoScanner    : all files (role classification)
+//   apiExtractor   : route, controller, entry
+//   schemaAnalyser : model, schema, migration
+//   componentMapper: service, middleware, utility, config, helper
+//   securityAuditor: any code file
+//   docWriter      : runs on demand for changed sections only
 //
 // Manifest files (package.json etc.) trigger a FULL re-run because
 // they signal structural changes: new deps, language changes, etc.
@@ -63,11 +63,11 @@ const README_TRIGGERS = new Set([
 // ── Analysis result shape ─────────────────────────────────────
 //
 // {
-//   needsFullRun  : boolean,      — manifest/structural change detected
+//   needsFullRun  : boolean,      : manifest/structural change detected
 //   fullRunReason : string|null,
-//   agentsNeeded  : Set<string>,  — which agents should re-run
-//   sectionsAffected: Set<string>,— which doc sections will be regenerated
-//   changedByAgent: {             — which files each agent should process
+//   agentsNeeded  : Set<string>,  : which agents should re-run
+//   sectionsAffected: Set<string>,: which doc sections will be regenerated
+//   changedByAgent: {             : which files each agent should process
 //     apiExtractor: [{path, status}],
 //     ...
 //   },
@@ -101,7 +101,7 @@ export function analyseChanges(changedFiles, fileManifest) {
     if (MANIFEST_FILES.test(path)) {
       result.needsFullRun = true;
       result.fullRunReason = `Structural manifest file changed: ${path}`;
-      return result; // early exit — no need to analyse further
+      return result; // early exit : no need to analyse further
     }
 
     if (status === "removed") {
@@ -194,13 +194,13 @@ export function mergeAgentOutputs(
       ...stored.models.filter((m) => !allDirtyPaths.has(m.file)),
       ...(fresh.models || []),
     ],
-    // Relationships: stored by schemaAnalyser, no file field — full replace
+    // Relationships: stored by schemaAnalyser, no file field : full replace
     // when schemaAnalyser re-ran (caller passes fresh.relationships or [])
     relationships:
       fresh.relationships !== undefined
         ? [
             ...stored.relationships.filter((r) => {
-              // Relationships don't have a file field — they're between models.
+              // Relationships don't have a file field : they're between models.
               // When schemaAnalyser re-ran, replace the full relationships array
               // since model ownership is ambiguous. If it didn't re-run, keep stored.
               return false;

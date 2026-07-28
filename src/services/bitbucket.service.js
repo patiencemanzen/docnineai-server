@@ -1,5 +1,5 @@
 // =============================================================
-// Bitbucket Cloud API client — mirrors github/gitlab.service.js
+// Bitbucket Cloud API client : mirrors github/gitlab.service.js
 //
 // Bitbucket API v2.0: https://developer.atlassian.com/cloud/bitbucket/rest/intro/
 //

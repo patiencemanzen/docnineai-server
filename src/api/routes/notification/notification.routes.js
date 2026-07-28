@@ -20,7 +20,7 @@ const router = Router();
 
 router.use(protect);
 
-// Reusable MongoId guard — prevents CastError 500s on invalid :id values
+// Reusable MongoId guard : prevents CastError 500s on invalid :id values
 const validateId = [param("id").isMongoId().withMessage("Invalid notification ID"), validate];
 
 // GET /api/notifications

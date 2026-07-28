@@ -275,18 +275,18 @@ export function handlePipelineError(error, agentType, context = {}) {
   };
 
   if (error?.message?.includes("JSON")) {
-    errorObj.recovery = "Check LLM output format — may have markdown fences";
+    errorObj.recovery = "Check LLM output format : may have markdown fences";
   } else if (error?.message?.includes("validation")) {
-    errorObj.recovery = "Review schema validation — check output structure";
+    errorObj.recovery = "Review schema validation : check output structure";
   } else if (error?.message?.includes("timeout")) {
     errorObj.recovery = "Increase timeout or reduce file batch size";
   } else if (error?.message?.includes("rate limit")) {
-    errorObj.recovery = "Implement exponential backoff — waiting before retry";
+    errorObj.recovery = "Implement exponential backoff : waiting before retry";
   } else if (error?.message?.includes("ENOENT")) {
-    errorObj.recovery = "Check file paths — may be missing or inaccessible";
+    errorObj.recovery = "Check file paths : may be missing or inaccessible";
   } else {
     errorObj.recovery =
-      "Check LLM context and prompt for the agent — may need refinement";
+      "Check LLM context and prompt for the agent : may need refinement";
   }
 
   return errorObj;

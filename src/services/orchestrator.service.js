@@ -1,5 +1,5 @@
 // ===================================================================
-// Orchestrator — Full Pipeline (Improved)
+// Orchestrator : Full Pipeline (Improved)
 // ===================================================================
 //
 // Coordinates all 6 agents with:
@@ -7,7 +7,7 @@
 //   - Parallel execution where safe, sequential where dependent
 //   - Per-agent timeout and graceful degradation
 //   - Rich progress events with timing
-//   - Partial success — one agent failure never kills the pipeline
+//   - Partial success : one agent failure never kills the pipeline
 //   - Full incremental sync baseline in return payload
 //
 // Progress event schema:
@@ -68,12 +68,12 @@ const TIMEOUTS =
       }
     : {
         fetch: 120_000,    // GitHub API fetch
-        scan: 240_000,     // Repo Scanner — LLM batches over all files
+        scan: 240_000,     // Repo Scanner : LLM batches over all files
         api: 180_000,      // API Extractor
         schema: 180_000,   // Schema Analyser
         components: 180_000, // Component Mapper
-        security: 240_000, // Security Auditor — static + LLM
-        write: 300_000,    // Doc Writer — multiple LLM calls
+        security: 240_000, // Security Auditor : static + LLM
+        write: 300_000,    // Doc Writer : multiple LLM calls
         chat: 30_000,      // Chat session setup
       };
 
@@ -120,7 +120,7 @@ async function withTimeout(fn, ms, label) {
 
 /**
  * Run an agent with timeout, error isolation, and duration tracking.
- * Never throws — always returns a result object so the pipeline continues.
+ * Never throws : always returns a result object so the pipeline continues.
  */
 async function runAgent({ label, step, fn, timeout, emit, fallback }) {
   const start = Date.now();
@@ -135,7 +135,7 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
       ? `${label} timed out after ${timeout / 1000}s`
       : error.message;
 
-    emit(step, "error", `${label} failed — using fallback`, reason);
+    emit(step, "error", `${label} failed : using fallback`, reason);
 
     // Log full stack trace for debugging
     if (!timedOut) {
@@ -158,7 +158,7 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
  * Determine which agents to run based on Agent 1 outputs.
  * Returns a routing decision object with reasons for each skip.
  */
-// Path-pattern regexes for the routing safety net — used when scanner
+// Path-pattern regexes for the routing safety net : used when scanner
 // returned zero classifications (e.g. because it timed out even in fastMode).
 const ROUTING_PATH_PATTERNS = {
   route: /route[s]?\/|controller[s]?\/|handler[s]?\/|endpoint[s]?\/|\.route\.[jt]sx?$|\.controller\.[jt]sx?$|pages\/api\/|app\/api\//i,
@@ -239,7 +239,7 @@ function computeRouting(projectMap, structure, files) {
         : `Only ${effectiveComponentCount} component/service files found`,
       security: runSecurity
         ? null
-        : `Only ${codeFileCount} code files — below threshold`,
+        : `Only ${codeFileCount} code files : below threshold`,
     },
     counts: {
       routeFiles: effectiveRouteCount,
@@ -331,11 +331,11 @@ function buildPipelineReport(steps) {
         error: "❌",
         skipped: "⏭️",
         running: "⏳",
-      }[step.status] || "—";
+      }[step.status] || ":";
 
     const dur =
-      step.duration != null ? `${(step.duration / 1000).toFixed(1)}s` : "—";
-    md += `| **${step.label}** | ${statusEmoji} ${step.status} | ${dur} | ${step.detail || "—"} |\n`;
+      step.duration != null ? `${(step.duration / 1000).toFixed(1)}s` : ":";
+    md += `| **${step.label}** | ${statusEmoji} ${step.status} | ${dur} | ${step.detail || ":"} |\n`;
   }
 
   md += `\n**Total duration:** ${(totalDuration / 1000).toFixed(1)}s`;
@@ -359,7 +359,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
     console.log(
-      `[${step}:${status}] ${msg}${detail ? " — " + detail : ""}${duration ? ` (${(duration / 1000).toFixed(1)}s)` : ""}`,
+      `[${step}:${status}] ${msg}${detail ? " : " + detail : ""}${duration ? ` (${(duration / 1000).toFixed(1)}s)` : ""}`,
     );
     if (onProgress) onProgress(event);
   };
@@ -376,7 +376,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
 
   if (isPrefetched) {
-    // ZIP project or other pre-fetched sources — files already extracted
+    // ZIP project or other pre-fetched sources : files already extracted
     emit("fetch", "running", "Using pre-extracted files…");
     const fetchStart = Date.now();
     ({ meta, files, owner, repo } = repoUrl);
@@ -395,7 +395,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       fetchDuration,
     );
   } else {
-    // Git-based projects — fetch from provider
+    // Git-based projects : fetch from provider
     const provider = authContext.provider || detectProvider(repoUrl);
     const adapter = getAdapter(provider);
     emit("fetch", "running", `Connecting to ${provider}…`);
@@ -415,7 +415,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       ]);
       ({ meta, files, owner, repo } = fetched);
     } catch (err) {
-      // Fetch failure is fatal — nothing else can run without files
+      // Fetch failure is fatal : nothing else can run without files
       emit("fetch", "error", "Failed to fetch repository", err.message);
       return { success: false, error: err.message, phase: "fetch" };
     }
@@ -431,8 +431,8 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     trackStep("Fetch Repo", "done", `${files.length} files`, fetchDuration);
   }
 
-  // Fetch commit SHA and file tree in parallel — lightweight, non-blocking
-  // (Skip for pre-fetched ZIP projects — already have this data)
+  // Fetch commit SHA and file tree in parallel : lightweight, non-blocking
+  // (Skip for pre-fetched ZIP projects : already have this data)
   let currentCommitSha = repoUrl.lastCommitSha || null;
   let treeWithSha = repoUrl.fileTree || [];
 
@@ -446,15 +446,15 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     ]);
   }
 
-  // ── PHASE 2: Agent 1 — Repo Scanner (Sequential, blocks all others) ──
-  // Must run first — its projectMap, structure, and techStack drive
+  // ── PHASE 2: Agent 1 : Repo Scanner (Sequential, blocks all others) ──
+  // Must run first : its projectMap, structure, and techStack drive
   // intelligent routing decisions for all downstream agents.
 
   emit(
     "scan",
     "running",
     "Classifying and analysing repository…",
-    "Agent — Repo Scanner",
+    "Agent : Repo Scanner",
   );
   const scanStart = Date.now();
 
@@ -472,13 +472,13 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   );
 
   if (scanErr) {
-    // Agent 1 failed or timed out — re-run in fastMode (pure heuristics, < 200ms)
+    // Agent 1 failed or timed out : re-run in fastMode (pure heuristics, < 200ms)
     // instead of falling back to an empty projectMap. An empty projectMap causes
     // computeRouting to see 0 route/schema/component files and skip every agent.
     emit(
       "scan",
       "error",
-      "Repo Scanner timed out — running heuristic fallback classification",
+      "Repo Scanner timed out : running heuristic fallback classification",
       scanErr.message,
     );
     agentErrors.push({ agent: "scan", error: scanErr.message });
@@ -493,7 +493,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       emit(
         "scan",
         "running",
-        `Heuristic fallback complete — ${scanResult.projectMap.length} files classified`,
+        `Heuristic fallback complete : ${scanResult.projectMap.length} files classified`,
         "Pipeline will continue with heuristic classifications",
       );
     } catch (fallbackErr) {
@@ -562,7 +562,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   // Announce skipped agents
   for (const [key, reason] of Object.entries(routing.reasons)) {
     if (reason) {
-      emit(key, "skipped", `Skipped — ${reason}`);
+      emit(key, "skipped", `Skipped : ${reason}`);
       trackStep(
         {
           api: "API Extractor",
@@ -578,7 +578,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
 
   // ── PHASE 4: Parallel Agents 2–4 + 6 ─────────────────────────
   // All four run in parallel since they share only read-only inputs
-  // (files, projectMap, structure) — none depends on the others' output.
+  // (files, projectMap, structure) : none depends on the others' output.
   //
   // Security auditor also benefits from projectMap flags (has_auth etc.)
   // to prioritise which files to deep-scan with the LLM.
@@ -774,13 +774,13 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const staticSchemaDocs = buildSchemaDocs(models ?? [], relationships ?? []);
   const staticComponentIndex = buildComponentIndex(components ?? []);
 
-  // ── PHASE 5: Agent 5 — Doc Writer (Sequential, needs all outputs) ──
+  // ── PHASE 5: Agent 5 : Doc Writer (Sequential, needs all outputs) ──
   // Runs after all parallel agents because it consumes all their outputs.
   // Passes the richer data from improved agents: components (with responsibilities,
   // complexity, state), endpoints (with auth.roles, request/response schema),
   // models (with indexes, hooks, soft_delete), security findings.
 
-  emit("write", "running", "Generating documentation…", "Agent 5 — Doc Writer");
+  emit("write", "running", "Generating documentation…", "Agent 5 : Doc Writer");
   const writeStart = Date.now();
 
   const writeResult = await runAgent({
@@ -885,7 +885,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     emit(
       "chat",
       "error",
-      "Chat setup failed — docs still available",
+      "Chat setup failed : docs still available",
       err.message,
     );
     agentErrors.push({ agent: "chat", error: err.message });
@@ -897,7 +897,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   emit(
     "chat",
     "done",
-    "Chat ready — ask anything about this codebase",
+    "Chat ready : ask anything about this codebase",
     null,
     chatDuration,
   );

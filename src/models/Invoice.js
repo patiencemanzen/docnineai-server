@@ -1,10 +1,10 @@
 // ===================================================================
-// Invoice — immutable record of every billing event.
+// Invoice : immutable record of every billing event.
 //
 // Invoices are append-only. Never update an invoice record; create
 // a new one (e.g. for refunds, create a separate refund invoice).
 //
-// amount — stored in USD cents. Display / divide by 100.
+// amount : stored in USD cents. Display / divide by 100.
 // ===================================================================
 
 import mongoose from "mongoose";
@@ -73,7 +73,7 @@ const InvoiceSchema = new Schema(
       required: true,
     },
 
-    // ── Payment method snapshot (display only — no raw data) ──
+    // ── Payment method snapshot (display only : no raw data) ──
     paymentMethodSnapshot: {
       type: String,
       default: null, // e.g. "Visa ****4242" or "MTN +250..."

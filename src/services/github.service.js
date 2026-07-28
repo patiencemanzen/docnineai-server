@@ -165,7 +165,7 @@ export async function getCommitSha(owner, repo, branch, token = null) {
   return data.sha;
 }
 
-// ── File tree (original — path + size only) ───────────────────
+// ── File tree (original : path + size only) ───────────────────
 
 export async function getFileTree(owner, repo, branch, token = null) {
   const { data } = await axios.get(
@@ -174,7 +174,7 @@ export async function getFileTree(owner, repo, branch, token = null) {
   );
   if (data.truncated) {
     console.warn(
-      "-- Tree truncated — repo is very large, some files may be skipped.",
+      "-- Tree truncated : repo is very large, some files may be skipped.",
     );
   }
   return data.tree
@@ -184,7 +184,7 @@ export async function getFileTree(owner, repo, branch, token = null) {
 
 // ── File tree with blob SHAs ──────────────────────────────────
 // Returns the full tree including per-file git blob SHAs.
-// These SHAs are stable — they only change when file content changes.
+// These SHAs are stable : they only change when file content changes.
 // This is how we detect what changed between two pipeline runs
 // without needing the GitHub compare API.
 export async function getFileTreeWithSha(owner, repo, branch, token = null) {
@@ -193,7 +193,7 @@ export async function getFileTreeWithSha(owner, repo, branch, token = null) {
     { headers: ghHeaders(token) },
   );
   if (data.truncated) {
-    console.warn("-- Tree truncated — some files may be missed in diff.");
+    console.warn("-- Tree truncated : some files may be missed in diff.");
   }
   return data.tree
     .filter((item) => item.type === "blob")
@@ -205,12 +205,12 @@ export async function getFileTreeWithSha(owner, repo, branch, token = null) {
 // stored fileManifest to find what changed since last documentation run.
 //
 // Returns:
-//   added    — new files not in manifest
-//   modified — files whose blob SHA changed
-//   removed  — files in manifest but no longer in tree
-//   unchanged — files with matching SHAs (safe to skip)
+//   added    : new files not in manifest
+//   modified : files whose blob SHA changed
+//   removed  : files in manifest but no longer in tree
+//   unchanged : files with matching SHAs (safe to skip)
 //
-// SKIP_EXT files are filtered out — agents don't process them anyway.
+// SKIP_EXT files are filtered out : agents don't process them anyway.
 export async function computeFileDiff(
   owner,
   repo,
@@ -296,7 +296,7 @@ export async function fetchFileContents(
   return files;
 }
 
-// ── Full repo fetch (original — used for full pipeline runs) ──
+// ── Full repo fetch (original : used for full pipeline runs) ──
 export async function fetchRepoFiles(repoUrl, token = null) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, repo, token);

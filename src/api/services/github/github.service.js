@@ -7,11 +7,11 @@
 //   All env reads are inside functions so they run after dotenv has loaded.
 //
 // Required env:
-//   GITHUB_CLIENT_ID      — from your GitHub OAuth App
-//   GITHUB_CLIENT_SECRET  — from your GitHub OAuth App
-//   GITHUB_REDIRECT_URI   — must match what's registered on GitHub
+//   GITHUB_CLIENT_ID      : from your GitHub OAuth App
+//   GITHUB_CLIENT_SECRET  : from your GitHub OAuth App
+//   GITHUB_REDIRECT_URI   : must match what's registered on GitHub
 //                           e.g. http://localhost:3000/github/oauth/callback
-//   JWT_ACCESS_SECRET     — reused as OAuth state JWT secret (10-min expiry)
+//   JWT_ACCESS_SECRET     : reused as OAuth state JWT secret (10-min expiry)
 // ===================================================================
 
 import jwt from "jsonwebtoken";
@@ -83,7 +83,7 @@ async function getDecryptedToken(userId) {
 
 /**
  * Generate the GitHub OAuth authorisation URL.
- * The `state` parameter is a short-lived signed JWT containing the userId —
+ * The `state` parameter is a short-lived signed JWT containing the userId :
  * this serves as CSRF protection with no server-side state required.
  *
  * @param {string} userId
@@ -164,7 +164,7 @@ export async function handleOAuthCallback({ code, state }) {
     githubUsername: ghUser.login,
   });
 
-  // 5. Upsert encrypted token — one document per user
+  // 5. Upsert encrypted token : one document per user
   await GitHubToken.findOneAndUpdate(
     { userId },
     {

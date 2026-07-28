@@ -1,5 +1,5 @@
 // =============================================================
-// Share Controller — HTTP handlers for project sharing endpoints.
+// Share Controller : HTTP handlers for project sharing endpoints.
 // All routes require the `protect` middleware (req.user.userId set).
 // =============================================================
 
@@ -131,7 +131,7 @@ export async function cancelInvite(req, res) {
 }
 
 // ── GET /share/accept/:token ──────────────────────────────────
-// Public (no auth required) — but we attach userId if logged in.
+// Public (no auth required) : but we attach userId if logged in.
 export async function acceptInvite(req, res) {
   try {
     const result = await shareService.acceptInvite(

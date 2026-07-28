@@ -8,7 +8,7 @@
 
 import rateLimit from "express-rate-limit";
 
-/** Shared error response handler — keeps response shape consistent */
+/** Shared error response handler : keeps response shape consistent */
 const onLimitReached = (req, res) => {
   res.status(429).json({
     success: false,
@@ -35,7 +35,7 @@ export const authLimiter = rateLimit({
 
 /**
  * Limiter for signup and email verification.
- * 20 per hour per IP — generous enough for normal use.
+ * 20 per hour per IP : generous enough for normal use.
  */
 export const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -46,7 +46,7 @@ export const signupLimiter = rateLimit({
 });
 
 /**
- * API-wide limiter — catch-all for authenticated routes.
+ * API-wide limiter : catch-all for authenticated routes.
  * 300 requests per 5 minutes per IP.
  */
 export const apiLimiter = rateLimit({
@@ -58,7 +58,7 @@ export const apiLimiter = rateLimit({
 });
 
 /**
- * Token refresh limiter — prevent brute-force refresh-token rotation.
+ * Token refresh limiter : prevent brute-force refresh-token rotation.
  * 20 per 15 minutes per IP.
  */
 export const refreshLimiter = rateLimit({
@@ -70,7 +70,7 @@ export const refreshLimiter = rateLimit({
 });
 
 /**
- * Email verification limiter — prevent OTP/token brute-force.
+ * Email verification limiter : prevent OTP/token brute-force.
  * 5 attempts per 15 minutes per IP.
  */
 export const verifyEmailLimiter = rateLimit({
@@ -82,7 +82,7 @@ export const verifyEmailLimiter = rateLimit({
 });
 
 /**
- * CLI session poll/cancel limiter — prevent session-ID brute-force discovery.
+ * CLI session poll/cancel limiter : prevent session-ID brute-force discovery.
  * 30 requests per 5 minutes per IP.
  */
 export const cliPollLimiter = rateLimit({
@@ -94,7 +94,7 @@ export const cliPollLimiter = rateLimit({
 });
 
 /**
- * Portal password limiter — prevent online password guessing on password-protected portals.
+ * Portal password limiter : prevent online password guessing on password-protected portals.
  * 10 attempts per 15 minutes, keyed by IP + portal slug.
  */
 export const portalAuthLimiter = rateLimit({
