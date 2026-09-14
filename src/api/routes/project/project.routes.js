@@ -59,12 +59,16 @@ import zipRoutes from "./zip-upload.routes.js";
 import apispecRoutes from "../apispec/apispec.routes.js";
 import mcpRoutes from "./mcp.routes.js";
 import { protect } from "../../../middleware/auth.middleware.js";
-import { authenticateAPIToken } from "../../../middleware/token-auth.middleware.js";
+import { checkTokenScope } from "../../../middleware/token-auth.middleware.js";
 import { rules, validate } from "../../../middleware/validate.middleware.js";
 import { apiLimiter } from "../../../middleware/rateLimiter.middleware.js";
 import {
   checkProjectLimit,
   checkPortalPublishLimit,
+  checkAiChatLimit,
+  requireExportFormat,
+  requireApiImporter,
+  requireGithubSync,
 } from "../../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
@@ -130,7 +134,7 @@ router.patch(
 
 // ── Pipeline actions ──────────────────────────────────────────
 router.post("/:id/retry", validateMongoId, wrap(ctrl.retryProject));
-router.post("/:id/sync", validateMongoId, wrap(ctrl.syncProject));
+router.post("/:id/sync", validateMongoId, requireGithubSync, wrap(ctrl.syncProject));
 
 // SSE (not wrapped : streaming response)
 router.get("/:id/stream", validateMongoId, ctrl.streamProject);
@@ -193,11 +197,11 @@ router.get(
   wrap(ctrl.getProjectChangeLog),
 );
 // Allow both GET and POST for PDF/YAML to support optional data from frontend
-router.get("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
-router.post("/:id/export/pdf", validateMongoId, autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
-router.get("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
+router.get("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), wrap(ctrl.exportPdf));
+router.post("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
 router.post("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
-router.post("/:id/export/notion", validateMongoId, autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
+router.post("/:id/export/notion", validateMongoId, requireExportFormat("notion"), autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
 
 // Google Docs export
 router.get(
@@ -218,12 +222,13 @@ router.delete(
 router.post(
   "/:id/export/google-docs",
   validateMongoId,
+  requireExportFormat("google_docs"),
   autoLog("EXPORT_GOOGLE_DOCS"),
   wrap(ctrl.exportGoogleDocs),
 );
 
 // ── Chat (streaming SSE : chatHandler not wrapped; resetChat is wrapped) ──────
-router.post("/:id/chat", validateMongoId, ctrl.chatHandler);
+router.post("/:id/chat", validateMongoId, checkAiChatLimit, ctrl.chatHandler);
 router.delete("/:id/chat", validateMongoId, wrap(ctrl.resetChat));
 
 // ── Sharing ───────────────────────────────────────────────────
@@ -370,7 +375,8 @@ router.use("/:id/apispec", validateMongoId, apispecRoutes);
 // Special route for list_projects (no project ID needed)
 router.post(
   "/mcp/list_projects",
-  authenticateAPIToken,
+  protect,
+  checkTokenScope(["mcp"]),
   wrap(async (req, res) => {
     const userId = req.tokenAuth?.userId || req.user?.userId;
     const result = await MCPController.invokeTool(

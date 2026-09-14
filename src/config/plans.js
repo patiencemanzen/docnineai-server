@@ -230,6 +230,23 @@ export function computeAnnualTotal(planId, seats = 1) {
 }
 
 /**
+ * Plan id that gates should use for this subscription.
+ * Paused and lapsed accounts are treated as free.
+ */
+export function effectivePlanId(sub) {
+  if (!sub) return "free";
+  if (sub.status === "paused") return "free";
+  if (
+    sub.status === "trialing" ||
+    sub.status === "active" ||
+    sub.status === "past_due"
+  ) {
+    return sub.plan || "free";
+  }
+  return "free";
+}
+
+/**
  * Get the plan config object. Throws if not found.
  */
 export function getPlan(planId) {

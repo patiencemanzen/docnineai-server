@@ -19,7 +19,8 @@ import { generateGitHubActionsWorkflow } from "../../../services/webhook.service
 
 /**
  * Create a new user and send a verification email.
- * @returns {{ user: User, accessToken: string, refreshToken: string }}
+ * Tokens are not issued until the email is verified.
+ * @returns {{ user: User }}
  * @throws with code EMAIL_TAKEN if email already registered
  * @throws with code T_AND_C_REQUIRED if terms not accepted
  */
@@ -58,8 +59,7 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
     console.error("Failed to send verification email:", err.message),
   );
 
-  const { accessToken, refreshToken } = await issueTokens(user);
-  return { user, accessToken, refreshToken };
+  return { user };
 }
 
 /**
@@ -98,6 +98,13 @@ export async function login({ email, password }) {
     throw e;
   }
   if (!match) throw invalidErr();
+
+  if (!user.isEmailVerified && user.provider === "email") {
+    const e = new Error("Please verify your email before signing in.");
+    e.code = "EMAIL_NOT_VERIFIED";
+    e.status = 403;
+    throw e;
+  }
 
   const { accessToken, refreshToken } = await issueTokens(user);
   return { user, accessToken, refreshToken };
@@ -284,7 +291,16 @@ export async function updateProfile(userId, { name, email }) {
   }
 
   if (name !== undefined) user.name = name;
-  if (email !== undefined) user.email = email;
+  if (email !== undefined && email !== user.email) {
+    user.email = email;
+    user.isEmailVerified = false;
+    const rawToken = generateSecureToken();
+    user.emailVerificationToken = hashToken(rawToken);
+    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    sendVerificationEmail({ to: email, token: rawToken, name: user.name }).catch(
+      (err) => console.error("Failed to send verification email:", err.message),
+    );
+  }
   await user.save();
   return user;
 }
@@ -335,6 +351,36 @@ export async function getMe(userId) {
     throw err;
   }
   return user;
+}
+
+/**
+ * Attach a social identity to an existing user.
+ * Unverified password accounts cannot be claimed via OAuth (account takeover).
+ */
+function attachOAuthIdentity(user, { idField, idValue, usernameField, usernameValue }) {
+  if (user[idField] && String(user[idField]) !== String(idValue)) {
+    const err = new Error("This email is already associated with a different account.");
+    err.code = "OAUTH_EMAIL_CONFLICT";
+    err.status = 409;
+    throw err;
+  }
+
+  if (!user[idField] && user.provider === "email" && !user.isEmailVerified) {
+    const err = new Error(
+      "An account with this email already exists. Verify your email and sign in with your password first.",
+    );
+    err.code = "OAUTH_UNVERIFIED_ACCOUNT";
+    err.status = 409;
+    throw err;
+  }
+
+  let changed = false;
+  if (!user[idField]) {
+    user[idField] = String(idValue);
+    if (usernameField) user[usernameField] = usernameValue;
+    changed = true;
+  }
+  return changed;
 }
 
 // ── GitHub Social Login ───────────────────────────────────────
@@ -418,16 +464,12 @@ export async function githubSocialLogin(code) {
       webhookSecret: randomBytes(32).toString("hex"), // Generate webhook secret
     });
   } else {
-    let changed = false;
-    if (!user.githubId) {
-      user.githubId = String(ghUser.id);
-      user.githubUsername = ghUser.login;
-      changed = true;
-    }
-    if (!user.isEmailVerified) {
-      user.isEmailVerified = true;
-      changed = true;
-    }
+    const changed = attachOAuthIdentity(user, {
+      idField: "githubId",
+      idValue: ghUser.id,
+      usernameField: "githubUsername",
+      usernameValue: ghUser.login,
+    });
     if (changed) await user.save();
   }
 
@@ -498,16 +540,12 @@ export async function googleSocialLogin(code) {
       webhookSecret: randomBytes(32).toString("hex"), // Generate webhook secret
     });
   } else {
-    let changed = false;
-    if (!user.googleId) {
-      user.googleId = profile.id;
-      user.googleUsername = profile.name;
-      changed = true;
-    }
-    if (!user.isEmailVerified) {
-      user.isEmailVerified = true;
-      changed = true;
-    }
+    const changed = attachOAuthIdentity(user, {
+      idField: "googleId",
+      idValue: profile.id,
+      usernameField: "googleUsername",
+      usernameValue: profile.name,
+    });
     if (changed) await user.save();
   }
 

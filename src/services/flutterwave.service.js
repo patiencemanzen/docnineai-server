@@ -214,30 +214,45 @@ export async function refundTransaction(transactionId, amount) {
 
 // ── Webhook signature verification ──────────────────────────────
 
+let _loggedMissingFlwHash = false;
+
+function isConfiguredWebhookHash(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "...") return false;
+  return true;
+}
+
 /**
  * Verify that a Flutterwave webhook came from FW and not a spoofed request.
  *
  * FW sends a custom header `verif-hash` that matches the static hash
  * you configure in the FW dashboard (FLW_WEBHOOK_HASH env var).
  *
+ * Missing, empty, or placeholder hashes fail closed : the request is
+ * rejected. Never skip verification because the env var is unset.
+ *
  * @param {string} headerHash - Value of the `verif-hash` request header
  * @returns {boolean}
  */
 export function verifyWebhookSignature(headerHash) {
   const expected = process.env.FLW_WEBHOOK_HASH;
-  if (!expected) {
-    console.warn("⚠️  FLW_WEBHOOK_HASH not set : webhook verification skipped");
-    return true;
-  }
-  // For extra safety, use timingSafeEqual to prevent timing attacks
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(headerHash || ""),
-      Buffer.from(expected),
-    );
-  } catch {
+  if (!isConfiguredWebhookHash(expected)) {
+    if (!_loggedMissingFlwHash) {
+      console.error(
+        "[FLW] FLW_WEBHOOK_HASH is missing or a placeholder. " +
+          "Rejecting all billing webhooks until a real secret is set.",
+      );
+      _loggedMissingFlwHash = true;
+    }
     return false;
   }
+  if (!headerHash || typeof headerHash !== "string") return false;
+
+  const a = Buffer.from(headerHash);
+  const b = Buffer.from(expected.trim());
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 // ── Utility ──────────────────────────────────────────────────────

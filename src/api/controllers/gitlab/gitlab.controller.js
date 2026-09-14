@@ -6,6 +6,7 @@ import * as gitlabOAuthService from "../../services/gitlab/gitlab-oauth.service.
 import * as gitlabService from "../../../services/gitlab.service.js";
 import { User } from "../../../models/User.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
+import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 
 export async function oauthStart(req, res) {
   try {
@@ -20,136 +21,40 @@ export async function oauthStart(req, res) {
 }
 
 export async function oauthCallback(req, res) {
-  const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
-  console.log("[GitLab OAuth] Callback received", {
-    hasCode: !!code,
-    hasState: !!state,
-    hasError: !!oauthError,
-  });
-
   if (oauthError) {
-    console.warn("[GitLab OAuth] OAuth error from GitLab", oauthError);
-    const msg = `GitLab denied access: ${oauthError}`;
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitLab Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_gitlab_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'gitlab-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "gitlab",
+      status: "error",
+      message: `GitLab denied access: ${oauthError}`,
+    });
   }
 
   if (!code || !state) {
-    console.error("[GitLab OAuth] Missing code or state");
-    const msg = "Missing code or state : please try again.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitLab Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg}' };
-          localStorage.setItem('__docnine_gitlab_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'gitlab-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "gitlab",
+      status: "error",
+      message: "Missing code or state : please try again.",
+    });
   }
 
   try {
-    console.log("[GitLab OAuth] Exchanging code for token...");
     const result = await gitlabOAuthService.handleOAuthCallback({
       code,
       state,
     });
-    console.log("[GitLab OAuth] Successfully stored token", {
-      gitlabUsername: result.gitlabUsername,
-      userId: result.userId,
+    return sendOAuthPopupResult(res, {
+      provider: "gitlab",
+      status: "success",
+      user: result.gitlabUsername,
     });
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitLab Connected</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Successfully Connected</h2>
-        <p>GitLab account connected as <strong>${result.gitlabUsername}</strong></p>
-        <script>
-          const result = { status: 'success', user: '${result.gitlabUsername}' };
-          localStorage.setItem('__docnine_gitlab_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'gitlab-oauth-complete',
-            ...result
-          }, '*');
-          // Give parent window time to receive postMessage before closing
-          setTimeout(() => window.close(), 500);
-        </script>
-      </body>
-      </html>
-    `);
   } catch (err) {
-    console.error("[GitLab OAuth] Callback failed", {
-      code: err.code,
-      message: err.message,
-      status: err.status,
+    return sendOAuthPopupResult(res, {
+      provider: "gitlab",
+      status: "error",
+      message: err.message || "GitLab connection failed.",
     });
-    const msg = err.message || "GitLab connection failed.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitLab Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_gitlab_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'gitlab-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
   }
 }
 

@@ -7,7 +7,8 @@ const MANIFEST_FILE =
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|Pipfile|Pipfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|pom\.xml|build\.gradle|composer\.json|Gemfile|Gemfile\.lock)$/i;
 
 export function validateWebhookSignature(rawPayload, signature, secret) {
-  if (!secret) return true;
+  // Fail closed: a missing secret must never authenticate a webhook.
+  if (!secret) return false;
   if (!signature || typeof signature !== "string") return false;
 
   const computed = `sha256=${crypto

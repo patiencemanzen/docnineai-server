@@ -42,7 +42,7 @@ export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
-  const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m" });
+  const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m", algorithm: "HS256" });
 
   // Azure DevOps OAuth does NOT accept localhost redirect URIs.
   // In development use a tunnel (e.g. ngrok) and set AZURE_DEVOPS_REDIRECT_URI
@@ -101,7 +101,7 @@ export async function handleOAuthCallback({ code, state }) {
   // 1. Verify state JWT (CSRF check)
   let statePayload;
   try {
-    statePayload = jwt.verify(state, stateSecret);
+    statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
     console.log("[Azure OAuth Service] State verified", {
       userId: statePayload.userId,
     });

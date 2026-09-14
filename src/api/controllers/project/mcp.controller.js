@@ -27,6 +27,10 @@ import * as projectService from '../../services/projects/project.service.js';
  */
 
 export class MCPController {
+  static projectIdFrom(req) {
+    return req.params.id || req.params.projectId;
+  }
+
   /**
    * Verify user has access to project (owner or shared member)
    * @throws {Error} If user cannot access project
@@ -70,7 +74,7 @@ export class MCPController {
    */
   static async getMCPInfo(req, res) {
     try {
-      const { projectId } = req.params;
+      const projectId = MCPController.projectIdFrom(req);
 
       const project = await Project.findById(projectId);
       if (!project) {
@@ -129,7 +133,8 @@ export class MCPController {
    */
   static async callTool(req, res) {
     try {
-      const { projectId, tool: toolParam } = req.params;
+      const { tool: toolParam } = req.params;
+      const projectId = MCPController.projectIdFrom(req);
       const body = req.body || {};
       const {
         tool: toolBody,
@@ -672,7 +677,7 @@ export class MCPController {
    */
   static async listTools(req, res) {
     try {
-      const { projectId } = req.params;
+      const projectId = MCPController.projectIdFrom(req);
       const userId = req.user?.userId;
 
       // Verify the caller actually owns or is a member of this project
@@ -771,7 +776,7 @@ export class MCPController {
    */
   static async healthCheck(req, res) {
     try {
-      const { projectId } = req.params;
+      const projectId = MCPController.projectIdFrom(req);
 
       // Only confirm the project exists : do not leak project name to unauthenticated callers.
       const exists = await Project.exists({ _id: projectId });

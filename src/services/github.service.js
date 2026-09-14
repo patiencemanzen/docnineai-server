@@ -122,11 +122,9 @@ function releaseDownloadSlot() {
 }
 
 function ghHeaders(token = null) {
-  // Use provided token first, then fall back to environment variable
-  const auth_token = token || process.env.GITHUB_TOKEN;
   return {
     Accept: "application/vnd.github+json",
-    ...(auth_token ? { Authorization: `Bearer ${auth_token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 

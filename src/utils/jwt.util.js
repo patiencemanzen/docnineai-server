@@ -50,7 +50,7 @@ export function signAccessToken(payload, options = {}) {
   return jwt.sign(
     { sub: payload.userId, email: payload.email, role: payload.role ?? "user" },
     ACCESS_SECRET,
-    { expiresIn },
+    { expiresIn, algorithm: "HS256" },
   );
 }
 
@@ -63,6 +63,7 @@ export function signRefreshToken(payload) {
   const { REFRESH_SECRET } = getSecrets();
   return jwt.sign({ sub: payload.userId }, REFRESH_SECRET, {
     expiresIn: REFRESH_TTL,
+    algorithm: "HS256",
   });
 }
 
@@ -74,7 +75,7 @@ export function signRefreshToken(payload) {
  */
 export function verifyAccessToken(token) {
   const { ACCESS_SECRET } = getSecrets();
-  return jwt.verify(token, ACCESS_SECRET);
+  return jwt.verify(token, ACCESS_SECRET, { algorithms: ["HS256"] });
 }
 
 /**
@@ -85,7 +86,7 @@ export function verifyAccessToken(token) {
  */
 export function verifyRefreshToken(token) {
   const { REFRESH_SECRET } = getSecrets();
-  return jwt.verify(token, REFRESH_SECRET);
+  return jwt.verify(token, REFRESH_SECRET, { algorithms: ["HS256"] });
 }
 
 /**

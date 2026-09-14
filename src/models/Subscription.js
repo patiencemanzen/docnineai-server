@@ -69,6 +69,12 @@ const SubscriptionSchema = new Schema(
       type: Date,
       default: null,
     },
+    // Set the first time a trial starts or a paid plan activates.
+    // Server-side one-shot : clients cannot restart a trial.
+    trialUsedAt: {
+      type: Date,
+      default: null,
+    },
 
     // ── Billing period ────────────────────────────────────────
     currentPeriodStart: {

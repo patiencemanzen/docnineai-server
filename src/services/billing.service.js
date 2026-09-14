@@ -77,15 +77,24 @@ export async function getOrCreateSubscription(userId) {
  * @param {string}  opts.planId        - 'starter' | 'pro' | 'team'
  * @param {'monthly'|'annual'} opts.cycle
  * @param {number}  opts.seats         - for team plan
- * @param {boolean} opts.startTrial    - true = start 14-day trial (no payment)
- * @returns {Promise<{type: 'trial'|'payment', paymentLink?: string, subscription?: Object}>}
+ * @param {boolean} opts.preferTrial   - hint only; server decides eligibility
+ * @returns {Promise<{type: 'trial'|'payment', trial: boolean, paymentLink?: string, subscription?: Object}>}
  */
+export function isTrialEligible(sub) {
+  if (!sub) return true;
+  if (sub.trialUsedAt) return false;
+  if (["trialing", "active", "past_due", "paused"].includes(sub.status)) {
+    return false;
+  }
+  return true;
+}
+
 export async function initiateCheckout({
   userId,
   planId,
   cycle,
   seats = 1,
-  startTrial = true,
+  preferTrial = true,
 }) {
   const plan = getPlan(planId);
   const user = await User.findById(userId).select("name email");
@@ -93,14 +102,15 @@ export async function initiateCheckout({
 
   const sub = await getOrCreateSubscription(userId);
 
-  // ── Start free trial ───────────────────────────────────────
-  if (startTrial) {
+  // ── Start free trial (once per user, never client-forced) ──
+  if (preferTrial && isTrialEligible(sub)) {
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     sub.plan = planId;
     sub.billingCycle = cycle;
     sub.seats = seats;
     sub.status = "trialing";
     sub.trialEndsAt = trialEndsAt;
+    sub.trialUsedAt = new Date();
     sub.currentPeriodStart = new Date();
     sub.currentPeriodEnd = trialEndsAt;
     sub.cancelAtPeriodEnd = false;
@@ -129,7 +139,7 @@ export async function initiateCheckout({
       trialEndsAt,
     });
 
-    return { type: "trial", subscription: sub };
+    return { type: "trial", trial: true, subscription: sub };
   }
 
   // ── Paid checkout ──────────────────────────────────────────
@@ -165,7 +175,7 @@ export async function initiateCheckout({
     redirectUrl: `${process.env.FRONTEND_URL}/billing?status=paid&ref=${txRef}`,
   });
 
-  return { type: "payment", paymentLink, invoiceId: invoice._id, txRef };
+  return { type: "payment", trial: false, paymentLink, invoiceId: invoice._id, txRef };
 }
 
 // ── Activate after successful payment ────────────────────────────
@@ -238,6 +248,7 @@ export async function activateFromPayment(fwTx) {
       sub.dunningAttemptCount = 0;
       sub.dunningStartedAt = null;
       sub.cancelAtPeriodEnd = false;
+      if (!sub.trialUsedAt) sub.trialUsedAt = new Date();
       await sub.save();
     }
   }

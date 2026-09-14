@@ -25,7 +25,6 @@ const INLINE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
 ]);
 
 function domainError(msg, code, status = 400) {

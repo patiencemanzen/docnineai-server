@@ -94,6 +94,9 @@ export const ACTIVITY_ACTIONS = {
   API_TOKEN_CREATED:          "API_TOKEN_CREATED",
   API_TOKEN_REVOKED:          "API_TOKEN_REVOKED",
 
+  // Super-admin
+  ADMIN_USER_UPDATED:         "ADMIN_USER_UPDATED",
+
   // System / internal
   SYSTEM_ERROR:               "SYSTEM_ERROR",
 };
@@ -177,6 +180,8 @@ export const CATEGORY_MAP = {
   API_TOKEN_CREATED:            "auth",
   API_TOKEN_REVOKED:            "auth",
 
+  ADMIN_USER_UPDATED:           "system",
+
   SYSTEM_ERROR:                 "system",
 };
 
@@ -187,6 +192,7 @@ export const SEVERITY_MAP = {
   AUTH_SIGNUP:                "success",
   PIPELINE_COMPLETED:         "success",
   PORTAL_PUBLISHED:           "success",
+  ADMIN_USER_UPDATED:         "warning",
   SUBSCRIPTION_UPGRADED:      "success",
 
   PIPELINE_TIMEOUT:           "warning",
@@ -224,6 +230,7 @@ const activityLogSchema = new mongoose.Schema(
     resourceType: { type: String, default: "" },   // "share" | "version" | "attachment" | ...
 
     metadata:     { type: mongoose.Schema.Types.Mixed, default: {} },
+    summary:      { type: String, default: "" },
 
     ipAddress:    { type: String, default: "" },
     userAgent:    { type: String, default: "" },

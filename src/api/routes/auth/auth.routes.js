@@ -28,11 +28,6 @@ router.post(
   signupLimiter,
   rules.signup,
   validate,
-  autoLog("AUTH_SIGNUP", (_req, body) => ({
-    userId:     body.data?.user?._id,
-    actorName:  body.data?.user?.name  ?? "",
-    actorEmail: body.data?.user?.email ?? "",
-  })),
   wrap(ctrl.signup),
 );
 router.post(
@@ -40,11 +35,6 @@ router.post(
   authLimiter,
   rules.login,
   validate,
-  autoLog("AUTH_LOGIN", (_req, body) => ({
-    userId:     body.data?.user?._id,
-    actorName:  body.data?.user?.name  ?? "",
-    actorEmail: body.data?.user?.email ?? "",
-  })),
   wrap(ctrl.login),
 );
 router.post(
@@ -63,6 +53,7 @@ router.post(
 );
 router.post(
   "/reset-password",
+  authLimiter,
   rules.resetPassword,
   validate,
   wrap(ctrl.resetPassword),
@@ -72,7 +63,7 @@ router.post(
 router.post("/refresh", refreshLimiter, wrap(ctrl.refresh));
 
 // CLI login flow (browser-assisted, cookie-based approval)
-router.post("/cli/init", wrap(ctrl.cliInit));
+router.post("/cli/init", authLimiter, wrap(ctrl.cliInit));
 router.get("/cli/poll/:sessionId", cliPollLimiter, wrap(ctrl.cliPoll));
 router.post("/cli/approve", wrap(ctrl.cliApprove));
 router.post("/cli/cancel", cliPollLimiter, wrap(ctrl.cliCancel));
@@ -114,7 +105,7 @@ router.patch("/webhook", protect, wrap(ctrl.updateWebhookSettings));
 router.post("/cli/logout", protect, wrap(ctrl.cliLogout));
 
 // ── Protected ─────────────────────────────────────────────────
-router.post("/logout", protect, autoLog("AUTH_LOGOUT"), wrap(ctrl.logout));
+router.post("/logout", protect, wrap(ctrl.logout));
 router.get("/me", protect, wrap(ctrl.getMe));
 router.patch(
   "/profile",
