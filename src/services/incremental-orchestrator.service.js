@@ -75,7 +75,7 @@ function resolveGit(project) {
   const git = getAdapter(provider);
   const accessToken = project.providerToken
     ? decrypt(project.providerToken)
-    : null; // GitHub: null : github.service.js reads GITHUB_TOKEN internally
+    : null;
   const ra = createRepoAdapter(provider, project.repoUrl);
   return { git, accessToken, ra };
 }

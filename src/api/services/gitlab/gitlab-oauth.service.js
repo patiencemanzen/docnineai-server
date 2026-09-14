@@ -48,7 +48,7 @@ export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
-  const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m" });
+  const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m", algorithm: "HS256" });
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -77,7 +77,7 @@ export async function handleOAuthCallback({ code, state }) {
   // 1. Verify state JWT (CSRF check)
   let statePayload;
   try {
-    statePayload = jwt.verify(state, stateSecret);
+    statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
     console.log("[GitLab OAuth Service] State verified", {
       userId: statePayload.userId,
     });

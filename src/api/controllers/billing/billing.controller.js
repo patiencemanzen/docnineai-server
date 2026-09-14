@@ -10,6 +10,7 @@ import { PLANS, getPlan } from "../../../config/plans.js";
 import {
   getOrCreateSubscription,
   initiateCheckout,
+  isTrialEligible,
   changePlan,
   cancelSubscription,
   pauseSubscription,
@@ -78,6 +79,8 @@ export async function getSubscription(req, res) {
         seats: sub.seats,
         extraSeats: sub.extraSeats,
         trialEndsAt: sub.trialEndsAt,
+        trialUsedAt: sub.trialUsedAt,
+        trialEligible: isTrialEligible(sub),
         currentPeriodStart: sub.currentPeriodStart,
         currentPeriodEnd: sub.currentPeriodEnd,
         cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
@@ -117,6 +120,7 @@ export async function getTeamSeatsDetails(req, res) {
     if (sub.plan !== "team") {
       return fail(
         res,
+        "NOT_TEAM_PLAN",
         "Team plan details only available for Team subscribers",
         400,
       );
@@ -219,7 +223,7 @@ export async function getTeamSeatsDetails(req, res) {
 // ── POST /billing/checkout ────────────────────────────────────────
 export async function checkout(req, res) {
   try {
-    const { planId, cycle, seats = 1, startTrial = true } = req.body;
+    const { planId, cycle, seats = 1 } = req.body;
 
     if (!["starter", "pro", "team"].includes(planId)) {
       return fail(res, "INVALID_PLAN", "Invalid plan selected", 400);
@@ -233,12 +237,15 @@ export async function checkout(req, res) {
       );
     }
 
+    // preferTrial is a hint. Eligibility (one trial per user) is decided server-side.
+    const preferTrial = req.body.startTrial !== false;
+
     const result = await initiateCheckout({
       userId: req.user.userId,
       planId,
       cycle,
       seats: parseInt(seats, 10) || 1,
-      startTrial,
+      preferTrial,
     });
 
     return ok(
@@ -275,6 +282,14 @@ export async function verifyPayment(req, res) {
         "Payment was not successful",
         402,
       );
+    }
+
+    const owned = await Invoice.findOne({
+      flutterwaveRef: fwTx.tx_ref,
+      userId: req.user.userId,
+    }).select("_id");
+    if (!owned) {
+      return fail(res, "NOT_FOUND", "Invoice not found for this account", 404);
     }
 
     await activateFromPayment(fwTx);

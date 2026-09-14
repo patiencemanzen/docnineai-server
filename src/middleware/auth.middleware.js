@@ -9,6 +9,7 @@
 import { verifyAccessToken, isTokenDenylisted } from "../utils/jwt.util.js";
 import { fail } from "../utils/response.util.js";
 import { authenticateAPIToken } from "./token-auth.middleware.js";
+import { User } from "../models/User.js";
 
 /**
  * Hard auth guard : 401 if Bearer token is missing, expired, or invalid.
@@ -95,15 +96,29 @@ export function optionalAuth(req, res, next) {
  * @param {...string} roles : allowed roles (e.g. 'super-admin')
  */
 export function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return fail(
-        res,
-        "FORBIDDEN",
-        "You do not have permission to access this resource.",
-        403,
-      );
+  return async (req, res, next) => {
+    try {
+      if (!req.user?.userId) {
+        return fail(
+          res,
+          "FORBIDDEN",
+          "You do not have permission to access this resource.",
+          403,
+        );
+      }
+      const user = await User.findById(req.user.userId).select("role").lean();
+      if (!user || !roles.includes(user.role)) {
+        return fail(
+          res,
+          "FORBIDDEN",
+          "You do not have permission to access this resource.",
+          403,
+        );
+      }
+      req.user.role = user.role;
+      next();
+    } catch (err) {
+      next(err);
     }
-    next();
   };
 }

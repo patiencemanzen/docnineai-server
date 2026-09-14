@@ -891,6 +891,7 @@ export async function chatHandler(req, res) {
       send({ type: "token", token });
     },
     onDone(result) {
+      PlanUsage.increment(req.user.userId, { aiChatsUsed: 1 }).catch(() => {});
       send({ type: "done", ...result });
       res.end();
     },

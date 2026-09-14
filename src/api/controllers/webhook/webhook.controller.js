@@ -23,8 +23,8 @@ let _handleFlutterwaveWebhook = null;
  * Called during service initialization
  */
 export function registerWebhookHandlers(globalHook, flutterwaveHook) {
-  _handleGlobalWebhook = globalHook;
-  _handleFlutterwaveWebhook = flutterwaveHook;
+  if (globalHook) _handleGlobalWebhook = globalHook;
+  if (flutterwaveHook) _handleFlutterwaveWebhook = flutterwaveHook;
 }
 
 /**

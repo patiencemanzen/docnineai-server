@@ -13,8 +13,15 @@ import ActivityLog, {
   CATEGORY_MAP,
   SEVERITY_MAP,
 } from "../models/ActivityLog.js";
+import { User } from "../models/User.js";
+import { Project } from "../models/Project.js";
+import {
+  formatActivitySummary,
+  SESSION_NOISE_ACTIONS,
+} from "./activity-copy.js";
 
 const ACTION_SET = new Set(Object.values(ACTIVITY_ACTIONS));
+const NOISE_SET = new Set(SESSION_NOISE_ACTIONS);
 
 // ---------------------------------------------------------------------------
 // Internal write helpers
@@ -24,23 +31,42 @@ async function _write(opts) {
   try {
     const {
       userId,
-      actorName = "",
-      actorEmail = "",
       action,
       projectId,
-      projectName = "",
       resourceId = "",
       resourceType = "",
       metadata = {},
-      req,         // optional Express request for ip/ua extraction
+      req,
       ipAddress: ip,
       userAgent: ua,
     } = opts;
 
     if (!userId || !action) return;
+    if (NOISE_SET.has(action)) return;
     if (!ACTION_SET.has(action)) {
       console.warn(`[ActivityLog] Unknown action skipped: ${action}`);
       return;
+    }
+
+    let actorName = opts.actorName || "";
+    let actorEmail = opts.actorEmail || "";
+    if (!actorName || !actorEmail) {
+      const user = await User.findById(userId).select("name email").lean();
+      actorName = actorName || user?.name || "";
+      actorEmail = actorEmail || user?.email || "";
+    }
+
+    let projectName = opts.projectName || "";
+    if (projectId && !projectName) {
+      const project = await Project.findById(projectId)
+        .select("repoOwner repoName meta.name")
+        .lean();
+      if (project) {
+        projectName =
+          project.meta?.name ||
+          [project.repoOwner, project.repoName].filter(Boolean).join("/") ||
+          "";
+      }
     }
 
     const category = CATEGORY_MAP[action] ?? "system";
@@ -48,6 +74,14 @@ async function _write(opts) {
 
     const ipAddress = ip ?? (req ? _extractIp(req) : "");
     const userAgent = ua ?? (req ? (req.headers?.["user-agent"] ?? "") : "");
+
+    const summary = formatActivitySummary({
+      action,
+      actorName,
+      actorEmail,
+      projectName,
+      metadata,
+    });
 
     await ActivityLog.create({
       userId,
@@ -57,10 +91,11 @@ async function _write(opts) {
       category,
       severity,
       projectId:    projectId  || undefined,
-      projectName:  projectName || "",
+      projectName,
       resourceId:   resourceId  || "",
       resourceType: resourceType || "",
       metadata,
+      summary,
       ipAddress,
       userAgent,
     });

@@ -11,6 +11,7 @@ import { body, param } from "express-validator";
 import multer from "multer";
 import * as ctrl from "../../controllers/apispec/apispec.controller.js";
 import { validate } from "../../../middleware/validate.middleware.js";
+import { requireApiImporter } from "../../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
 
 const router = Router({ mergeParams: true }); // gives access to :id from parent
@@ -42,6 +43,7 @@ router.get("/", wrap(ctrl.getSpec));
 // Accepts multipart (file upload) OR JSON body { method, raw|url, autoSync }
 router.post(
   "/import",
+  requireApiImporter,
   upload.single("file"),
   [
     body("method")
@@ -58,7 +60,7 @@ router.post(
 );
 
 // ── POST /projects/:id/apispec/sync ──────────────────────────
-router.post("/sync", wrap(ctrl.syncSpec));
+router.post("/sync", requireApiImporter, wrap(ctrl.syncSpec));
 
 // ── DELETE /projects/:id/apispec ─────────────────────────────
 router.delete("/", wrap(ctrl.deleteSpec));

@@ -17,6 +17,8 @@ router.get("/stats", adminCtrl.getStats);
 
 // ── Users ─────────────────────────────────────────────────────
 router.get("/users", adminCtrl.listUsers);
+router.patch("/users/:id", adminCtrl.updateUser);
+router.patch("/users/:id/subscription", adminCtrl.updateUserSubscription);
 router.delete("/users/:id", adminCtrl.deleteUser);
 
 // ── Projects ──────────────────────────────────────────────────
@@ -25,5 +27,8 @@ router.delete("/projects/:id", adminCtrl.deleteProject);
 
 // ── Subscriptions ─────────────────────────────────────────────
 router.get("/subscriptions", adminCtrl.listSubscriptions);
+
+// ── Platform activity ─────────────────────────────────────────
+router.get("/activity", adminCtrl.listActivity);
 
 export default router;

@@ -97,6 +97,9 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
 
     // Skip hidden files and dotfiles (except .gitignore, .env, etc)
     const filename = path.basename(filePath);
+    if (isSecretDotfile(filename)) {
+      continue;
+    }
     if (filename.startsWith(".") && !isImportantDotfile(filename)) {
       continue;
     }
@@ -146,9 +149,8 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
 function isImportantDotfile(filename) {
   const important = [
     ".gitignore",
-    ".env",
     ".env.example",
-    ".env.local",
+    ".env.sample",
     ".gitattributes",
     ".prettierrc",
     ".eslintrc",
@@ -156,6 +158,11 @@ function isImportantDotfile(filename) {
     ".dockerignore",
   ];
   return important.includes(filename);
+}
+
+function isSecretDotfile(filename) {
+  if (filename === ".env.example" || filename === ".env.sample") return false;
+  return filename === ".env" || filename.startsWith(".env.");
 }
 
 // ── Project metadata from extracted files ────────────────────

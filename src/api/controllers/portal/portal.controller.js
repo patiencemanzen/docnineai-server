@@ -73,13 +73,8 @@ export async function togglePublish(req, res) {
  * Password-protected portals return metadata only : the client must
  * call POST /portal/:slug/auth to get a session token, then re-fetch.
  *
- * Query param:  ?_pt=<token>  : portal password token (set by /auth endpoint)
- * For simplicity in this implementation we use a query param approach:
- * the client sends the raw password in the body of the auth endpoint,
- * and on success we return a short-lived signed indicator.
- *
- * Simpler: client sends password in Authorization header as Bearer <password>
- * for password-protected portals.  We verify it here.
+ * Password-protected portals require `x-portal-password`.
+ * The client must call POST /portal/:slug/auth first if needed.
  */
 export async function getPublicPortal(req, res) {
   try {
@@ -87,7 +82,7 @@ export async function getPublicPortal(req, res) {
 
     // If password-protected, require verification before returning content
     if (data.portal.accessMode === "password") {
-      const provided = req.headers["x-portal-password"] || req.query._pt;
+      const provided = req.headers["x-portal-password"];
       if (!provided) {
         // Return portal metadata but no content : client shows password gate
         return ok(res, {

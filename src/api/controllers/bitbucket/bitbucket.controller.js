@@ -6,6 +6,7 @@ import * as bitbucketOAuthService from "../../services/bitbucket/bitbucket-oauth
 import * as bitbucketService from "../../../services/bitbucket.service.js";
 import { User } from "../../../models/User.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
+import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 
 export async function oauthStart(req, res) {
   try {
@@ -24,135 +25,40 @@ export async function oauthStart(req, res) {
 }
 
 export async function oauthCallback(req, res) {
-  const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
-  console.log("[Bitbucket OAuth] Callback received", {
-    hasCode: !!code,
-    hasState: !!state,
-    hasError: !!oauthError,
-  });
-
   if (oauthError) {
-    console.warn("[Bitbucket OAuth] OAuth error from Bitbucket", oauthError);
-    const msg = `Bitbucket denied access: ${oauthError}`;
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Bitbucket Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_bitbucket_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'bitbucket-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "bitbucket",
+      status: "error",
+      message: `Bitbucket denied access: ${oauthError}`,
+    });
   }
 
   if (!code || !state) {
-    console.error("[Bitbucket OAuth] Missing code or state");
-    const msg = "Missing code or state : please try again.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Bitbucket Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg}' };
-          localStorage.setItem('__docnine_bitbucket_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'bitbucket-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "bitbucket",
+      status: "error",
+      message: "Missing code or state : please try again.",
+    });
   }
 
   try {
-    console.log("[Bitbucket OAuth] Exchanging code for token...");
     const result = await bitbucketOAuthService.handleOAuthCallback({
       code,
       state,
     });
-    console.log("[Bitbucket OAuth] Successfully stored token", {
-      bitbucketUsername: result.bitbucketUsername,
-      userId: result.userId,
+    return sendOAuthPopupResult(res, {
+      provider: "bitbucket",
+      status: "success",
+      user: result.bitbucketUsername,
     });
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Bitbucket Connected</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Successfully Connected</h2>
-        <p>Bitbucket account connected as <strong>${result.bitbucketUsername}</strong></p>
-        <script>
-          const result = { status: 'success', user: '${result.bitbucketUsername}' };
-          localStorage.setItem('__docnine_bitbucket_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'bitbucket-oauth-complete',
-            ...result
-          }, '*');
-          setTimeout(() => window.close(), 500);
-        </script>
-      </body>
-      </html>
-    `);
   } catch (err) {
-    console.error("[Bitbucket OAuth] Callback failed", {
-      code: err.code,
-      message: err.message,
-      status: err.status,
+    return sendOAuthPopupResult(res, {
+      provider: "bitbucket",
+      status: "error",
+      message: err.message || "Bitbucket connection failed.",
     });
-    const msg = err.message || "Bitbucket connection failed.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Bitbucket Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_bitbucket_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'bitbucket-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
   }
 }
 

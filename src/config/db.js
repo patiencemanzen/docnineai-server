@@ -8,7 +8,27 @@
 // dotenv.config() has populated process.env.
 // ===================================================================
 
+import dns from "node:dns";
 import mongoose from "mongoose";
+
+/**
+ * mongodb+srv:// needs a DNS SRV lookup. On Windows, Node often uses the
+ * stub resolver at 127.0.0.1, which refuses SRV (querySrv ECONNREFUSED)
+ * even when Atlas is up and PowerShell DNS works. Point Node at public
+ * resolvers only in that case so Atlas can connect.
+ */
+function ensureSrvDnsWorks(uri) {
+  if (!uri.startsWith("mongodb+srv://")) return;
+  const servers = dns.getServers();
+  const onlyLoopback = servers.every(
+    (s) => s === "127.0.0.1" || s === "::1" || s.startsWith("127.0.0.1:"),
+  );
+  if (!onlyLoopback) return;
+  dns.setServers(["8.8.8.8", "1.1.1.1"]);
+  console.warn(
+    "[Database] Node DNS was 127.0.0.1 (SRV lookups refused). Using 8.8.8.8 for Atlas.",
+  );
+}
 
 // Cached connection promise : reused across hot invocations on Vercel
 let _connectionPromise = null;
@@ -34,6 +54,8 @@ export async function connectDB() {
 }
 
 async function _connect(URI) {
+  ensureSrvDnsWorks(URI);
+
   // bufferCommands:false makes Mongoose throw immediately if a query is
   // executed before the connection is ready, instead of buffering for
   // serverSelectionTimeoutMS (10s). This surfaces the real error fast

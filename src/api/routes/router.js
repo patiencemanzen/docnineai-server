@@ -117,7 +117,7 @@ export async function loadServices() {
   console.log(`[services] Ready: ${loaded || "none"}`);
 
   // Register loaded webhook service handlers with controller
-  if (_handleGlobalWebhook && _handleFlutterwaveWebhook) {
+  if (_handleGlobalWebhook || _handleFlutterwaveWebhook) {
     registerWebhookHandlers(_handleGlobalWebhook, _handleFlutterwaveWebhook);
   }
 }

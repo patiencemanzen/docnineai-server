@@ -12,16 +12,15 @@ import { getRefreshCookieOpts, denylistToken } from "../../../utils/jwt.util.js"
 export async function signup(req, res) {
   const { name, email, password, agreeToTerms } = req.body;
   try {
-    const { user, accessToken, refreshToken } = await authService.signup({
+    const { user } = await authService.signup({
       name,
       email,
       password,
       agreeToTerms,
     });
-    res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return ok(
       res,
-      { user, accessToken },
+      { user },
       "Account created. Check your email to verify.",
       201,
     );
@@ -46,6 +45,8 @@ export async function login(req, res) {
     return ok(res, { user, accessToken }, "Login successful");
   } catch (err) {
     if (err.code === "INVALID_CREDENTIALS")
+      return fail(res, err.code, err.message, err.status);
+    if (err.code === "EMAIL_NOT_VERIFIED" || err.code === "USE_OAUTH_PROVIDER")
       return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "login");
   }
@@ -188,59 +189,12 @@ export async function changePassword(req, res) {
 }
 
 // ── GET /auth/github (popup) ──────────────────────────────────
-// Serves HTML page for GitHub OAuth popup flow
-export function githubPopup(req, res) {
-  const token = req.query.token || req.cookies?.accessToken;
-  const frontendUrl = process.env.FRONTEND_URL || "";
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
-
-  // JSON.stringify encodes the token so special characters can never break
-  // out of the JS string context (XSS prevention).
-  const safeToken = JSON.stringify(token);
-  const safeOrigin = JSON.stringify(frontendUrl);
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Connecting GitHub...</title>
-      <meta charset="utf-8" />
-      <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-    </head>
-    <body>
-      <h2>Connecting to GitHub...</h2>
-      <p>Please wait while we connect your GitHub account.</p>
-      <script>
-        (async function() {
-          try {
-            const response = await fetch('/github/oauth/start', {
-              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
-            });
-            if (!response.ok) throw new Error('Request failed: ' + response.status);
-            const data = await response.json();
-            if (data.url) {
-              window.location.href = data.url;
-            } else {
-              throw new Error(data.message || 'Failed to get OAuth URL');
-            }
-          } catch (err) {
-            window.opener?.postMessage({
-              type: 'github-oauth-complete',
-              status: 'error',
-              msg: err.message
-            }, ${safeOrigin} || '*');
-            window.close();
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
+// Deprecated: the SPA fetches GET /github/oauth/start with a Bearer
+// token and opens the returned URL. JWT must not appear in query strings.
+export function githubPopup(_req, res) {
+  return res
+    .status(410)
+    .send("This popup entrypoint is gone. Open the OAuth URL from GET /github/oauth/start.");
 }
 
 // ── GET /auth/github/start ────────────────────────────────────
@@ -265,18 +219,17 @@ export async function githubLoginCallback(req, res) {
   }
 
   try {
-    const { user, accessToken, refreshToken } =
+    const { refreshToken } =
       await authService.githubSocialLogin(code);
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
-    // Pass access token to frontend via URL so it can store in memory
-    return res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${encodeURIComponent(accessToken)}&userId=${user._id}`,
-    );
+    return res.redirect(`${frontendUrl}/auth/callback`);
   } catch (err) {
     const knownCodes = [
       "GITHUB_CODE_INVALID",
       "GITHUB_NO_EMAIL",
       "GITHUB_LOGIN_NOT_CONFIGURED",
+      "OAUTH_UNVERIFIED_ACCOUNT",
+      "OAUTH_EMAIL_CONFLICT",
     ];
     const code_ = knownCodes.includes(err.code) ? err.code : "OAUTH_ERROR";
     return res.redirect(`${frontendUrl}/auth/callback?error=${code_}`);
@@ -284,165 +237,24 @@ export async function githubLoginCallback(req, res) {
 }
 
 // ── GET /auth/gitlab (popup) ──────────────────────────────────
-// Serves HTML page for GitLab OAuth popup flow
-export function gitlabPopup(req, res) {
-  const token = req.query.token || req.cookies?.accessToken;
-  const frontendUrl = process.env.FRONTEND_URL || "";
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
-
-  const safeToken = JSON.stringify(token);
-  const safeOrigin = JSON.stringify(frontendUrl);
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Connecting GitLab...</title>
-      <meta charset="utf-8" />
-      <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-    </head>
-    <body>
-      <h2>Connecting to GitLab...</h2>
-      <p>Please wait while we connect your GitLab account.</p>
-      <script>
-        (async function() {
-          try {
-            const response = await fetch('/gitlab/oauth/start', {
-              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
-            });
-            if (!response.ok) throw new Error('Request failed: ' + response.status);
-            const data = await response.json();
-            if (data.url) {
-              window.location.href = data.url;
-            } else {
-              throw new Error(data.message || 'Failed to get OAuth URL');
-            }
-          } catch (err) {
-            window.opener?.postMessage({
-              type: 'gitlab-oauth-complete',
-              status: 'error',
-              msg: err.message
-            }, ${safeOrigin} || '*');
-            window.close();
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
+export function gitlabPopup(_req, res) {
+  return res
+    .status(410)
+    .send("This popup entrypoint is gone. Open the OAuth URL from GET /gitlab/oauth/start.");
 }
 
 // ── GET /auth/bitbucket (popup) ────────────────────────────────
-// Serves HTML page for Bitbucket OAuth popup flow
-export function bitbucketPopup(req, res) {
-  const token = req.query.token || req.cookies?.accessToken;
-  const frontendUrl = process.env.FRONTEND_URL || "";
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
-
-  const safeToken = JSON.stringify(token);
-  const safeOrigin = JSON.stringify(frontendUrl);
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Connecting Bitbucket...</title>
-      <meta charset="utf-8" />
-      <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-    </head>
-    <body>
-      <h2>Connecting to Bitbucket...</h2>
-      <p>Please wait while we connect your Bitbucket account.</p>
-      <script>
-        (async function() {
-          try {
-            const response = await fetch('/bitbucket/oauth/start', {
-              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
-            });
-            if (!response.ok) throw new Error('Request failed: ' + response.status);
-            const data = await response.json();
-            if (data.url) {
-              window.location.href = data.url;
-            } else {
-              throw new Error(data.message || 'Failed to get OAuth URL');
-            }
-          } catch (err) {
-            window.opener?.postMessage({
-              type: 'bitbucket-oauth-complete',
-              status: 'error',
-              msg: err.message
-            }, ${safeOrigin} || '*');
-            window.close();
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
+export function bitbucketPopup(_req, res) {
+  return res
+    .status(410)
+    .send("This popup entrypoint is gone. Open the OAuth URL from GET /bitbucket/oauth/start.");
 }
 
 // ── GET /auth/azure (popup) ────────────────────────────────────
-// Serves HTML page for Azure OAuth popup flow
-export function azurePopup(req, res) {
-  const token = req.query.token || req.cookies?.accessToken;
-  const frontendUrl = process.env.FRONTEND_URL || "";
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
-
-  const safeToken = JSON.stringify(token);
-  const safeOrigin = JSON.stringify(frontendUrl);
-
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Connecting Azure...</title>
-      <meta charset="utf-8" />
-      <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-    </head>
-    <body>
-      <h2>Connecting to Azure...</h2>
-      <p>Please wait while we connect your Azure account.</p>
-      <script>
-        (async function() {
-          try {
-            const response = await fetch('/azure/oauth/start', {
-              headers: { 'Authorization': 'Bearer ' + ${safeToken} }
-            });
-            if (!response.ok) throw new Error('Request failed: ' + response.status);
-            const data = await response.json();
-            if (data.url) {
-              window.location.href = data.url;
-            } else {
-              throw new Error(data.message || 'Failed to get OAuth URL');
-            }
-          } catch (err) {
-            window.opener?.postMessage({
-              type: 'azure-oauth-complete',
-              status: 'error',
-              msg: err.message
-            }, ${safeOrigin} || '*');
-            window.close();
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
+export function azurePopup(_req, res) {
+  return res
+    .status(410)
+    .send("This popup entrypoint is gone. Open the OAuth URL from GET /azure/oauth/start.");
 }
 
 // ── GET /auth/google/start ────────────────────────────────────
@@ -467,17 +279,17 @@ export async function googleLoginCallback(req, res) {
   }
 
   try {
-    const { user, accessToken, refreshToken } =
+    const { refreshToken } =
       await authService.googleSocialLogin(code);
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
-    return res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${encodeURIComponent(accessToken)}&userId=${user._id}`,
-    );
+    return res.redirect(`${frontendUrl}/auth/callback`);
   } catch (err) {
     const knownCodes = [
       "GOOGLE_CODE_INVALID",
       "GOOGLE_NO_EMAIL",
       "GOOGLE_LOGIN_NOT_CONFIGURED",
+      "OAUTH_UNVERIFIED_ACCOUNT",
+      "OAUTH_EMAIL_CONFLICT",
     ];
     const code_ = knownCodes.includes(err.code) ? err.code : "OAUTH_ERROR";
     return res.redirect(`${frontendUrl}/auth/callback?error=${code_}`);

@@ -13,6 +13,8 @@
 import bcrypt from "bcryptjs";
 import { Portal } from "../../../models/Portal.js";
 import { Project } from "../../../models/Project.js";
+import { Subscription } from "../../../models/Subscription.js";
+import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
 
@@ -140,6 +142,28 @@ export async function updatePortal(projectId, userId, body) {
   ];
   for (const key of allowed) {
     if (body[key] !== undefined) portal[key] = body[key];
+  }
+
+  if (body.customDomain) {
+    const sub = await Subscription.findOne({ userId }).lean();
+    const features = getPlan(effectivePlanId(sub)).features;
+    if (!features.customDomain) {
+      throw Object.assign(
+        new Error("Custom domains require the Pro plan or higher."),
+        { status: 403, code: "PLAN_GATE" },
+      );
+    }
+  }
+
+  if (portal.branding?.footerLinks) {
+    portal.branding.footerLinks = portal.branding.footerLinks.filter((link) => {
+      try {
+        const href = new URL(String(link.href || ""));
+        return href.protocol === "https:" || href.protocol === "http:";
+      } catch {
+        return false;
+      }
+    });
   }
 
   // Handle password update

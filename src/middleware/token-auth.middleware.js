@@ -8,6 +8,10 @@ import { APIToken } from "../models/APIToken.js";
 import { fail } from "../utils/response.util.js";
 import { hashToken } from "../utils/crypto.util.js";
 
+function clientIpOf(req) {
+  return req.ip || req.socket?.remoteAddress || "";
+}
+
 /**
  * Authenticate API token from Authorization header
  * Validates token against database, checks expiration and status
@@ -15,13 +19,12 @@ import { hashToken } from "../utils/crypto.util.js";
  * Falls back to session auth if no API token
  */
 export async function authenticateAPIToken(req, res, next) {
+  if (req.tokenAuth) return next();
+
   const header = req.headers.authorization || "";
 
   if (!header.startsWith("Bearer ")) {
-    // No API token : fall back to session auth (if user is logged in)
-    if (req.user) {
-      return next();
-    }
+    if (req.user) return next();
     return fail(
       res,
       "NO_TOKEN",
@@ -32,18 +35,31 @@ export async function authenticateAPIToken(req, res, next) {
 
   const plainToken = header.slice(7).trim();
 
+  // Session JWT already authenticated (protect ran first), or a non-API token.
+  if (req.user && !plainToken.startsWith("docnine_")) {
+    return next();
+  }
+
+  if (!plainToken.startsWith("docnine_")) {
+    return fail(
+      res,
+      "INVALID_TOKEN",
+      "Token format is invalid. API tokens start with docnine_.",
+      401,
+    );
+  }
+
+  const clientIp = clientIpOf(req);
+
   try {
-    // Validate token format (basic check)
-    if (!plainToken || plainToken.length < 10) {
+    if (plainToken.length < 10) {
       return fail(res, "INVALID_TOKEN", "Token format is invalid", 401);
     }
 
-    // Find token in database by hash
-    // APIToken stores tokenHash (SHA256 hash of the plain token)
     const tokenHash = hashToken(plainToken);
     const apiToken = await APIToken.findOne({
       tokenHash,
-      isRevoked: false, // Only active tokens
+      isRevoked: false,
     }).populate("userId", "email name");
 
     if (!apiToken) {
@@ -55,14 +71,11 @@ export async function authenticateAPIToken(req, res, next) {
       );
     }
 
-    // Check expiration
     if (apiToken.expiresAt && new Date() > apiToken.expiresAt) {
       return fail(res, "TOKEN_EXPIRED", "API token has expired", 401);
     }
 
-    // Check IP whitelist if configured
     if (apiToken.ipWhitelist && apiToken.ipWhitelist.length > 0) {
-      const clientIp = req.ip || req.connection.remoteAddress;
       if (!apiToken.ipWhitelist.includes(clientIp)) {
         return fail(
           res,
@@ -73,25 +86,32 @@ export async function authenticateAPIToken(req, res, next) {
       }
     }
 
-    // Record usage
+    const projectId = req.params.id || req.params.projectId;
+    if (projectId && !apiToken.hasProjectAccess(projectId)) {
+      return fail(
+        res,
+        "FORBIDDEN",
+        "This token is not allowed to access this project",
+        403,
+      );
+    }
+
     try {
       await apiToken.recordUsage(clientIp);
     } catch (err) {
       console.warn("Failed to record token usage:", err);
-      // Don't fail on usage recording
     }
 
-    // Attach to request
     req.tokenAuth = {
       token: plainToken,
       tokenId: apiToken._id,
       user: apiToken.userId,
       userId: apiToken.userId._id,
       scope: apiToken.scope,
+      projectIds: apiToken.projectIds || [],
       isValid: apiToken.isValid(),
     };
 
-    // Also set req.user for consistency with session auth
     req.user = {
       userId: apiToken.userId._id,
       email: apiToken.userId.email,
@@ -122,11 +142,13 @@ export function requireAPIToken(req, res, next) {
 
 /**
  * Optional: Check token scope.
+ * Session JWTs (dashboard) skip this check.
  * Works with both singular string scope and array of scopes.
  */
 export function checkTokenScope(requiredScopes = []) {
   return (req, res, next) => {
     if (!req.tokenAuth) {
+      if (req.user) return next();
       return fail(
         res,
         "NO_TOKEN",
@@ -135,7 +157,6 @@ export function checkTokenScope(requiredScopes = []) {
       );
     }
 
-    // req.tokenAuth.scope is set as a string by authenticateAPIToken; normalise to array
     const rawScope = req.tokenAuth.scope || req.tokenAuth.scopes || [];
     const tokenScopes = Array.isArray(rawScope) ? rawScope : [rawScope];
     const hasScope = requiredScopes.some((scope) => tokenScopes.includes(scope));

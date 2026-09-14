@@ -22,7 +22,11 @@ import GoogleToken from "../models/GoogleToken.js";
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function getStateSecret() {
-  return process.env.JWT_SECRET || process.env.ENCRYPTION_KEY || "changeme";
+  const secret = process.env.JWT_ACCESS_SECRET || process.env.ENCRYPTION_KEY;
+  if (!secret) {
+    throw new Error("JWT_ACCESS_SECRET or ENCRYPTION_KEY must be set");
+  }
+  return secret;
 }
 
 /**

@@ -6,6 +6,7 @@ import * as azureOAuthService from "../../services/azure/azure-oauth.service.js"
 import * as azureService from "../../../services/azure-devops.service.js";
 import { User } from "../../../models/User.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
+import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 
 export async function oauthStart(req, res) {
   try {
@@ -24,135 +25,40 @@ export async function oauthStart(req, res) {
 }
 
 export async function oauthCallback(req, res) {
-  const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
-  console.log("[Azure OAuth] Callback received", {
-    hasCode: !!code,
-    hasState: !!state,
-    hasError: !!oauthError,
-  });
-
   if (oauthError) {
-    console.warn("[Azure OAuth] OAuth error from Azure", oauthError);
-    const msg = `Azure DevOps denied access: ${oauthError}`;
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Azure DevOps Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_azure_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'azure-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "azure",
+      status: "error",
+      message: `Azure DevOps denied access: ${oauthError}`,
+    });
   }
 
   if (!code || !state) {
-    console.error("[Azure OAuth] Missing code or state");
-    const msg = "Missing code or state : please try again.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Azure DevOps Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg}' };
-          localStorage.setItem('__docnine_azure_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'azure-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "azure",
+      status: "error",
+      message: "Missing code or state : please try again.",
+    });
   }
 
   try {
-    console.log("[Azure OAuth] Exchanging code for token...");
     const result = await azureOAuthService.handleOAuthCallback({
       code,
       state,
     });
-    console.log("[Azure OAuth] Successfully stored token", {
-      azureUsername: result.azureUsername,
-      userId: result.userId,
+    return sendOAuthPopupResult(res, {
+      provider: "azure",
+      status: "success",
+      user: result.azureUsername,
     });
-
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Azure DevOps Connected</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Successfully Connected</h2>
-        <p>Azure DevOps account connected as <strong>${result.azureUsername}</strong></p>
-        <script>
-          const result = { status: 'success', user: '${result.azureUsername}' };
-          localStorage.setItem('__docnine_azure_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'azure-oauth-complete',
-            ...result
-          }, '*');
-          setTimeout(() => window.close(), 500);
-        </script>
-      </body>
-      </html>
-    `);
   } catch (err) {
-    console.error("[Azure OAuth] Callback failed", {
-      code: err.code,
-      message: err.message,
-      status: err.status,
+    return sendOAuthPopupResult(res, {
+      provider: "azure",
+      status: "error",
+      message: err.message || "Azure DevOps connection failed.",
     });
-    const msg = err.message || "Azure DevOps connection failed.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Azure DevOps Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_azure_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'azure-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
   }
 }
 

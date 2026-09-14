@@ -1,7 +1,7 @@
 import express from 'express';
 import { MCPController } from '../../controllers/project/mcp.controller.js';
 import { protect } from '../../../middleware/auth.middleware.js';
-import { authenticateAPIToken } from '../../../middleware/token-auth.middleware.js';
+import { checkTokenScope } from '../../../middleware/token-auth.middleware.js';
 
 const router = express.Router({ mergeParams: true });
 
@@ -24,12 +24,10 @@ router.get('/tools', protect, MCPController.listTools);
 // Get MCP server info (requires auth)
 router.get('/info', protect, MCPController.getMCPInfo);
 
-// Call MCP tool (requires token auth)
-// Supports both Bearer token and logged-in user
-router.post('/call', authenticateAPIToken, MCPController.callTool);
+// Call MCP tool (JWT session or API token). protect() already accepts docnine_ tokens.
+router.post('/call', protect, checkTokenScope(['mcp']), MCPController.callTool);
 
-// Direct tool endpoints (e.g., POST /api/projects/:projectId/mcp/get_project_docs)
-// Supports all 12 available tools
-router.post('/:tool', authenticateAPIToken, MCPController.callTool);
+// Direct tool endpoints (e.g., POST /projects/:id/mcp/get_project_docs)
+router.post('/:tool', protect, checkTokenScope(['mcp']), MCPController.callTool);
 
 export default router;

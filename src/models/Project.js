@@ -243,8 +243,8 @@ const ProjectSchema = new Schema(
       default: "github",
     },
 
-    // Encrypted OAuth access token for providers that need per-user auth (GitLab, Bitbucket, Azure).
-    // null for GitHub (uses server-level GITHUB_TOKEN env var).
+    // Encrypted OAuth access token for git providers that need per-user auth.
+    // GitHub uses the connected user's GitHubToken when present; otherwise public API.
     providerToken: {
       type: String,
       select: false, // never returned in queries unless explicitly selected

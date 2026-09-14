@@ -18,6 +18,8 @@ import { ProjectShare } from "../../../models/ProjectShare.js";
 import { User } from "../../../models/User.js";
 import { sendProjectInviteEmail } from "../../../config/email.js";
 import { syncTeamSeatsAndBilling } from "../../../services/billing.service.js";
+import { Subscription } from "../../../models/Subscription.js";
+import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
 
@@ -35,10 +37,48 @@ function notFound(msg = "Not found.") {
   e.status = 404;
   return e;
 }
-function conflict(msg) {
+function planGate(msg, requiredPlan) {
   const e = new Error(msg);
-  e.status = 409;
+  e.status = 403;
+  e.code = "PLAN_GATE";
+  e.requiredPlan = requiredPlan;
   return e;
+}
+
+async function assertShareAllowed(ownerId, role, { countTowardLimit = true } = {}) {
+  const sub = await Subscription.findOne({ userId: ownerId }).lean();
+  const planId = effectivePlanId(sub);
+  const features = getPlan(planId).features;
+
+  if (role === "editor" && !features.shareEdit) {
+    throw planGate(
+      "Edit sharing requires the Pro plan or higher.",
+      "pro",
+    );
+  }
+  if (role === "viewer" && !features.shareViewOnly) {
+    throw planGate(
+      "Project sharing requires the Starter plan or higher.",
+      "starter",
+    );
+  }
+
+  if (
+    countTowardLimit &&
+    features.maxShares !== null &&
+    features.maxShares !== undefined
+  ) {
+    const count = await ProjectShare.countDocuments({
+      ownerId,
+      status: { $in: ["pending", "accepted"] },
+    });
+    if (count >= features.maxShares) {
+      throw planGate(
+        `You've reached the ${features.maxShares}-share limit on your current plan.`,
+        "pro",
+      );
+    }
+  }
 }
 
 /** Return the project and throw 404 if missing, 403 if not owner. */
@@ -123,6 +163,8 @@ export async function inviteUsers(projectId, ownerId, invites) {
       status: "revoked",
     });
 
+    await assertShareAllowed(ownerId, role);
+
     // Look up if the invitee already has a Docnine account
     const inviteeUser = await User.findOne({ email: lc }).select("_id").lean();
 
@@ -201,6 +243,8 @@ export async function changeRole(projectId, shareId, ownerId, newRole) {
     status: { $in: ["pending", "accepted"] },
   });
   if (!share) throw notFound("Share entry not found.");
+
+  await assertShareAllowed(ownerId, newRole, { countTowardLimit: false });
 
   share.role = newRole;
   await share.save();

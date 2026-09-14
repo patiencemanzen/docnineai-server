@@ -14,7 +14,7 @@
 
 import { Subscription } from "../models/Subscription.js";
 import { PlanUsage } from "../models/PlanUsage.js";
-import { getPlan, PLAN_LEVEL, PLANS } from "../config/plans.js";
+import { getPlan, PLAN_LEVEL, PLANS, effectivePlanId } from "../config/plans.js";
 import { fail } from "../utils/response.util.js";
 import { Project } from "../models/Project.js";
 import { Portal } from "../models/Portal.js";
@@ -34,13 +34,7 @@ async function loadSubscription(req) {
 }
 
 function effectivePlan(sub) {
-  // Paused subscriptions have read-only access (treat as free for creating)
-  if (sub.status === "paused") return "free";
-  // During active trial, plan is the trialing plan
-  if (sub.status === "trialing" || sub.status === "active") return sub.plan;
-  // past_due : retain access during grace period
-  if (sub.status === "past_due") return sub.plan;
-  return "free";
+  return effectivePlanId(sub);
 }
 
 // ── Middleware factories ───────────────────────────────────────────

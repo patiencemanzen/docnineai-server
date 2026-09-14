@@ -6,6 +6,8 @@
 // =============================================================
 
 import axios from "axios";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { ApiSpec } from "../../../models/ApiSpec.js";
 import { parseSpec } from "./apispec.parser.js";
 import { getShareRole } from "../projects/share.service.js";
@@ -36,6 +38,81 @@ function isPrivateUrl(urlString) {
     /^fc00:/i.test(h) ||                         // IPv6 ULA
     /^fd[0-9a-f]{2}:/i.test(h)                  // IPv6 ULA (fd00::/8)
   );
+}
+
+function isPrivateIp(ip) {
+  const kind = isIP(ip);
+  if (kind === 4) {
+    const p = ip.split(".").map(Number);
+    if (p[0] === 10 || p[0] === 127 || p[0] === 0) return true;
+    if (p[0] === 169 && p[1] === 254) return true;
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+    if (p[0] === 192 && p[1] === 168) return true;
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true;
+    return false;
+  }
+  if (kind === 6) {
+    const h = ip.toLowerCase();
+    if (h === "::1" || h === "::") return true;
+    if (h.startsWith("fe80:")) return true;
+    if (h.startsWith("fc") || h.startsWith("fd")) return true;
+    if (h.startsWith("::ffff:")) return isPrivateIp(h.replace(/^::ffff:/, ""));
+    return false;
+  }
+  return true;
+}
+
+async function assertPublicHttpUrl(urlString) {
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    throw makeError("Invalid endpoint URL.", "BAD_URL", 400);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw makeError("Only http and https URLs are allowed.", "BAD_URL", 400);
+  }
+  if (isPrivateUrl(urlString)) {
+    throw makeError(
+      "Proxying to localhost or private network addresses is not allowed.",
+      "PRIVATE_URL",
+      403,
+    );
+  }
+  const { address } = await lookup(parsed.hostname);
+  if (isPrivateIp(address)) {
+    throw makeError(
+      "Proxying to localhost or private network addresses is not allowed.",
+      "PRIVATE_URL",
+      403,
+    );
+  }
+}
+
+const BLOCKED_FORWARD_HEADERS = new Set([
+  "host",
+  "cookie",
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "te",
+  "trailer",
+  "upgrade",
+  "proxy-authorization",
+  "proxy-authenticate",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+]);
+
+function sanitiseForwardHeaders(headers = {}) {
+  const out = { "User-Agent": "DocNine-TryIt/1.0" };
+  for (const [key, value] of Object.entries(headers)) {
+    if (BLOCKED_FORWARD_HEADERS.has(key.toLowerCase())) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 // ── Permission helpers ────────────────────────────────────────
@@ -96,10 +173,12 @@ export async function importSpec(projectId, userId, opts) {
         403,
       );
     }
+    await assertPublicHttpUrl(url.trim());
     try {
       const resp = await axios.get(url.trim(), {
         timeout: 15_000,
         maxContentLength: 5 * 1024 * 1024, // 5 MB
+        maxRedirects: 0,
         responseType: "text",
         headers: {
           Accept: "application/json, application/yaml, text/yaml, text/plain",
@@ -250,14 +329,17 @@ export async function tryRequest(projectId, userId, opts) {
     );
   }
 
+  await assertPublicHttpUrl(targetUrl.toString());
+
   try {
     const resp = await axios.request({
       method: (method ?? "GET").toUpperCase(),
       url: targetUrl.toString(),
       params: queryParams,
-      headers: { "User-Agent": "DocNine-TryIt/1.0", ...headers },
+      headers: sanitiseForwardHeaders(headers),
       data: body ?? undefined,
       timeout: 20_000,
+      maxRedirects: 0,
       maxContentLength: 2 * 1024 * 1024, // 2 MB response cap
       validateStatus: () => true, // forward non-2xx as-is
       decompress: true,

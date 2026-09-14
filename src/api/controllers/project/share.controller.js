@@ -45,7 +45,7 @@ export async function inviteUsers(req, res) {
     );
     return ok(res, { results }, "Invites processed.", 200);
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "inviteUsers");
   }
 }
@@ -59,7 +59,7 @@ export async function listAccess(req, res) {
     );
     return ok(res, { shares });
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "listAccess");
   }
 }
@@ -80,7 +80,7 @@ export async function changeRole(req, res) {
     );
     return ok(res, { share }, "Role updated.");
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "changeRole");
   }
 }
@@ -95,7 +95,7 @@ export async function revokeAccess(req, res) {
     );
     return ok(res, null, "Access revoked.");
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "revokeAccess");
   }
 }
@@ -110,7 +110,7 @@ export async function resendInvite(req, res) {
     );
     return ok(res, { share }, "Invite resent.");
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "resendInvite");
   }
 }
@@ -125,7 +125,7 @@ export async function cancelInvite(req, res) {
     );
     return ok(res, null, "Invite cancelled.");
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "cancelInvite");
   }
 }
@@ -140,7 +140,7 @@ export async function acceptInvite(req, res) {
     );
     return ok(res, result, "Invite accepted.");
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "acceptInvite");
   }
 }
@@ -152,7 +152,7 @@ export async function getSharedProjects(req, res) {
     const projects = await shareService.getSharedProjects(req.user.userId);
     return ok(res, { projects });
   } catch (err) {
-    if (err.status) return fail(res, "SHARE_ERROR", err.message, err.status);
+    if (err.status) return fail(res, err.code || "SHARE_ERROR", err.message, err.status);
     return serverError(res, err, "getSharedProjects");
   }
 }

@@ -9,6 +9,7 @@
 import { Router } from "express";
 import * as tokenService from "../../../services/token.service.js";
 import { protect } from "../../../middleware/auth.middleware.js";
+import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 
 const router = Router();
@@ -106,14 +107,24 @@ export async function deleteTokenHandler(req, res) {
 }
 
 // ── Routes ──
-router.post("/", createTokenHandler);
+router.post(
+  "/",
+  autoLog("API_TOKEN_CREATED", (req, body) => ({
+    metadata: { name: req.body?.name || body.data?.name },
+  })),
+  createTokenHandler,
+);
 router.get("/", listTokensHandler);
 router.get("/:id", getTokenHandler);
-router.delete("/:id", (req, res) => {
-  const isPermanent = req.query.permanent === "true";
-  return isPermanent
-    ? deleteTokenHandler(req, res)
-    : revokeTokenHandler(req, res);
-});
+router.delete(
+  "/:id",
+  autoLog("API_TOKEN_REVOKED"),
+  (req, res) => {
+    const isPermanent = req.query.permanent === "true";
+    return isPermanent
+      ? deleteTokenHandler(req, res)
+      : revokeTokenHandler(req, res);
+  },
+);
 
 export default router;

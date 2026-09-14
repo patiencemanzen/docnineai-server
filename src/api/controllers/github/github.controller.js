@@ -4,6 +4,7 @@
 
 import * as githubService from "../../services/github/github.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
+import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 
 // ── GET /github/oauth/start ───────────────────────────────────
 // Returns the GitHub authorization URL as JSON.
@@ -35,61 +36,22 @@ export async function oauthStart(req, res) {
 // On success/failure, redirect the popup to the SPA's /github/oauth/complete
 // page, which postMessages the result to the parent window and closes itself.
 export async function oauthCallback(req, res) {
-  const frontendUrl = process.env.FRONTEND_URL || "";
   const { code, state, error: oauthError } = req.query;
 
   if (oauthError) {
-    const msg = `GitHub denied access: ${oauthError}`;
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitHub Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'github-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "github",
+      status: "error",
+      message: `GitHub denied access: ${oauthError}`,
+    });
   }
 
   if (!code || !state) {
-    const msg = "Missing code or state : please try again.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitHub Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg}' };
-          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'github-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "github",
+      status: "error",
+      message: "Missing code or state : please try again.",
+    });
   }
 
   try {
@@ -98,54 +60,17 @@ export async function oauthCallback(req, res) {
       state,
     });
 
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitHub Connected</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Successfully Connected</h2>
-        <p>GitHub account connected as <strong>${githubUsername}</strong></p>
-        <script>
-          const result = { status: 'success', user: '${githubUsername}' };
-          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'github-oauth-complete',
-            ...result
-          }, '*');
-          setTimeout(() => window.close(), 500);
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "github",
+      status: "success",
+      user: githubUsername,
+    });
   } catch (err) {
-    const msg = err.message || "GitHub connection failed.";
-    return res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>GitHub Connection Failed</title>
-        <meta charset="utf-8" />
-        <style>body { font-family: system-ui; text-align: center; padding: 2rem; }</style>
-      </head>
-      <body>
-        <h2>Connection Failed</h2>
-        <p>${msg}</p>
-        <script>
-          const result = { status: 'error', msg: '${msg.replace(/'/g, "\\'")}' };
-          localStorage.setItem('__docnine_github_oauth_result', JSON.stringify(result));
-          window.opener?.postMessage({
-            type: 'github-oauth-complete',
-            ...result
-          }, '*');
-          window.close();
-        </script>
-      </body>
-      </html>
-    `);
+    return sendOAuthPopupResult(res, {
+      provider: "github",
+      status: "error",
+      message: err.message || "GitHub connection failed.",
+    });
   }
 }
 
