@@ -1,10 +1,3 @@
-// ===================================================================
-// HTML response for provider OAuth popup callbacks.
-// Interpolations are JSON-encoded (script) or HTML-escaped (body)
-// so usernames / error messages cannot break out of context.
-// postMessage targets FRONTEND_URL only — never '*'.
-// ===================================================================
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -22,22 +15,16 @@ function titleCase(provider) {
   return provider;
 }
 
-/**
- * Send a self-closing popup page that notifies the opener and stores
- * the result for same-origin polling fallbacks.
- *
- * @param {import('express').Response} res
- * @param {{ provider: string, status: 'success'|'error', message?: string, user?: string }} opts
- */
 export function sendOAuthPopupResult(res, { provider, status, message, user }) {
   const frontendUrl = process.env.FRONTEND_URL || "";
   const label = titleCase(provider);
   const ok = status === "success";
   const heading = ok ? "Successfully Connected" : "Connection Failed";
   const title = ok ? `${label} Connected` : `${label} Connection Failed`;
-  const bodyText = ok && user
-    ? `${label} account connected as <strong>${escapeHtml(user)}</strong>`
-    : escapeHtml(message || (ok ? "Connected." : "Connection failed."));
+  const bodyText =
+    ok && user
+      ? `${label} account connected as <strong>${escapeHtml(user)}</strong>`
+      : escapeHtml(message || (ok ? "Connected." : "Connection failed."));
 
   const payload = {
     type: `${provider}-oauth-complete`,

@@ -25,9 +25,6 @@ function serializeLogs(logs) {
   }));
 }
 
-// ---------------------------------------------------------------------------
-// GET /activity-logs  (account: what this user did)
-// ---------------------------------------------------------------------------
 export const listActivityLogs = wrap(async (req, res) => {
   const userId = req.user.userId;
 
@@ -62,9 +59,6 @@ export const listActivityLogs = wrap(async (req, res) => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// GET /activity-logs/project/:projectId  (anyone with project access)
-// ---------------------------------------------------------------------------
 export const listProjectActivityLogs = wrap(async (req, res) => {
   const userId = req.user.userId;
   const { projectId } = req.params;

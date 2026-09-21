@@ -1,7 +1,3 @@
-// ===================================================================
-// Incremental Sync Pipeline : Enhanced
-// ===================================================================
-
 import { getAdapter, createRepoAdapter } from "../adapters/provider.adapter.js";
 import { decrypt } from "../utils/crypto.util.js";
 
@@ -11,15 +7,9 @@ import { schemaAnalyserAgent } from "../agents/schema-analyser.agent.js";
 import { componentMapperAgent } from "../agents/component-mapper.agent.js";
 import { securityAuditorAgent } from "../agents/security-auditor.agent.js";
 
-import {
-  analyseChanges,
-  mergeAgentOutputs,
-  updateFileManifest,
-} from "./diff.service.js";
+import { analyseChanges, mergeAgentOutputs, updateFileManifest } from "./diff.service.js";
 
 import { DocumentVersion } from "../models/DocumentVersion.js";
-
-// ─── Configuration ────────────────────────────────────────────────
 
 const TIMEOUTS = {
   fetch: 45_000,
@@ -31,11 +21,8 @@ const TIMEOUTS = {
   docs: 120_000,
 };
 
-// If more than this many files changed → full run
-// Large diffs make incremental merging unreliable
 const FULL_RUN_THRESHOLD = 80;
 
-// Sections that can be rebuilt statically (no LLM call)
 const STATIC_SECTIONS = new Set([
   "apiReference",
   "schemaDocs",
@@ -44,14 +31,11 @@ const STATIC_SECTIONS = new Set([
   "componentIndex",
 ]);
 
-// Sections that require an LLM call
 const LLM_SECTIONS = new Set(["readme", "internalDocs", "componentRef"]);
 
 const SEVERITY_WEIGHT = { CRITICAL: 25, HIGH: 15, MEDIUM: 7, LOW: 2 };
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🔵" };
-
-// ─── Lazy doc writer ──────────────────────────────────────────────
 
 let _docWriterAgent = null;
 async function getDocWriter() {
@@ -61,39 +45,18 @@ async function getDocWriter() {
   return _docWriterAgent;
 }
 
-/**
- * Resolve the correct git service, decrypted access token, and a
- * repo-bound normalized adapter for a project.
- *
- * `git`         : raw service module (for fetchRepoFilesWithProgress)
- * `accessToken` : decrypted OAuth/PAT token (null for GitHub)
- * `ra`          : createRepoAdapter instance that hides Azure's extra
- *                 `project` argument and other provider quirks
- */
 function resolveGit(project) {
   const provider = project.provider || "github";
   const git = getAdapter(provider);
-  const accessToken = project.providerToken
-    ? decrypt(project.providerToken)
-    : null;
+  const accessToken = project.providerToken ? decrypt(project.providerToken) : null;
   const ra = createRepoAdapter(provider, project.repoUrl);
   return { git, accessToken, ra };
 }
 
-// ─── Timeout + cancellation ───────────────────────────────────────
-
-/**
- * Wrap any async fn with a hard timeout.
- * Returns { result } on success, { error, timedOut } on failure.
- * Never throws.
- */
 async function withTimeout(fn, ms, label) {
   let handle;
   const timeoutPromise = new Promise((_, reject) => {
-    handle = setTimeout(
-      () => reject(new Error(`${label} timed out after ${ms / 1000}s`)),
-      ms,
-    );
+    handle = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
   });
   try {
     const result = await Promise.race([fn(), timeoutPromise]);
@@ -105,12 +68,6 @@ async function withTimeout(fn, ms, label) {
   }
 }
 
-// ─── Agent runner ─────────────────────────────────────────────────
-
-/**
- * Run a single agent with timeout, error isolation, and timing.
- * Always returns a valid object : never throws.
- */
 async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const start = Date.now();
   emit(step, "running", `Running ${label}…`);
@@ -119,22 +76,15 @@ async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const duration = Date.now() - start;
 
   if (error) {
-    const reason = timedOut
-      ? `${label} timed out after ${timeout / 1000}s`
-      : error.message;
+    const reason = timedOut ? `${label} timed out after ${timeout / 1000}s` : error.message;
     emit(step, "error", `${label} failed : using fallback`, reason);
-    console.error(
-      `[sync:${step}:error] ${label}:`,
-      error.stack ?? error.message,
-    );
+    console.error(`[sync:${step}:error] ${label}:`, error.stack ?? error.message);
     return { ...fallback, _failed: true, _error: reason, _duration: duration };
   }
 
   emit(step, "done", `${label} complete`, `${(duration / 1000).toFixed(1)}s`);
   return { ...result, _duration: duration };
 }
-
-// ─── Pure helpers ─────────────────────────────────────────────────
 
 function parseOwnerRepo(project) {
   const provider = project.provider || "github";
@@ -156,21 +106,11 @@ function categoriseWebhookFiles(webhookFiles) {
   return { added, modified, removed };
 }
 
-/**
- * Filter changedFiles to only those listed in agentFileList.
- * Uses a pre-built Set for O(1) lookups.
- */
 function filterFilesForAgent(changedFiles, agentFileList, removedPathSet) {
   const pathSet = new Set(agentFileList.map((f) => f.path));
-  return changedFiles.filter(
-    (f) => pathSet.has(f.path) && !removedPathSet.has(f.path),
-  );
+  return changedFiles.filter((f) => pathSet.has(f.path) && !removedPathSet.has(f.path));
 }
 
-/**
- * Merge changed-file projectMap with stored projectMap.
- * Changed + removed paths are replaced; everything else is kept.
- */
 function mergeProjectMap(existingProjectMap, freshProjectMap, changedPathSet) {
   return [
     ...(existingProjectMap ?? []).filter((p) => !changedPathSet.has(p.path)),
@@ -196,20 +136,14 @@ function buildLayerMap(projectMap) {
 
 function hasValidStoredState(project) {
   return (
-    (project.agentOutputs?.projectMap?.length ?? 0) > 0 &&
-    (project.fileManifest?.length ?? 0) > 0
+    (project.agentOutputs?.projectMap?.length ?? 0) > 0 && (project.fileManifest?.length ?? 0) > 0
   );
 }
 
-/**
- * Check if a full run is required and return the reason if so.
- * Returns null if incremental sync can proceed.
- */
 function requiresFullRun(project, changedFileEntries, analysis, options) {
   if (options.forceFullRun) return "forceFullRun requested";
   if (!hasValidStoredState(project)) return "no stored baseline";
-  if (analysis.needsFullRun)
-    return analysis.fullRunReason ?? "manifest changed";
+  if (analysis.needsFullRun) return analysis.fullRunReason ?? "manifest changed";
   if (changedFileEntries.length > FULL_RUN_THRESHOLD)
     return `${changedFileEntries.length} files exceed threshold (${FULL_RUN_THRESHOLD})`;
   return null;
@@ -223,49 +157,26 @@ async function updateCommitSha(project, sha) {
   });
 }
 
-// ─── Security helpers ─────────────────────────────────────────────
-
 function recomputeSecurityScore(findings) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
   for (const f of findings ?? []) {
     counts[f.severity] = (counts[f.severity] ?? 0) + 1;
   }
-  const criticalDeduct =
-    Math.min(counts.CRITICAL, 3) * 25 + Math.max(0, counts.CRITICAL - 3) * 10;
-  const highDeduct =
-    Math.min(counts.HIGH, 5) * 15 + Math.max(0, counts.HIGH - 5) * 5;
-  const mediumDeduct =
-    Math.min(counts.MEDIUM, 8) * 7 + Math.max(0, counts.MEDIUM - 8) * 2;
+  const criticalDeduct = Math.min(counts.CRITICAL, 3) * 25 + Math.max(0, counts.CRITICAL - 3) * 10;
+  const highDeduct = Math.min(counts.HIGH, 5) * 15 + Math.max(0, counts.HIGH - 5) * 5;
+  const mediumDeduct = Math.min(counts.MEDIUM, 8) * 7 + Math.max(0, counts.MEDIUM - 8) * 2;
   const lowDeduct = counts.LOW * 2;
 
   const score = Math.max(
     0,
-    Math.min(
-      100,
-      100 - (criticalDeduct + highDeduct + mediumDeduct + lowDeduct),
-    ),
+    Math.min(100, 100 - (criticalDeduct + highDeduct + mediumDeduct + lowDeduct)),
   );
-  const grade =
-    score >= 90
-      ? "A"
-      : score >= 80
-        ? "B"
-        : score >= 65
-          ? "C"
-          : score >= 45
-            ? "D"
-            : "F";
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 45 ? "D" : "F";
 
   return { score, grade, counts };
 }
 
-function buildSecurityReport(
-  findings,
-  score,
-  grade,
-  counts,
-  categoryCounts = {},
-) {
+function buildSecurityReport(findings, score, grade, counts, categoryCounts = {}) {
   let md = `# Security Audit Report\n\n`;
   md += `## Summary\n\n| Metric | Value |\n|--------|-------|\n`;
   md += `| **Score** | ${score}/100 |\n| **Grade** | **${grade}** |\n`;
@@ -300,8 +211,7 @@ function buildSecurityReport(
       if (f.cwe) md += ` · **${f.cwe}**`;
       if (f.category) md += ` · ${f.category}`;
       md += "\n\n";
-      if (f.line)
-        md += `**Detected:**\n\`\`\`\n${f.line.replace(/`/g, "'")}\n\`\`\`\n\n`;
+      if (f.line) md += `**Detected:**\n\`\`\`\n${f.line.replace(/`/g, "'")}\n\`\`\`\n\n`;
       if (f.description) md += `**Description:** ${f.description}\n\n`;
       if (f.impact) md += `**Impact:** ${f.impact}\n\n`;
       md += `**Fix:** ${f.advice}\n\n---\n\n`;
@@ -335,8 +245,7 @@ function buildRemediationPlan(findings) {
 }
 
 function buildApiReference(endpoints) {
-  if (!endpoints?.length)
-    return "# API Reference\n\nNo API endpoints detected.\n";
+  if (!endpoints?.length) return "# API Reference\n\nNo API endpoints detected.\n";
 
   const authCount = endpoints.filter((e) => e.auth?.required || e.auth).length;
   const methodCount = endpoints.reduce((acc, e) => {
@@ -353,11 +262,7 @@ function buildApiReference(endpoints) {
 
   const grouped = {};
   for (const ep of endpoints) {
-    const tag =
-      ep.tags?.[0] ||
-      ep.path?.split("/")?.[2] ||
-      ep.path?.split("/")?.[1] ||
-      "root";
+    const tag = ep.tags?.[0] || ep.path?.split("/")?.[2] || ep.path?.split("/")?.[1] || "root";
     (grouped[tag] ??= []).push(ep);
   }
 
@@ -372,8 +277,7 @@ function buildApiReference(endpoints) {
       const authType = ep.auth?.type || (authRequired ? "required" : "none");
       const authRoles = ep.auth?.roles || [];
       md += `**Auth:** ${authRequired ? `✅ \`${authType}\`` : "❌ Public"}`;
-      if (authRoles.length)
-        md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
+      if (authRoles.length) md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
       md += "\n\n";
 
       if (ep.request?.params?.length) {
@@ -385,21 +289,17 @@ function buildApiReference(endpoints) {
         md += "\n";
       }
 
-      if (ep.request?.body_schema)
-        md += `**Body:** \`${ep.request.body_schema}\`\n\n`;
+      if (ep.request?.body_schema) md += `**Body:** \`${ep.request.body_schema}\`\n\n`;
 
       if (ep.response?.success) {
         md += `**Response \`${ep.response.success.status}\`:** ${ep.response.success.description || "Success"}`;
-        if (ep.response.success.schema)
-          md += ` · \`${ep.response.success.schema}\``;
+        if (ep.response.success.schema) md += ` · \`${ep.response.success.schema}\``;
         md += "\n\n";
       }
 
       if (ep.response?.errors?.length) {
         md += `**Errors:**\n\n| Status | Description |\n|--------|-------------|\n`;
-        ep.response.errors.forEach(
-          (e) => (md += `| \`${e.status}\` | ${e.description} |\n`),
-        );
+        ep.response.errors.forEach((e) => (md += `| \`${e.status}\` | ${e.description} |\n`));
         md += "\n";
       }
 
@@ -415,9 +315,7 @@ function buildSchemaDocs(models, relationships) {
 
   let md = "# Data Models\n\n";
   md += `> **${models.length} models** · **${relationships?.length ?? 0} relationships**\n\n`;
-  md +=
-    models.map((m) => `- [${m.name}](#${m.name.toLowerCase()})`).join("\n") +
-    "\n\n";
+  md += models.map((m) => `- [${m.name}](#${m.name.toLowerCase()})`).join("\n") + "\n\n";
 
   for (const m of models) {
     md += `## ${m.name}\n\n`;
@@ -445,9 +343,7 @@ function buildSchemaDocs(models, relationships) {
       md += "\n";
     }
 
-    const modelRels = (relationships ?? []).filter(
-      (r) => r.from === m.name || r.to === m.name,
-    );
+    const modelRels = (relationships ?? []).filter((r) => r.from === m.name || r.to === m.name);
     if (modelRels.length) {
       md += `### Relationships\n\n| Direction | Model | Type | Via |\n|-----------|-------|------|-----|\n`;
       modelRels.forEach((r) => {
@@ -464,8 +360,7 @@ function buildSchemaDocs(models, relationships) {
   if (relationships?.length) {
     md += `## Relationship Overview\n\n| From | Type | To | Via |\n|------|------|----|-----|\n`;
     relationships.forEach(
-      (r) =>
-        (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`),
+      (r) => (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`),
     );
   }
 
@@ -473,8 +368,7 @@ function buildSchemaDocs(models, relationships) {
 }
 
 function buildComponentIndex(components) {
-  if (!components?.length)
-    return "# Component Index\n\nNo components documented.\n";
+  if (!components?.length) return "# Component Index\n\nNo components documented.\n";
 
   const TYPE_ORDER = [
     "service",
@@ -511,8 +405,7 @@ function buildComponentIndex(components) {
       .sort((a, b) => a.name.localeCompare(b.name))
       .forEach((c) => {
         const dep = c.deprecated ? " ⚠️" : "";
-        const cplx =
-          { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || ":";
+        const cplx = { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || ":";
         const desc = c.description
           ? c.description.slice(0, 70) + (c.description.length > 70 ? "…" : "")
           : ":";
@@ -523,10 +416,6 @@ function buildComponentIndex(components) {
   return md;
 }
 
-/**
- * Determine which doc sections need regenerating based on which agents ran.
- * Returns { all, static, llm }.
- */
 function determineSectionsToRegenerate(agentsRun, analysis) {
   const sections = new Set(analysis.sectionsAffected ?? []);
 
@@ -553,10 +442,6 @@ function determineSectionsToRegenerate(agentsRun, analysis) {
   };
 }
 
-/**
- * Build the complete MongoDB $set payload from sync results.
- * Single source of truth : no fields can be silently dropped.
- */
 function buildMongoUpdate({
   newOutput,
   currentSha,
@@ -567,7 +452,6 @@ function buildMongoUpdate({
   totalDuration,
 }) {
   return {
-    // Documentation output
     "output.readme": newOutput.readme,
     "output.internalDocs": newOutput.internalDocs,
     "output.apiReference": newOutput.apiReference,
@@ -576,15 +460,15 @@ function buildMongoUpdate({
     "output.remediationReport": newOutput.remediationReport,
     "output.componentRef": newOutput.componentRef,
     "output.componentIndex": newOutput.componentIndex,
-    // Sync state
+
     lastDocumentedCommit: currentSha,
     fileManifest: newManifest,
     agentOutputs: mergedOutputs,
-    // Security aggregate
+
     security: securitySummary,
-    // Edited sections with stale flags
+
     editedSections: updatedEditedSections,
-    // Stats
+
     stats: {
       filesAnalysed: newManifest.length,
       endpoints: mergedOutputs.endpoints.length,
@@ -598,23 +482,10 @@ function buildMongoUpdate({
   };
 }
 
-// ─── Main Entry Point ─────────────────────────────────────────────
-
-/**
- * Run the incremental sync pipeline for a project.
- *
- * @param {Object}   project
- * @param {Function} onProgress            : SSE progress emitter
- * @param {Object}   options
- * @param {Array}    [options.webhookChangedFiles]
- * @param {boolean}  [options.forceFullRun]
- * @returns {Object} syncResult
- */
 export async function incrementalSync(project, onProgress, options = {}) {
   const syncStart = Date.now();
   const syncErrors = [];
 
-  // Structured emitter : always logs + fires SSE
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
     console.log(
@@ -631,10 +502,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
   try {
     emit("sync", "running", "Starting incremental sync…", `${owner}/${repo}`);
 
-    // ── PHASE 1 + 2 concurrent: resolve state & compute diff ──────
-    // Kick off meta + SHA fetch immediately; start diff computation
-    // as soon as we have the SHA. Both can overlap where possible.
-
     emit("sync:fetch", "running", "Resolving repo state and computing diff…");
     const fetchStart = Date.now();
 
@@ -649,12 +516,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       return { success: false, error: err.message, phase: "fetch" };
     }
 
-    // Nothing has changed since last sync
-    if (
-      currentSha &&
-      currentSha === project.lastDocumentedCommit &&
-      !options.forceFullRun
-    ) {
+    if (currentSha && currentSha === project.lastDocumentedCommit && !options.forceFullRun) {
       emit(
         "sync",
         "done",
@@ -669,8 +531,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── PHASE 2: Compute what changed ─────────────────────────────
-
     let added = [],
       modified = [],
       removed = [],
@@ -683,15 +543,10 @@ export async function incrementalSync(project, onProgress, options = {}) {
         "running",
         `Using ${options.webhookChangedFiles.length} files from webhook`,
       );
-      ({ added, modified, removed } = categoriseWebhookFiles(
-        options.webhookChangedFiles,
-      ));
+      ({ added, modified, removed } = categoriseWebhookFiles(options.webhookChangedFiles));
       changedFileEntries = [...added, ...modified, ...removed];
-      // Fetch tree in background : needed for manifest update in Phase 8
-      // We don't await here; it runs concurrently with the agent phase
-      currentTree = await ra
-        .getFileTreeWithSha(meta.defaultBranch, accessToken)
-        .catch(() => []);
+
+      currentTree = await ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => []);
     } else {
       try {
         const diffResult = await ra.computeFileDiff(
@@ -712,14 +567,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
           "Diff computation failed : falling back to full run",
           err.message,
         );
-        return fullSyncFallback(
-          project,
-          owner,
-          repo,
-          meta,
-          currentSha,
-          onProgress,
-        );
+        return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
       }
     }
 
@@ -730,7 +578,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${changedFileEntries.length} total · ${((Date.now() - fetchStart) / 1000).toFixed(1)}s`,
     );
 
-    // No eligible files changed (SHA moved but only ignored files)
     if (changedFileEntries.length === 0) {
       await updateCommitSha(project, currentSha);
       emit(
@@ -747,27 +594,13 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── Routing analysis (memoised : computed once, used everywhere) ──
     const analysis = analyseChanges(changedFileEntries, project.fileManifest);
-    const agentsNeeded = analysis.agentsNeeded; // Set<string>
+    const agentsNeeded = analysis.agentsNeeded;
 
-    // Check if a full run is required
-    const fullRunReason = requiresFullRun(
-      project,
-      changedFileEntries,
-      analysis,
-      options,
-    );
+    const fullRunReason = requiresFullRun(project, changedFileEntries, analysis, options);
     if (fullRunReason) {
       emit("sync:diff", "running", `Full re-run: ${fullRunReason}`);
-      return fullSyncFallback(
-        project,
-        owner,
-        repo,
-        meta,
-        currentSha,
-        onProgress,
-      );
+      return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
     }
 
     emit(
@@ -776,10 +609,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `Agents needed: ${[...agentsNeeded].join(", ") || "none"}`,
       `${changedFileEntries.filter((f) => f.status !== "removed").length} files to re-analyse`,
     );
-
-    // ── PHASE 3: Determine files to fetch then fetch them ─────────
-    // Compute required paths from routing analysis BEFORE fetching
-    // so we only download exactly what each agent needs.
 
     const removedPathSet = new Set(removed.map((r) => r.path));
 
@@ -793,11 +622,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ]),
     ].filter((p) => !removedPathSet.has(p));
 
-    emit(
-      "sync:fetch",
-      "running",
-      `Fetching ${changedPathsToFetch.length} changed files…`,
-    );
+    emit("sync:fetch", "running", `Fetching ${changedPathsToFetch.length} changed files…`);
 
     const { result: fetchResult, error: fetchErr } = await withTimeout(
       () =>
@@ -812,189 +637,148 @@ export async function incrementalSync(project, onProgress, options = {}) {
 
     if (fetchErr) {
       syncErrors.push({ phase: "fetch_files", error: fetchErr.message });
-      emit(
-        "sync:fetch",
-        "error",
-        "File fetch failed : falling back to full run",
-        fetchErr.message,
-      );
-      return fullSyncFallback(
-        project,
-        owner,
-        repo,
-        meta,
-        currentSha,
-        onProgress,
-      );
+      emit("sync:fetch", "error", "File fetch failed : falling back to full run", fetchErr.message);
+      return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
     }
 
     const changedFiles = fetchResult ?? [];
     emit("sync:fetch", "done", `${changedFiles.length} files downloaded`);
 
-    // ── PHASE 4: Parallel Agent Execution ─────────────────────────
-    // Pre-compute shared values once : used by all agents
     const existingProjectMap = project.agentOutputs?.projectMap ?? [];
     const changedPathSet = new Set(changedPathsToFetch);
 
-    // Merge project map once : shared as read-only reference by all agent closures
-    // (agents that re-scan will override their portion via mergeProjectMap in Phase 5)
-    const baselineProjectMap = mergeProjectMap(
-      existingProjectMap,
-      [],
-      changedPathSet,
-    );
+    const baselineProjectMap = mergeProjectMap(existingProjectMap, [], changedPathSet);
 
-    emit(
-      "sync:agents",
-      "running",
-      `Running ${agentsNeeded.size} agent(s) in parallel…`,
-    );
+    emit("sync:agents", "running", `Running ${agentsNeeded.size} agent(s) in parallel…`);
     const agentsStart = Date.now();
 
-    // Kick off tree fetch concurrently with agent execution (webhook path only)
-    // so its latency is hidden behind the agent run time
     const treePromise =
       currentTree.length === 0
         ? ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => [])
         : Promise.resolve(currentTree);
 
-    const [
-      scanResult,
-      apiResult,
-      schemaResult,
-      componentResult,
-      securityResult,
-    ] = await Promise.all([
-      // ── Agent 1: Repo Scanner ──────────────────────────────────
-      agentsNeeded.has("repoScanner") && changedFiles.length > 0
-        ? runAgent({
-            label: "Repo Scanner",
-            step: "sync:scan",
-            timeout: TIMEOUTS.scan,
-            fallback: { projectMap: [] },
-            emit,
-            fn: () =>
-              repoScannerAgent({
-                files: changedFiles,
-                meta,
-                emit: (msg, d) => emit("sync:scan", "running", msg, d),
-              }),
-          })
-        : Promise.resolve({ projectMap: [], _skipped: true }),
+    const [scanResult, apiResult, schemaResult, componentResult, securityResult] =
+      await Promise.all([
+        agentsNeeded.has("repoScanner") && changedFiles.length > 0
+          ? runAgent({
+              label: "Repo Scanner",
+              step: "sync:scan",
+              timeout: TIMEOUTS.scan,
+              fallback: { projectMap: [] },
+              emit,
+              fn: () =>
+                repoScannerAgent({
+                  files: changedFiles,
+                  meta,
+                  emit: (msg, d) => emit("sync:scan", "running", msg, d),
+                }),
+            })
+          : Promise.resolve({ projectMap: [], _skipped: true }),
 
-      // ── Agent 2: API Extractor ─────────────────────────────────
-      agentsNeeded.has("apiExtractor")
-        ? runAgent({
-            label: "API Extractor",
-            step: "sync:api",
-            timeout: TIMEOUTS.api,
-            fallback: { endpoints: [], summary: {} },
-            emit,
-            fn: () => {
-              const routeFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.apiExtractor,
-                removedPathSet,
-              );
-              if (!routeFiles.length)
-                return Promise.resolve({ endpoints: [], _skipped: true });
-              return apiExtractorAgent({
-                files: routeFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:api", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({ endpoints: [], _skipped: true }),
-
-      // ── Agent 3: Schema Analyser ───────────────────────────────
-      agentsNeeded.has("schemaAnalyser")
-        ? runAgent({
-            label: "Schema Analyser",
-            step: "sync:schema",
-            timeout: TIMEOUTS.schema,
-            fallback: { models: [], relationships: undefined },
-            emit,
-            fn: () => {
-              const schemaFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.schemaAnalyser,
-                removedPathSet,
-              );
-              if (!schemaFiles.length)
-                return Promise.resolve({
-                  models: [],
-                  relationships: undefined,
+        agentsNeeded.has("apiExtractor")
+          ? runAgent({
+              label: "API Extractor",
+              step: "sync:api",
+              timeout: TIMEOUTS.api,
+              fallback: { endpoints: [], summary: {} },
+              emit,
+              fn: () => {
+                const routeFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.apiExtractor,
+                  removedPathSet,
+                );
+                if (!routeFiles.length) return Promise.resolve({ endpoints: [], _skipped: true });
+                return apiExtractorAgent({
+                  files: routeFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:api", "running", msg, d),
                 });
-              return schemaAnalyserAgent({
-                files: schemaFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:schema", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({
-            models: [],
-            relationships: undefined,
-            _skipped: true,
-          }),
+              },
+            })
+          : Promise.resolve({ endpoints: [], _skipped: true }),
 
-      // ── Agent 4: Component Mapper ──────────────────────────────
-      agentsNeeded.has("componentMapper")
-        ? runAgent({
-            label: "Component Mapper",
-            step: "sync:components",
-            timeout: TIMEOUTS.components,
-            fallback: { components: [], summary: {} },
-            emit,
-            fn: () => {
-              const serviceFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.componentMapper,
-                removedPathSet,
-              );
-              if (!serviceFiles.length)
-                return Promise.resolve({ components: [] });
-              return componentMapperAgent({
-                files: serviceFiles,
-                projectMap: baselineProjectMap,
-                structure: buildStructure(baselineProjectMap),
-                emit: (msg, d) => emit("sync:components", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({ components: [], _skipped: true }),
+        agentsNeeded.has("schemaAnalyser")
+          ? runAgent({
+              label: "Schema Analyser",
+              step: "sync:schema",
+              timeout: TIMEOUTS.schema,
+              fallback: { models: [], relationships: undefined },
+              emit,
+              fn: () => {
+                const schemaFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.schemaAnalyser,
+                  removedPathSet,
+                );
+                if (!schemaFiles.length)
+                  return Promise.resolve({
+                    models: [],
+                    relationships: undefined,
+                  });
+                return schemaAnalyserAgent({
+                  files: schemaFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:schema", "running", msg, d),
+                });
+              },
+            })
+          : Promise.resolve({
+              models: [],
+              relationships: undefined,
+              _skipped: true,
+            }),
 
-      // ── Agent 6: Security Auditor ──────────────────────────────
-      // Receives full baselineProjectMap so it can use has_auth flags
-      // for LLM file prioritisation
-      agentsNeeded.has("securityAuditor") && changedFiles.length > 0
-        ? runAgent({
-            label: "Security Auditor",
-            step: "sync:security",
-            timeout: TIMEOUTS.security,
-            fallback: {
-              findings: [],
-              score: null,
-              grade: null,
-              counts: null,
-              categoryCounts: {},
-              remediationMarkdown: "",
-            },
-            emit,
-            fn: () =>
-              securityAuditorAgent({
-                files: changedFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:security", "running", msg, d),
-              }),
-          })
-        : Promise.resolve({ findings: [], _skipped: true }),
-    ]);
+        agentsNeeded.has("componentMapper")
+          ? runAgent({
+              label: "Component Mapper",
+              step: "sync:components",
+              timeout: TIMEOUTS.components,
+              fallback: { components: [], summary: {} },
+              emit,
+              fn: () => {
+                const serviceFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.componentMapper,
+                  removedPathSet,
+                );
+                if (!serviceFiles.length) return Promise.resolve({ components: [] });
+                return componentMapperAgent({
+                  files: serviceFiles,
+                  projectMap: baselineProjectMap,
+                  structure: buildStructure(baselineProjectMap),
+                  emit: (msg, d) => emit("sync:components", "running", msg, d),
+                });
+              },
+            })
+          : Promise.resolve({ components: [], _skipped: true }),
+
+        agentsNeeded.has("securityAuditor") && changedFiles.length > 0
+          ? runAgent({
+              label: "Security Auditor",
+              step: "sync:security",
+              timeout: TIMEOUTS.security,
+              fallback: {
+                findings: [],
+                score: null,
+                grade: null,
+                counts: null,
+                categoryCounts: {},
+                remediationMarkdown: "",
+              },
+              emit,
+              fn: () =>
+                securityAuditorAgent({
+                  files: changedFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:security", "running", msg, d),
+                }),
+            })
+          : Promise.resolve({ findings: [], _skipped: true }),
+      ]);
 
     const agentsDuration = Date.now() - agentsStart;
 
-    // Collect agent errors
     for (const [agent, r] of [
       ["scan", scanResult],
       ["api", apiResult],
@@ -1012,8 +796,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${(agentsDuration / 1000).toFixed(1)}s · ${syncErrors.length ? `⚠ ${syncErrors.length} error(s)` : "✅ clean"}`,
     );
 
-    // ── PHASE 5: Merge outputs ─────────────────────────────────────
-    // Build final merged projectMap (fresh scan results replace changed paths)
     const mergedProjectMap = mergeProjectMap(
       existingProjectMap,
       scanResult.projectMap ?? [],
@@ -1025,7 +807,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       {
         endpoints: apiResult.endpoints ?? [],
         models: schemaResult.models ?? [],
-        relationships: schemaResult.relationships, // undefined = not re-run → keep stored
+        relationships: schemaResult.relationships,
         components: componentResult.components ?? [],
         findings: securityResult.findings ?? [],
         projectMap: scanResult.projectMap ?? [],
@@ -1034,12 +816,9 @@ export async function incrementalSync(project, onProgress, options = {}) {
       [...removedPathSet],
     );
 
-    // ── PHASE 6: Recompute security from full merged findings ──────
     let securitySummary;
     if (agentsNeeded.has("securityAuditor")) {
-      const { score, grade, counts } = recomputeSecurityScore(
-        mergedOutputs.findings,
-      );
+      const { score, grade, counts } = recomputeSecurityScore(mergedOutputs.findings);
       const categoryCounts = securityResult.categoryCounts ?? {};
       securitySummary = {
         score,
@@ -1058,7 +837,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
         remediationMarkdown: buildRemediationPlan(mergedOutputs.findings),
       };
     } else {
-      // Security didn't run : carry forward stored values
       securitySummary = project.security ?? {
         score: 100,
         grade: "A",
@@ -1067,12 +845,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── PHASE 7: Regenerate doc sections ──────────────────────────
-    emit(
-      "sync:docs",
-      "running",
-      "Regenerating affected documentation sections…",
-    );
+    emit("sync:docs", "running", "Regenerating affected documentation sections…");
     const docsStart = Date.now();
     const sectionsInfo = determineSectionsToRegenerate(agentsNeeded, analysis);
 
@@ -1084,21 +857,15 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ...(project.output?.toObject?.() ?? { ...project.output }),
     };
 
-    // Build shared context for doc writer : computed once
     const docContext = {
       meta,
       techStack: project.techStack ?? [],
       structure: buildStructure(mergedProjectMap),
       endpoints: mergedOutputs.endpoints,
       models: mergedOutputs.models,
-      relationships:
-        mergedOutputs.relationships ??
-        project.agentOutputs?.relationships ??
-        [],
+      relationships: mergedOutputs.relationships ?? project.agentOutputs?.relationships ?? [],
       components: mergedOutputs.components,
-      entryPoints: mergedProjectMap
-        .filter((f) => f.role === "entry")
-        .map((f) => f.path),
+      entryPoints: mergedProjectMap.filter((f) => f.role === "entry").map((f) => f.path),
       owner,
       repo,
       layerMap: buildLayerMap(mergedProjectMap),
@@ -1113,12 +880,8 @@ export async function incrementalSync(project, onProgress, options = {}) {
       },
     };
 
-    // Build a Set of user-edited section names for O(1) lookup
-    const editedSectionNames = new Set(
-      (project.editedSections ?? []).map((s) => s.section),
-    );
+    const editedSectionNames = new Set((project.editedSections ?? []).map((s) => s.section));
 
-    // ── Static sections : parallel rebuild (no LLM cost) ──────────
     const staticResults = await Promise.allSettled(
       sectionsInfo.static.map(async (section) => {
         switch (section) {
@@ -1129,9 +892,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
               section,
               buildSchemaDocs(
                 mergedOutputs.models,
-                mergedOutputs.relationships ??
-                  project.agentOutputs?.relationships ??
-                  [],
+                mergedOutputs.relationships ?? project.agentOutputs?.relationships ?? [],
               ),
             ];
           case "securityReport":
@@ -1161,7 +922,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       }
     }
 
-    // ── LLM sections : single batched doc writer call ──────────────
     const llmSectionsNeeded = sectionsInfo.llm;
     if (llmSectionsNeeded.length > 0) {
       emit(
@@ -1218,16 +978,9 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${(docsDuration / 1000).toFixed(1)}s`,
     );
 
-    // ── PHASE 8: Update file manifest ─────────────────────────────
-    // Await the background tree fetch (started during agent execution)
     const resolvedTree = await treePromise;
-    const newManifest = updateFileManifest(
-      project.fileManifest,
-      resolvedTree,
-      mergedProjectMap,
-    );
+    const newManifest = updateFileManifest(project.fileManifest, resolvedTree, mergedProjectMap);
 
-    // ── PHASE 9: Version history (parallel writes) ─────────────────
     await Promise.all(
       regenerated.map((section) =>
         DocumentVersion.createVersion({
@@ -1252,8 +1005,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ),
     );
 
-    // ── PHASE 10: Build MongoDB update payload ─────────────────────
-    // Mark user-edited sections as stale if their content was regenerated
     const regeneratedSet = new Set(regenerated);
     const updatedEditedSections = (project.editedSections ?? []).map((es) => ({
       ...(es.toObject?.() ?? es),
@@ -1278,9 +1029,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       [
         `${project.lastDocumentedCommit?.slice(0, 8) ?? "initial"} → ${currentSha.slice(0, 8)}`,
         `${changedPathsToFetch.length} files · ${(totalDuration / 1000).toFixed(1)}s`,
-        syncErrors.length
-          ? `⚠ ${syncErrors.length} non-fatal error(s)`
-          : "✅ clean",
+        syncErrors.length ? `⚠ ${syncErrors.length} non-fatal error(s)` : "✅ clean",
       ].join(" · "),
       totalDuration,
     );
@@ -1298,7 +1047,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       removedFileCount: removedPathSet.size,
       totalDuration,
       errors: syncErrors.length > 0 ? syncErrors : undefined,
-      // Diagnostics : per-agent timings for monitoring
+
       _diagnostics: {
         scan: scanResult._duration,
         api: apiResult._duration,
@@ -1308,7 +1057,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         docs: docsDuration,
         total: totalDuration,
       },
-      // Caller (project.service.js) persists this via $set
+
       _update: mongoUpdate,
     };
   } catch (err) {
@@ -1318,20 +1067,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
   }
 }
 
-// ─── Full Sync Fallback ───────────────────────────────────────────
-
-/**
- * Called when incremental sync cannot proceed.
- * Runs the full orchestrator pipeline and maps to incremental return format.
- */
-async function fullSyncFallback(
-  project,
-  owner,
-  repo,
-  meta,
-  currentSha,
-  onProgress,
-) {
+async function fullSyncFallback(project, owner, repo, meta, currentSha, onProgress) {
   const emit = (step, status, msg, detail = null) =>
     onProgress?.({ step, status, msg, detail, ts: Date.now() });
 
@@ -1340,7 +1076,6 @@ async function fullSyncFallback(
   const { orchestrate } = await import("./orchestrator.service.js");
   const { accessToken: fallbackToken, ra: raFallback } = resolveGit(project);
 
-  // Pass the provider token so private repos on GitLab/Bitbucket/Azure succeed.
   const result = await orchestrate(project.repoUrl, onProgress, {
     provider: project.provider || "github",
     token: fallbackToken,

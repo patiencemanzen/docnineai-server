@@ -1,20 +1,3 @@
-// ===================================================================
-// Billing service : core subscription lifecycle logic.
-//
-// All money amounts are in USD cents internally. Divide by 100 for display.
-//
-// Responsibilities:
-//   • Ensure every user has a Subscription document (getOrCreate)
-//   • Checkout initiation (returns FW payment link)
-//   • Activate subscription after successful payment
-//   • Proration calculation for mid-cycle upgrades
-//   • Plan changes (upgrade / downgrade / cycle switch)
-//   • Cancellation & pause
-//   • Seat management (Pro extra seats, Team)
-//   • Renewal (called by cron)
-//   • Invoice generation + PDF export
-// ===================================================================
-
 import crypto from "crypto";
 import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
@@ -49,14 +32,6 @@ import {
 } from "../config/email.js";
 import { NotificationService } from "./notification.service.js";
 
-// ── Ensure subscription exists ────────────────────────────────────
-
-/**
- * Fetch or create a Subscription for a user.
- * New users start on free plan.
- * @param {string} userId
- * @returns {Promise<import('../models/Subscription.js').Subscription>}
- */
 export async function getOrCreateSubscription(userId) {
   let sub = await Subscription.findOne({ userId });
   if (!sub) {
@@ -65,21 +40,6 @@ export async function getOrCreateSubscription(userId) {
   return sub;
 }
 
-// ── Checkout ──────────────────────────────────────────────────────
-
-/**
- * Begin checkout for a new subscription.
- * If the user is starting a trial → activate trial immediately (no payment).
- * Otherwise → return a Flutterwave payment link.
- *
- * @param {Object} opts
- * @param {string}  opts.userId
- * @param {string}  opts.planId        - 'starter' | 'pro' | 'team'
- * @param {'monthly'|'annual'} opts.cycle
- * @param {number}  opts.seats         - for team plan
- * @param {boolean} opts.preferTrial   - hint only; server decides eligibility
- * @returns {Promise<{type: 'trial'|'payment', trial: boolean, paymentLink?: string, subscription?: Object}>}
- */
 export function isTrialEligible(sub) {
   if (!sub) return true;
   if (sub.trialUsedAt) return false;
@@ -89,20 +49,13 @@ export function isTrialEligible(sub) {
   return true;
 }
 
-export async function initiateCheckout({
-  userId,
-  planId,
-  cycle,
-  seats = 1,
-  preferTrial = true,
-}) {
+export async function initiateCheckout({ userId, planId, cycle, seats = 1, preferTrial = true }) {
   const plan = getPlan(planId);
   const user = await User.findById(userId).select("name email");
   if (!user) throw new Error("User not found");
 
   const sub = await getOrCreateSubscription(userId);
 
-  // ── Start free trial (once per user, never client-forced) ──
   if (preferTrial && isTrialEligible(sub)) {
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     sub.plan = planId;
@@ -117,11 +70,7 @@ export async function initiateCheckout({
     sub.pendingPlan = null;
     await sub.save();
 
-    // Set up AI usage reset if needed
-    if (
-      plan.limits.aiChatsPerMonth > 0 ||
-      plan.limits.aiChatsPerMonth === null
-    ) {
+    if (plan.limits.aiChatsPerMonth > 0 || plan.limits.aiChatsPerMonth === null) {
       await PlanUsage.findOneAndUpdate(
         { userId },
         {
@@ -142,11 +91,9 @@ export async function initiateCheckout({
     return { type: "trial", trial: true, subscription: sub };
   }
 
-  // ── Paid checkout ──────────────────────────────────────────
   const amountCents = computeCheckoutAmount({ planId, cycle, seats });
   const txRef = buildTxRef("checkout");
 
-  // Create a pending invoice so we can verify the payment later
   const invoice = await Invoice.create({
     userId,
     subscriptionId: sub._id,
@@ -178,15 +125,6 @@ export async function initiateCheckout({
   return { type: "payment", trial: false, paymentLink, invoiceId: invoice._id, txRef };
 }
 
-// ── Activate after successful payment ────────────────────────────
-
-/**
- * Activate or renew a subscription after a verified FW payment.
- * Called from the webhook handler and the verify-payment endpoint.
- *
- * @param {Object} fwTx   - Verified Flutterwave transaction object
- * @returns {Promise<void>}
- */
 export async function activateFromPayment(fwTx) {
   const txRef = fwTx.tx_ref;
   const invoice = await Invoice.findOne({ flutterwaveRef: txRef });
@@ -194,18 +132,16 @@ export async function activateFromPayment(fwTx) {
     console.error(`[billing] No invoice found for tx_ref: ${txRef}`);
     return;
   }
-  if (invoice.status === "paid") return; // idempotent
+  if (invoice.status === "paid") return;
 
   const sub = await Subscription.findById(invoice.subscriptionId);
   const user = await User.findById(invoice.userId).select("name email");
 
-  // ── Extract and save payment method ─────────────────────────
   const token = extractChargeToken(fwTx);
   if (token) {
     await upsertPaymentMethod({ userId: invoice.userId, fwTx, token });
   }
 
-  // ── Update invoice ───────────────────────────────────────────
   const snapshot = buildPaymentMethodSnapshot(fwTx);
   invoice.status = "paid";
   invoice.paidAt = new Date();
@@ -213,25 +149,15 @@ export async function activateFromPayment(fwTx) {
   invoice.paymentMethodSnapshot = snapshot;
   await invoice.save();
 
-  // ── Activate subscription ────────────────────────────────────
   if (sub) {
     if (invoice.seatDelta > 0 && !invoice.planId) {
-      // ── Seat-only addition (paid via payment link after redirect) ──
       sub.extraSeats = (sub.extraSeats || 0) + invoice.seatDelta;
       sub.seats = (sub.seats || 1) + invoice.seatDelta;
       await sub.save();
     } else {
-      // ── Plan activation (checkout / upgrade / renewal) ─────────
-      // Determine the plan to activate:
-      // 1. Invoice stores planId (new checkout & upgrade via payment link)
-      // 2. Fall back to sub.pendingPlan (upgrade set before redirect)
-      // 3. Fall back to current plan (renewal)
       const activatedPlan = invoice.planId || sub.pendingPlan || sub.plan;
       const activatedCycle =
-        invoice.billingCycle ||
-        sub.pendingBillingCycle ||
-        sub.billingCycle ||
-        "monthly";
+        invoice.billingCycle || sub.pendingBillingCycle || sub.billingCycle || "monthly";
       const activatedSeats = invoice.seats || sub.seats || 1;
 
       const periodStart = new Date();
@@ -253,7 +179,6 @@ export async function activateFromPayment(fwTx) {
     }
   }
 
-  // ── Reset AI usage ───────────────────────────────────────────
   await PlanUsage.findOneAndUpdate(
     { userId: invoice.userId },
     { aiChatsUsed: 0, aiChatsResetAt: endOfMonth() },
@@ -280,20 +205,6 @@ export async function activateFromPayment(fwTx) {
   });
 }
 
-// ── Plan change (upgrade / downgrade) ─────────────────────────────
-
-/**
- * Upgrade: immediate effect, charge proration now.
- * Downgrade: schedule for period end.
- * Zero-cost upgrade: apply immediately (no payment).
- *
- * @param {Object} opts
- * @param {string}  opts.userId
- * @param {string}  opts.newPlanId
- * @param {'monthly'|'annual'} opts.newCycle
- * @param {number}  opts.seats
- * @returns {Promise<{type:'upgrade'|'downgrade'|'immediate_no_charge', paymentLink?: string, effectiveAt?: Date}>}
- */
 export async function changePlan({ userId, newPlanId, newCycle, seats }) {
   const sub = await getOrCreateSubscription(userId);
   const user = await User.findById(userId).select("name email");
@@ -305,12 +216,9 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
   const downgrading = isDowngrade(currentPlan, newPlanId);
   const cycleChange = !upgrading && !downgrading && currentCycle !== newCycle;
 
-  // ── Upgrade ─────────────────────────────────────────────────
   if (upgrading || (cycleChange && newCycle === "annual")) {
     const proratedCents = calculateProration(sub, newPlanId, newCycle, seats);
 
-    // ── Zero or negative proration: apply immediately ──────────
-    // This happens when upgrading to a cheaper plan or at period end
     if (proratedCents <= 0) {
       const periodEnd = addPeriod(new Date(), newCycle);
       sub.plan = newPlanId;
@@ -323,7 +231,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       sub.pendingBillingCycle = null;
       await sub.save();
 
-      // Void the pending invoice if it exists
       await Invoice.updateMany(
         {
           userId,
@@ -334,7 +241,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
         { status: "void" },
       );
 
-      // Zero-cost / immediate upgrade
       await sendPlanUpgradedEmail({
         to: user.email,
         name: user.name,
@@ -352,7 +258,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       return { type: "immediate_no_charge" };
     }
 
-    // ── Charge required: create invoice and attempt immediate charge ──
     const txRef = buildTxRef("upgrade");
 
     const invoice = await Invoice.create({
@@ -376,7 +281,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       ],
     });
 
-    // If user has a saved default payment method, charge immediately
     const savedMethod = await PaymentMethod.findOne({
       userId,
       isDefault: true,
@@ -400,7 +304,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
         invoice.paymentMethodSnapshot = buildPaymentMethodSnapshot(fwTx);
         await invoice.save();
 
-        // Apply upgrade immediately
         const periodEnd = addPeriod(new Date(), newCycle);
         sub.plan = newPlanId;
         sub.billingCycle = newCycle;
@@ -427,14 +330,13 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
 
         return { type: "upgrade", immediate: true };
       } catch (tokenErr) {
-        // Token charge failed (e.g. currency mismatch) : fall back to payment link
         console.warn(
           "[changePlan] Token charge failed, falling back to payment link:",
           tokenErr.message,
         );
         invoice.status = "void";
         await invoice.save();
-        // re-create a fresh invoice for the redirect path below
+
         const newTxRef = buildTxRef("upgrade");
         await Invoice.create({
           userId,
@@ -472,7 +374,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       }
     }
 
-    // No saved card → return payment link
     const { paymentLink } = await initializePayment({
       txRef,
       amount: centsToUsd(proratedCents),
@@ -483,7 +384,6 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
       redirectUrl: `${process.env.FRONTEND_URL}/billing?status=upgraded&ref=${txRef}`,
     });
 
-    // Store pending plan so the webhook can apply it
     sub.pendingPlan = newPlanId;
     sub.pendingBillingCycle = newCycle;
     await sub.save();
@@ -491,11 +391,10 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
     return { type: "upgrade", immediate: false, paymentLink };
   }
 
-  // ── Downgrade ────────────────────────────────────────────────
   if (downgrading || (cycleChange && newCycle === "monthly")) {
     sub.pendingPlan = newPlanId;
     sub.pendingBillingCycle = newCycle;
-    sub.cancelAtPeriodEnd = false; // downgrade, not cancel
+    sub.cancelAtPeriodEnd = false;
     await sub.save();
 
     await sendPlanDowngradeScheduledEmail({
@@ -516,17 +415,9 @@ export async function changePlan({ userId, newPlanId, newCycle, seats }) {
     return { type: "downgrade", effectiveAt: sub.currentPeriodEnd };
   }
 
-  // Same plan, same cycle : no-op
   return { type: "none" };
 }
 
-// ── Seat management ───────────────────────────────────────────────
-
-/**
- * Add extra seats to a Pro subscription. Charges immediately for remainder.
- * @param {string} userId
- * @param {number} additionalSeats
- */
 export async function addSeats(userId, additionalSeats) {
   const sub = await getOrCreateSubscription(userId);
   const user = await User.findById(userId).select("name email");
@@ -537,15 +428,10 @@ export async function addSeats(userId, additionalSeats) {
   }
 
   const extraSeatPrice = plan.limits.extraSeatPriceMonthly;
-  if (!extraSeatPrice)
-    throw new Error("This plan does not support extra seats");
+  if (!extraSeatPrice) throw new Error("This plan does not support extra seats");
 
-  // Prorate: charge for remaining days in the current billing period
   const daysRemaining = daysUntil(sub.currentPeriodEnd);
-  const totalDaysInPeriod = daysBetween(
-    sub.currentPeriodStart,
-    sub.currentPeriodEnd,
-  );
+  const totalDaysInPeriod = daysBetween(sub.currentPeriodStart, sub.currentPeriodEnd);
   const proratedCents = Math.round(
     (daysRemaining / totalDaysInPeriod) * extraSeatPrice * additionalSeats,
   );
@@ -561,7 +447,7 @@ export async function addSeats(userId, additionalSeats) {
     flutterwaveRef: txRef,
     customerName: user.name,
     customerEmail: user.email,
-    seatDelta: additionalSeats, // applied in activateFromPayment
+    seatDelta: additionalSeats,
     lineItems: [
       {
         description: `${additionalSeats} extra seat(s) prorated for ${daysRemaining} days`,
@@ -576,7 +462,6 @@ export async function addSeats(userId, additionalSeats) {
     deletedAt: null,
   }).select("+flutterwaveToken");
 
-  // ── Try charging saved card immediately ──────────────────────
   if (savedMethod?.flutterwaveToken && proratedCents > 0) {
     try {
       const fwTx = await chargeToken({
@@ -588,7 +473,6 @@ export async function addSeats(userId, additionalSeats) {
         narration: `Docnine ${additionalSeats} extra seat(s)`,
       });
 
-      // Payment succeeded : mark invoice paid and grant seats now
       invoice.status = "paid";
       invoice.paidAt = new Date();
       invoice.flutterwaveTxId = fwTx.id;
@@ -605,7 +489,6 @@ export async function addSeats(userId, additionalSeats) {
         totalSeats: sub.seats,
       };
     } catch (tokenErr) {
-      // Token charge failed (e.g. currency mismatch) : fall back to payment link
       console.warn(
         "[addSeats] Token charge failed, falling back to payment link:",
         tokenErr.message,
@@ -615,8 +498,6 @@ export async function addSeats(userId, additionalSeats) {
     }
   }
 
-  // ── No saved card or token failed : return a payment link ───
-  // Create a fresh invoice for the redirect flow
   const redirectTxRef = buildTxRef("seat");
   await Invoice.create({
     userId,
@@ -643,20 +524,13 @@ export async function addSeats(userId, additionalSeats) {
     currency: "USD",
     email: user.email,
     name: user.name,
-    // Use `intent` not `status` so it doesn't clash with Flutterwave's own `status` param
+
     redirectUrl: `${process.env.FRONTEND_URL}/billing?intent=seats&ref=${redirectTxRef}`,
   });
 
   return { type: "payment_required", paymentLink };
 }
 
-// ── Cancellation ──────────────────────────────────────────────────
-
-/**
- * Schedule cancellation at end of current billing period.
- * @param {string} userId
- * @param {string} reason - why they're cancelling
- */
 export async function cancelSubscription(userId, reason) {
   const sub = await getOrCreateSubscription(userId);
   const user = await User.findById(userId).select("name email");
@@ -680,11 +554,6 @@ export async function cancelSubscription(userId, reason) {
   return { cancelledAt: sub.cancelledAt, accessUntil: sub.currentPeriodEnd };
 }
 
-/**
- * Pause subscription for up to 2 months.
- * @param {string} userId
- * @param {number} months - 1 or 2
- */
 export async function pauseSubscription(userId, months = 1) {
   const sub = await getOrCreateSubscription(userId);
   if (sub.status !== "active") {
@@ -698,13 +567,6 @@ export async function pauseSubscription(userId, months = 1) {
   return { pauseEndsAt };
 }
 
-// ── Renewal ───────────────────────────────────────────────────────
-
-/**
- * Trigger a subscription renewal charge. Called by the renewal cron.
- * @param {string} subscriptionId
- * @returns {Promise<{success: boolean}>}
- */
 export async function renewSubscription(subscriptionId) {
   const sub = await Subscription.findById(subscriptionId);
   if (!sub) throw new Error("Subscription not found");
@@ -725,7 +587,6 @@ export async function renewSubscription(subscriptionId) {
   }).select("+flutterwaveToken");
 
   if (!savedMethod?.flutterwaveToken) {
-    // No payment method : start dunning
     await startDunning(sub);
     return { success: false, reason: "no_payment_method" };
   }
@@ -788,19 +649,11 @@ export async function renewSubscription(subscriptionId) {
   }
 }
 
-// ── Downgrade execution ───────────────────────────────────────────
-
-/**
- * Apply a scheduled downgrade or cancellation at period end.
- * Called by the scheduled-downgrades cron.
- * @param {string} subscriptionId
- */
 export async function applyScheduledDowngrade(subscriptionId) {
   const sub = await Subscription.findById(subscriptionId);
   if (!sub) return;
 
   if (sub.cancelAtPeriodEnd) {
-    // Full cancellation → revert to free
     sub.plan = "free";
     sub.billingCycle = null;
     sub.status = "free";
@@ -808,67 +661,34 @@ export async function applyScheduledDowngrade(subscriptionId) {
     sub.cancelAtPeriodEnd = false;
     sub.cancelledAt = null;
   } else if (sub.pendingPlan) {
-    // Plan downgrade
     sub.plan = sub.pendingPlan;
     sub.billingCycle = sub.pendingBillingCycle || sub.billingCycle;
     sub.pendingPlan = null;
     sub.pendingBillingCycle = null;
-    // Do not charge : they already paid through the period
-    // Extend their period if staying on the same plan type
   }
 
   await sub.save();
 }
 
-// ── Team plan auto-detection (based on project shares) ──────────
-
-/**
- * Count unique Team members for billing purposes.
- * Total = 1 (owner) + unique users with accepted ProjectShare status
- *
- * @param {string} userId - subscription owner
- * @returns {Promise<number>} total billable seats
- */
 export async function countTeamBillableSeats(userId) {
   const { Project } = await import("../models/Project.js");
   const { ProjectShare } = await import("../models/ProjectShare.js");
 
-  // Get all projects owned by this user
   const projects = await Project.find({ userId }).select("_id").lean();
-  if (projects.length === 0) return 1; // just the owner
+  if (projects.length === 0) return 1;
 
   const projectIds = projects.map((p) => p._id);
 
-  // Get all ACCEPTED shares (pending don't count yet)
   const shares = await ProjectShare.find(
     { projectId: { $in: projectIds }, status: "accepted" },
     "inviteeUserId",
   ).lean();
 
-  // Count unique users (exclude null, avoid duplicates)
-  const uniqueUserIds = new Set(
-    shares.map((s) => s.inviteeUserId).filter(Boolean),
-  );
+  const uniqueUserIds = new Set(shares.map((s) => s.inviteeUserId).filter(Boolean));
 
-  // Total = owner + unique collaborators
   return 1 + uniqueUserIds.size;
 }
 
-/**
- * Compute Team plan charge with fractional seats + optional daily proration.
- *
- * Returns object with credit, charge, and net amounts for mid-cycle changes.
- * All amounts in USD cents.
- *
- * @param {Object} opts
- * @param {number}  opts.currentSeats         - existing seat count
- * @param {number}  opts.newSeats             - new seat count
- * @param {Date}    opts.cycleStartDate       - start of billing period
- * @param {Date}    opts.cycleEndDate         - end of billing period
- * @param {number}  opts.daysRemaining        - days left in cycle
- * @param {boolean} opts.include_proration    - if true, calculate credit on old seats
- * @returns {Object} { creditCents, chargeCents, netChargeCents, explanation }
- */
 export function computeTeamPlanCharge({
   currentSeats,
   newSeats,
@@ -877,11 +697,10 @@ export function computeTeamPlanCharge({
   daysRemaining,
   include_proration = true,
 }) {
-  const TEAM_MONTHLY_RATE = 1200; // $12.00/user/mo in cents
+  const TEAM_MONTHLY_RATE = 1200;
   const totalDaysInCycle = daysBetween(cycleStartDate, cycleEndDate);
 
   if (!include_proration) {
-    // Simple: charge for new seats count for full month
     const chargeCents = Math.round(newSeats * TEAM_MONTHLY_RATE);
     return {
       creditCents: 0,
@@ -897,11 +716,8 @@ export function computeTeamPlanCharge({
     };
   }
 
-  // Pro-rated calculation: credit old seats, charge new seats for remaining days
   const dailyRatePerSeat = TEAM_MONTHLY_RATE / totalDaysInCycle;
-  const creditCents = Math.round(
-    currentSeats * dailyRatePerSeat * daysRemaining,
-  );
+  const creditCents = Math.round(currentSeats * dailyRatePerSeat * daysRemaining);
   const chargeCents = Math.round(newSeats * dailyRatePerSeat * daysRemaining);
   const netChargeCents = chargeCents - creditCents;
 
@@ -929,17 +745,9 @@ export function computeTeamPlanCharge({
   };
 }
 
-/**
- * Sync Team plan seats with actual project shares and apply billing if mid-cycle.
- * Call this whenever ProjectShare status changes (pending → accepted OR revoked).
- *
- * @param {string} projectId
- * @param {string} projectOwnerId - subscription owner ID
- * @returns {Promise<{previousSeats, currentSeats, proration?, invoice?}>}
- */
 export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
   const sub = await getOrCreateSubscription(projectOwnerId);
-  if (sub.plan !== "team") return null; // Only for Team plan
+  if (sub.plan !== "team") return null;
 
   const previousSeats = sub.seats || 1;
   const currentSeats = await countTeamBillableSeats(projectOwnerId);
@@ -948,9 +756,8 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
     `[team-sync] Project ${projectId}: ${projectOwnerId} seats ${previousSeats} → ${currentSeats}`,
   );
 
-  if (currentSeats === previousSeats) return null; // No change
+  if (currentSeats === previousSeats) return null;
 
-  // Calculate prorated charge
   const daysRemaining = daysUntil(sub.currentPeriodEnd);
 
   const proration = computeTeamPlanCharge({
@@ -962,21 +769,16 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
     include_proration: true,
   });
 
-  // Update subscription with new seat count
   sub.seats = currentSeats;
   await sub.save();
 
   console.log(`[team-sync] Updated subscription seats to ${currentSeats}`);
 
-  // If net charge <= 0, no invoice needed (credit or break-even)
   if (proration.netChargeCents <= 0) {
-    console.log(
-      `[team-sync] No charge needed (net: ${proration.netChargeCents}¢)`,
-    );
+    console.log(`[team-sync] No charge needed (net: ${proration.netChargeCents}¢)`);
     return { previousSeats, currentSeats, proration, invoiceCreated: false };
   }
 
-  // Create invoice for the proration
   const txRef = buildTxRef("team_seat");
   const user = await User.findById(projectOwnerId).select("name email");
 
@@ -1006,9 +808,7 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
     metadata: { proration: proration.explanation, projectId },
   });
 
-  console.log(
-    `[team-sync] Created invoice ${invoice._id} for ${proration.netChargeCents}¢`,
-  );
+  console.log(`[team-sync] Created invoice ${invoice._id} for ${proration.netChargeCents}¢`);
 
   return {
     previousSeats,
@@ -1019,12 +819,6 @@ export async function syncTeamSeatsAndBilling(projectId, projectOwnerId) {
   };
 }
 
-// ── Payment method management ─────────────────────────────────────
-
-/**
- * Upsert a payment method from a FW transaction response.
- * Saves the charge token (never raw card data).
- */
 export async function upsertPaymentMethod({ userId, fwTx, token }) {
   const card = fwTx?.card;
   const isCard = !!card?.last_4digits;
@@ -1038,7 +832,7 @@ export async function upsertPaymentMethod({ userId, fwTx, token }) {
   const methodData = {
     userId,
     type: isCard ? "card" : isMobileMoney ? "mobile_money" : "bank_transfer",
-    isDefault: hasExisting === 0, // first method is default
+    isDefault: hasExisting === 0,
     flutterwaveToken: token,
     currency: (fwTx?.currency || "USD").toUpperCase(),
   };
@@ -1070,39 +864,21 @@ export async function upsertPaymentMethod({ userId, fwTx, token }) {
   );
 }
 
-// ── Billing history ───────────────────────────────────────────────
-
-/**
- * Get paginated invoice list for a user.
- */
 export async function getBillingHistory(userId, { page = 1, limit = 20 } = {}) {
   const skip = (page - 1) * limit;
   const [invoices, total] = await Promise.all([
-    Invoice.find({ userId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+    Invoice.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Invoice.countDocuments({ userId }),
   ]);
   return { invoices, total, page, limit };
 }
 
-// ── PDF invoice generation ────────────────────────────────────────
-
-/**
- * Generate a PDF buffer for a single invoice.
- * @param {string} invoiceId
- * @param {string} requestingUserId - guard: must be owner
- * @returns {Promise<Buffer>}
- */
 export async function generateInvoicePdf(invoiceId, requestingUserId) {
   const invoice = await Invoice.findOne({
     _id: invoiceId,
     userId: requestingUserId,
   });
-  if (!invoice)
-    throw Object.assign(new Error("Invoice not found"), { status: 404 });
+  if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
 
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({ margin: 50, size: "A4" });
@@ -1113,17 +889,11 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // Header
     doc.fontSize(20).text("INVOICE", 50, 50);
     doc.fontSize(10).text(`Docnine`, 50, 80);
     doc.text(`Invoice #: ${invoice.invoiceNumber}`, 50, 95);
-    doc.text(
-      `Date: ${formatDate(invoice.paidAt || invoice.createdAt)}`,
-      50,
-      110,
-    );
+    doc.text(`Date: ${formatDate(invoice.paidAt || invoice.createdAt)}`, 50, 110);
 
-    // Customer
     const y = 160;
     doc.text(`Bill To:`, 50, y);
     if (invoice.companyName) doc.text(invoice.companyName, 50, y + 15);
@@ -1131,7 +901,6 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
     if (invoice.customerEmail) doc.text(invoice.customerEmail, 50, y + 45);
     if (invoice.vatNumber) doc.text(`VAT: ${invoice.vatNumber}`, 50, y + 60);
 
-    // Period
     if (invoice.periodStart && invoice.periodEnd) {
       doc.text(
         `Period: ${formatDate(invoice.periodStart)} : ${formatDate(invoice.periodEnd)}`,
@@ -1140,7 +909,6 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
       );
     }
 
-    // Line items table
     const tableTop = 280;
     doc.fontSize(10).text("Description", 50, tableTop, { bold: true });
     doc.text("Amount", 450, tableTop);
@@ -1156,23 +924,13 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
       row += 20;
     }
 
-    // Total
     doc
       .moveTo(50, row + 5)
       .lineTo(550, row + 5)
       .stroke();
-    doc
-      .fontSize(12)
-      .text(
-        `Total: $${centsToUsd(invoice.amount).toFixed(2)} USD`,
-        400,
-        row + 15,
-      );
+    doc.fontSize(12).text(`Total: $${centsToUsd(invoice.amount).toFixed(2)} USD`, 400, row + 15);
 
-    // Payment method & status
-    doc
-      .fontSize(10)
-      .text(`Status: ${invoice.status.toUpperCase()}`, 50, row + 30);
+    doc.fontSize(10).text(`Status: ${invoice.status.toUpperCase()}`, 50, row + 30);
     if (invoice.paymentMethodSnapshot) {
       doc.text(`Paid via: ${invoice.paymentMethodSnapshot}`, 50, row + 45);
     }
@@ -1180,8 +938,6 @@ export async function generateInvoicePdf(invoiceId, requestingUserId) {
     doc.end();
   });
 }
-
-// ── Dunning helpers (used by billing + dunning services) ──────────
 
 export async function startDunning(sub) {
   sub.status = "past_due";
@@ -1199,8 +955,6 @@ export async function downgradeToFree(sub) {
   sub.dunningStartedAt = null;
   await sub.save();
 }
-
-// ── Internal helpers ──────────────────────────────────────────────
 
 function computeCheckoutAmount({ planId, cycle, seats }) {
   const plan = getPlan(planId);
@@ -1244,19 +998,14 @@ function calculateProration(sub, newPlanId, newCycle, seats) {
   const daysRemaining = daysUntil(sub.currentPeriodEnd);
   const totalDays = daysBetween(sub.currentPeriodStart, sub.currentPeriodEnd);
 
-  // Calculate daily rates based on monthly price
-  // This ensures accuracy regardless of actual calendar days
   const oldDailyRate =
-    computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats) /
-    totalDays;
-  const newDailyRate =
-    computeMonthlyPrice(newPlanId, newCycle, seats) / totalDays;
+    computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats) / totalDays;
+  const newDailyRate = computeMonthlyPrice(newPlanId, newCycle, seats) / totalDays;
 
   const credit = Math.round(oldDailyRate * daysRemaining);
   const newCharge = Math.round(newDailyRate * daysRemaining);
   const prorated = newCharge - credit;
 
-  // Log proration calculation for debugging
   console.log(
     `[proration] ${sub.plan}(${sub.billingCycle || "monthly"}) → ${newPlanId}(${newCycle}) | ` +
       `oldRate: ${oldDailyRate}/day, newRate: ${newDailyRate}/day, ` +

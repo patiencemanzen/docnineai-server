@@ -1,31 +1,11 @@
-// ===================================================================
-// All auth business logic lives here. Controllers call these
-// functions : they never touch the database directly.
-// ===================================================================
-
 import { User } from "../../../models/User.js";
 import { randomBytes } from "crypto";
-import {
-  signAccessToken,
-  signRefreshToken,
-  verifyRefreshToken,
-} from "../../../utils/jwt.util.js"; // verifyRefreshToken was missing
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../../utils/jwt.util.js";
 import { hashToken, generateSecureToken } from "../../../utils/crypto.util.js";
-import {
-  sendVerificationEmail,
-  sendPasswordResetEmail,
-} from "../../../config/email.js";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../../../config/email.js";
 import { generateGitHubActionsWorkflow } from "../../../services/webhook.service.js";
 
-/**
- * Create a new user and send a verification email.
- * Tokens are not issued until the email is verified.
- * @returns {{ user: User }}
- * @throws with code EMAIL_TAKEN if email already registered
- * @throws with code T_AND_C_REQUIRED if terms not accepted
- */
 export async function signup({ name, email, password, agreeToTerms = false }) {
-  // Require explicit T&C agreement
   if (!agreeToTerms) {
     const err = new Error("You must agree to the Terms of Service and Privacy Policy.");
     err.code = "T_AND_C_REQUIRED";
@@ -40,21 +20,19 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
     throw err;
   }
 
-  // Raw token goes in the email link; only its hash is stored in DB.
   const rawToken = generateSecureToken();
   const hashedToken = hashToken(rawToken);
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const user = await User.create({
     name,
     email,
-    password, // pre-save hook bcrypt-hashes this
+    password,
     emailVerificationToken: hashedToken,
     emailVerificationExpires: expiresAt,
-    webhookSecret: randomBytes(32).toString("hex"), // Generate webhook secret
+    webhookSecret: randomBytes(32).toString("hex"),
   });
 
-  // Send verification email : fire-and-forget (don't fail signup if SMTP is down)
   sendVerificationEmail({ to: email, token: rawToken, name }).catch((err) =>
     console.error("Failed to send verification email:", err.message),
   );
@@ -62,17 +40,9 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
   return { user };
 }
 
-/**
- * Validate credentials and issue tokens.
- *
- * @returns {{ user: User, accessToken: string, refreshToken: string }}
- * @throws with code INVALID_CREDENTIALS (same message for bad email or bad password)
- */
 export async function login({ email, password }) {
-  // Select password field : excluded by default via schema
   const user = await User.findOne({ email }).select("+password");
 
-  // Identical error for "not found" and "wrong password" to prevent email enumeration
   const invalidErr = () => {
     const e = new Error("Incorrect email or password.");
     e.code = "INVALID_CREDENTIALS";
@@ -110,29 +80,10 @@ export async function login({ email, password }) {
   return { user, accessToken, refreshToken };
 }
 
-// ── Logout ────────────────────────────────────────────────────
-
-/**
- * Invalidate the refresh token in the database.
- * The httpOnly cookie is cleared by the controller.
- * @param {string} userId
- */
 export async function logout(userId) {
   await User.findByIdAndUpdate(userId, { $unset: { refreshTokenHash: 1 } });
 }
 
-// ── Refresh session ───────────────────────────────────────────
-
-/**
- * Validate the refresh token, rotate it, and return a new access token.
- *
- * Rotation strategy: each use mints a new refresh token and immediately
- * invalidates the old one. Any replay of the old token triggers a full
- * revocation (both DB hash cleared, forcing re-login).
- *
- * @param {string} rawRefreshToken  : value from the httpOnly cookie
- * @returns {{ user: User, accessToken: string, refreshToken: string }}
- */
 export async function refreshSession(rawRefreshToken) {
   if (!rawRefreshToken) {
     const err = new Error("Refresh token is required.");
@@ -141,51 +92,36 @@ export async function refreshSession(rawRefreshToken) {
     throw err;
   }
 
-  // 1. Verify JWT signature and expiry
   let payload;
   try {
-    payload = verifyRefreshToken(rawRefreshToken); // static import : no dynamic import needed
+    payload = verifyRefreshToken(rawRefreshToken);
   } catch {
-    const err = new Error(
-      "Refresh token is invalid or has expired. Please log in again.",
-    );
+    const err = new Error("Refresh token is invalid or has expired. Please log in again.");
     err.code = "INVALID_REFRESH_TOKEN";
     err.status = 401;
     throw err;
   }
 
-  // 2. Compare hash against DB to detect replay attacks
   const user = await User.findById(payload.sub).select("+refreshTokenHash");
 
   const storedHash = user?.refreshTokenHash;
-  const incomingHash = hashToken(rawRefreshToken); // already statically imported
+  const incomingHash = hashToken(rawRefreshToken);
 
   if (!user || storedHash !== incomingHash) {
-    // Hash mismatch: token was already rotated or user logged out.
-    // Wipe the DB hash to force full re-login : assume token theft.
     if (user) {
       user.refreshTokenHash = undefined;
       await user.save();
     }
-    const err = new Error(
-      "Refresh token has already been used or revoked. Please log in again.",
-    );
+    const err = new Error("Refresh token has already been used or revoked. Please log in again.");
     err.code = "REFRESH_TOKEN_REUSED";
     err.status = 401;
     throw err;
   }
 
-  // 3. Rotate: issue new pair (old token is now dead)
   const { accessToken, refreshToken } = await issueTokens(user);
   return { user, accessToken, refreshToken };
 }
 
-// ── Email verification ────────────────────────────────────────
-
-/**
- * Mark email as verified using the token from the email link.
- * @param {string} rawToken
- */
 export async function verifyEmail(rawToken) {
   const hashedToken = hashToken(rawToken);
 
@@ -209,37 +145,23 @@ export async function verifyEmail(rawToken) {
   return user;
 }
 
-// ── Forgot password ───────────────────────────────────────────
-
-/**
- * Generate a password-reset token and email it.
- * Always returns without throwing : prevents email enumeration.
- * @param {string} email
- */
 export async function forgotPassword(email) {
   const user = await User.findOne({ email });
-  if (!user) return; // No user : silently no-op; controller always sends 200
+  if (!user) return;
 
   const rawToken = generateSecureToken();
   const hashedToken = hashToken(rawToken);
-  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
   user.passwordResetToken = hashedToken;
   user.passwordResetExpires = expiresAt;
   await user.save();
 
-  sendPasswordResetEmail({ to: email, token: rawToken, name: user.name }).catch(
-    (err) =>
-      console.error("⚠️  Failed to send password-reset email:", err.message),
+  sendPasswordResetEmail({ to: email, token: rawToken, name: user.name }).catch((err) =>
+    console.error("⚠️  Failed to send password-reset email:", err.message),
   );
 }
 
-// ── Reset password ────────────────────────────────────────────
-
-/**
- * Validate the reset token and set a new password.
- * @param {{ token: string, password: string }}
- */
 export async function resetPassword({ token, password }) {
   const hashedToken = hashToken(token);
 
@@ -255,22 +177,15 @@ export async function resetPassword({ token, password }) {
     throw err;
   }
 
-  user.password = password; // pre-save hook will re-hash
+  user.password = password;
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
-  user.refreshTokenHash = undefined; // invalidate all sessions after reset
+  user.refreshTokenHash = undefined;
   await user.save();
 
   return user;
 }
 
-// ── Update profile ───────────────────────────────────────────
-
-/**
- * Update name and/or email for the authenticated user.
- * @param {string} userId
- * @param {{ name?: string, email?: string }}
- */
 export async function updateProfile(userId, { name, email }) {
   const user = await User.findById(userId);
   if (!user) {
@@ -297,22 +212,14 @@ export async function updateProfile(userId, { name, email }) {
     const rawToken = generateSecureToken();
     user.emailVerificationToken = hashToken(rawToken);
     user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    sendVerificationEmail({ to: email, token: rawToken, name: user.name }).catch(
-      (err) => console.error("Failed to send verification email:", err.message),
+    sendVerificationEmail({ to: email, token: rawToken, name: user.name }).catch((err) =>
+      console.error("Failed to send verification email:", err.message),
     );
   }
   await user.save();
   return user;
 }
 
-// ── Change password ───────────────────────────────────────────
-
-/**
- * Verify currentPassword and set a new password.
- * Invalidates the current refresh token (single-session policy).
- * @param {string} userId
- * @param {{ currentPassword: string, newPassword: string }}
- */
 export async function changePassword(userId, { currentPassword, newPassword }) {
   const user = await User.findById(userId).select("+password");
   if (!user) {
@@ -330,18 +237,12 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
     throw err;
   }
 
-  user.password = newPassword; // pre-save hook re-hashes
-  user.refreshTokenHash = undefined; // invalidate active sessions
+  user.password = newPassword;
+  user.refreshTokenHash = undefined;
   await user.save();
   return user;
 }
 
-// ── Get current user ──────────────────────────────────────────
-
-/**
- * Fetch the authenticated user's public profile.
- * @param {string} userId
- */
 export async function getMe(userId) {
   const user = await User.findById(userId);
   if (!user) {
@@ -353,10 +254,6 @@ export async function getMe(userId) {
   return user;
 }
 
-/**
- * Attach a social identity to an existing user.
- * Unverified password accounts cannot be claimed via OAuth (account takeover).
- */
 function attachOAuthIdentity(user, { idField, idValue, usernameField, usernameValue }) {
   if (user[idField] && String(user[idField]) !== String(idValue)) {
     const err = new Error("This email is already associated with a different account.");
@@ -383,15 +280,6 @@ function attachOAuthIdentity(user, { idField, idValue, usernameField, usernameVa
   return changed;
 }
 
-// ── GitHub Social Login ───────────────────────────────────────
-
-/**
- * Exchange a GitHub OAuth code (identity scope: read:user user:email)
- * for a Docnine user, find-or-create, and issue app tokens.
- *
- * Env: GITHUB_LOGIN_CLIENT_ID  GITHUB_LOGIN_CLIENT_SECRET
- *      GITHUB_LOGIN_REDIRECT_URI  (optional, must match OAuth app settings)
- */
 export async function githubSocialLogin(code) {
   const { GITHUB_LOGIN_CLIENT_ID, GITHUB_LOGIN_CLIENT_SECRET } = process.env;
   if (!GITHUB_LOGIN_CLIENT_ID || !GITHUB_LOGIN_CLIENT_SECRET) {
@@ -405,7 +293,6 @@ export async function githubSocialLogin(code) {
 
   const { default: axios } = await import("axios");
 
-  // 1. Exchange code for access token
   const tokenRes = await axios.post(
     "https://github.com/login/oauth/access_token",
     {
@@ -418,9 +305,7 @@ export async function githubSocialLogin(code) {
 
   const githubAccessToken = tokenRes.data.access_token;
   if (!githubAccessToken) {
-    const err = new Error(
-      "GitHub did not return an access token. The code may have expired.",
-    );
+    const err = new Error("GitHub did not return an access token. The code may have expired.");
     err.code = "GITHUB_CODE_INVALID";
     err.status = 400;
     throw err;
@@ -428,27 +313,21 @@ export async function githubSocialLogin(code) {
 
   const ghHeaders = { Authorization: `Bearer ${githubAccessToken}` };
 
-  // 2. Fetch profile + verified primary email in parallel
   const [userRes, emailsRes] = await Promise.all([
     axios.get("https://api.github.com/user", { headers: ghHeaders }),
     axios.get("https://api.github.com/user/emails", { headers: ghHeaders }),
   ]);
 
   const ghUser = userRes.data;
-  const primaryEmail = emailsRes.data.find(
-    (e) => e.primary && e.verified,
-  )?.email;
+  const primaryEmail = emailsRes.data.find((e) => e.primary && e.verified)?.email;
 
   if (!primaryEmail) {
-    const err = new Error(
-      "No verified primary email found on your GitHub account.",
-    );
+    const err = new Error("No verified primary email found on your GitHub account.");
     err.code = "GITHUB_NO_EMAIL";
     err.status = 400;
     throw err;
   }
 
-  // 3. Find-or-create
   let user = await User.findOne({
     $or: [{ githubId: String(ghUser.id) }, { email: primaryEmail }],
   });
@@ -461,7 +340,7 @@ export async function githubSocialLogin(code) {
       githubId: String(ghUser.id),
       githubUsername: ghUser.login,
       isEmailVerified: true,
-      webhookSecret: randomBytes(32).toString("hex"), // Generate webhook secret
+      webhookSecret: randomBytes(32).toString("hex"),
     });
   } else {
     const changed = attachOAuthIdentity(user, {
@@ -477,25 +356,11 @@ export async function githubSocialLogin(code) {
   return { user, accessToken, refreshToken };
 }
 
-// ── Google Social Login ───────────────────────────────────────
-
-/**
- * Exchange a Google OAuth code (scope: openid email profile) for a user.
- *
- * Env: GOOGLE_LOGIN_CLIENT_ID  GOOGLE_LOGIN_CLIENT_SECRET  GOOGLE_LOGIN_REDIRECT_URI
- */
 export async function googleSocialLogin(code) {
-  const {
-    GOOGLE_LOGIN_CLIENT_ID,
-    GOOGLE_LOGIN_CLIENT_SECRET,
-    GOOGLE_LOGIN_REDIRECT_URI,
-  } = process.env;
+  const { GOOGLE_LOGIN_CLIENT_ID, GOOGLE_LOGIN_CLIENT_SECRET, GOOGLE_LOGIN_REDIRECT_URI } =
+    process.env;
 
-  if (
-    !GOOGLE_LOGIN_CLIENT_ID ||
-    !GOOGLE_LOGIN_CLIENT_SECRET ||
-    !GOOGLE_LOGIN_REDIRECT_URI
-  ) {
+  if (!GOOGLE_LOGIN_CLIENT_ID || !GOOGLE_LOGIN_CLIENT_SECRET || !GOOGLE_LOGIN_REDIRECT_URI) {
     const err = new Error(
       "Google Login requires GOOGLE_LOGIN_CLIENT_ID, GOOGLE_LOGIN_CLIENT_SECRET, " +
         "and GOOGLE_LOGIN_REDIRECT_URI.",
@@ -537,7 +402,7 @@ export async function googleSocialLogin(code) {
       googleId: profile.id,
       googleUsername: profile.name,
       isEmailVerified: true,
-      webhookSecret: randomBytes(32).toString("hex"), // Generate webhook secret
+      webhookSecret: randomBytes(32).toString("hex"),
     });
   } else {
     const changed = attachOAuthIdentity(user, {
@@ -553,8 +418,6 @@ export async function googleSocialLogin(code) {
   return { user, accessToken, refreshToken };
 }
 
-// ── Generate OAuth start URLs ─────────────────────────────────
-
 export function getGithubLoginUrl() {
   const { GITHUB_LOGIN_CLIENT_ID, GITHUB_LOGIN_REDIRECT_URI } = process.env;
   if (!GITHUB_LOGIN_CLIENT_ID) {
@@ -566,9 +429,7 @@ export function getGithubLoginUrl() {
   const params = new URLSearchParams({
     client_id: GITHUB_LOGIN_CLIENT_ID,
     scope: "read:user user:email",
-    ...(GITHUB_LOGIN_REDIRECT_URI
-      ? { redirect_uri: GITHUB_LOGIN_REDIRECT_URI }
-      : {}),
+    ...(GITHUB_LOGIN_REDIRECT_URI ? { redirect_uri: GITHUB_LOGIN_REDIRECT_URI } : {}),
   });
   return `https://github.com/login/oauth/authorize?${params}`;
 }
@@ -592,12 +453,6 @@ export function getGoogleLoginUrl() {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-// ── Internal ──────────────────────────────────────────────────
-
-/**
- * Issue a new access+refresh token pair and persist the refresh token hash.
- * Called after every successful login/signup/token-rotation.
- */
 async function issueTokens(user) {
   const accessToken = signAccessToken({
     userId: user._id.toString(),
@@ -612,11 +467,6 @@ async function issueTokens(user) {
   return { accessToken, refreshToken };
 }
 
-// ── Webhook Integration ───────────────────────────────────────
-
-/**
- * Get webhook status for a user (without exposing the secret).
- */
 function resolveApiBaseUrl(apiBaseUrl) {
   return (
     apiBaseUrl ||
@@ -652,10 +502,6 @@ export async function getWebhookStatus(userId) {
   };
 }
 
-/**
- * Get or initialize webhook settings for a user (returns secret).
- * If no secret exists, generate one.
- */
 export async function getOrInitializeWebhook(userId, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
@@ -668,10 +514,6 @@ export async function getOrInitializeWebhook(userId, apiBaseUrl) {
   return buildWebhookSettings(user, apiBaseUrl);
 }
 
-/**
- * Rotate the global webhook secret.
- * Returns new secret and webhook URL.
- */
 export async function rotateWebhookSecret(userId, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
@@ -682,14 +524,7 @@ export async function rotateWebhookSecret(userId, apiBaseUrl) {
   return buildWebhookSettings(user, apiBaseUrl);
 }
 
-/**
- * Update webhook enable/disable status.
- */
-export async function updateWebhookSettings(
-  userId,
-  webhookEnabled,
-  apiBaseUrl,
-) {
+export async function updateWebhookSettings(userId, webhookEnabled, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
 

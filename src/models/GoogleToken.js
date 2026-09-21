@@ -1,13 +1,3 @@
-// ===================================================================
-// GoogleToken : stores encrypted Google OAuth tokens per user.
-// Used for Google Docs export (scope: drive.file + documents).
-//
-// Unlike GitHub tokens, Google tokens expire : so we store both
-// the access token and refresh token (encrypted).
-// The googleapis library handles auto-refresh; we persist the
-// latest tokens via the token event handler.
-// ===================================================================
-
 import mongoose from "mongoose";
 
 const googleTokenSchema = new mongoose.Schema(
@@ -19,7 +9,7 @@ const googleTokenSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
-    // AES-256-GCM encrypted : use crypto.util.js encrypt()/decrypt()
+
     accessTokenEncrypted: {
       type: String,
       required: true,
@@ -30,7 +20,7 @@ const googleTokenSchema = new mongoose.Schema(
       required: true,
       select: false,
     },
-    // Token expiry as Unix ms timestamp (from Google's expires_in)
+
     expiryDate: {
       type: Number,
       required: true,

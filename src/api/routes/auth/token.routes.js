@@ -1,11 +1,3 @@
-/**
- * API Token Routes
- * POST   /auth/tokens              - Create a new token
- * GET    /auth/tokens              - List user's tokens
- * GET    /auth/tokens/:id          - Get token details
- * DELETE /auth/tokens/:id          - Revoke/delete token
- */
-
 import { Router } from "express";
 import * as tokenService from "../../../services/token.service.js";
 import { protect } from "../../../middleware/auth.middleware.js";
@@ -14,10 +6,8 @@ import { ok, fail, serverError } from "../../../utils/response.util.js";
 
 const router = Router();
 
-// ── Middleware: Require authentication ──
 router.use(protect);
 
-// ── POST /auth/tokens: Create new token ──
 export async function createTokenHandler(req, res) {
   const userId = req.user.userId;
   const { name, description, scope, projectIds, expiresAt } = req.body;
@@ -35,19 +25,13 @@ export async function createTokenHandler(req, res) {
       expiresAt,
     });
 
-    return ok(
-      res,
-      result,
-      "Token created. Save it now : you won't see it again!",
-      201
-    );
+    return ok(res, result, "Token created. Save it now : you won't see it again!", 201);
   } catch (err) {
     if (err.code) return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "createToken");
   }
 }
 
-// ── GET /auth/tokens: List user's tokens ──
 export async function listTokensHandler(req, res) {
   const userId = req.user.userId;
 
@@ -64,7 +48,6 @@ export async function listTokensHandler(req, res) {
   }
 }
 
-// ── GET /auth/tokens/:id: Get token details ──
 export async function getTokenHandler(req, res) {
   const userId = req.user.userId;
   const { id } = req.params;
@@ -78,7 +61,6 @@ export async function getTokenHandler(req, res) {
   }
 }
 
-// ── DELETE /auth/tokens/:id: Revoke token ──
 export async function revokeTokenHandler(req, res) {
   const userId = req.user.userId;
   const { id } = req.params;
@@ -92,7 +74,6 @@ export async function revokeTokenHandler(req, res) {
   }
 }
 
-// ── DELETE /auth/tokens/:id?permanent=true: Permanently delete token ──
 export async function deleteTokenHandler(req, res) {
   const userId = req.user.userId;
   const { id } = req.params;
@@ -106,7 +87,6 @@ export async function deleteTokenHandler(req, res) {
   }
 }
 
-// ── Routes ──
 router.post(
   "/",
   autoLog("API_TOKEN_CREATED", (req, body) => ({
@@ -116,15 +96,9 @@ router.post(
 );
 router.get("/", listTokensHandler);
 router.get("/:id", getTokenHandler);
-router.delete(
-  "/:id",
-  autoLog("API_TOKEN_REVOKED"),
-  (req, res) => {
-    const isPermanent = req.query.permanent === "true";
-    return isPermanent
-      ? deleteTokenHandler(req, res)
-      : revokeTokenHandler(req, res);
-  },
-);
+router.delete("/:id", autoLog("API_TOKEN_REVOKED"), (req, res) => {
+  const isPermanent = req.query.permanent === "true";
+  return isPermanent ? deleteTokenHandler(req, res) : revokeTokenHandler(req, res);
+});
 
 export default router;

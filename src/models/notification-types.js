@@ -1,24 +1,4 @@
-// ===================================================================
-// notification-types.js
-// Central registry: priority + entityType + title/message templates
-// for every notification type defined in Notification.js.
-//
-// messageTemplate(ctx) receives a context object and returns a
-// human-readable string. All fields in ctx are optional : use
-// fallbacks where needed.
-// ===================================================================
-
-/**
- * @typedef {Object} NotificationTypeConfig
- * @property {"LOW"|"MEDIUM"|"HIGH"|"CRITICAL"} priority
- * @property {string}  entityType
- * @property {(ctx: Record<string,string>) => string} titleTemplate
- * @property {(ctx: Record<string,string>) => string} messageTemplate
- */
-
-/** @type {Record<string, NotificationTypeConfig>} */
 export const NOTIFICATION_TYPE_CONFIG = {
-  // ── Pipeline ────────────────────────────────────────────────────
   PIPELINE_COMPLETED: {
     priority: "MEDIUM",
     entityType: "PIPELINE",
@@ -30,10 +10,8 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "HIGH",
     entityType: "PIPELINE",
     titleTemplate: () => "Documentation generation failed",
-    messageTemplate: ({
-      projectName = "Your project",
-      reason = "an unexpected error",
-    }) => `${projectName} failed to generate documentation due to ${reason}.`,
+    messageTemplate: ({ projectName = "Your project", reason = "an unexpected error" }) =>
+      `${projectName} failed to generate documentation due to ${reason}.`,
   },
   PIPELINE_TIMEOUT: {
     priority: "HIGH",
@@ -43,7 +21,6 @@ export const NOTIFICATION_TYPE_CONFIG = {
       `${projectName} documentation generation took too long and was stopped.`,
   },
 
-  // ── Documentation ───────────────────────────────────────────────
   DOC_SECTION_UPDATED: {
     priority: "LOW",
     entityType: "DOCUMENTATION",
@@ -55,10 +32,8 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "MEDIUM",
     entityType: "DOCUMENTATION",
     titleTemplate: () => "Documentation version restored",
-    messageTemplate: ({
-      projectName = "A project",
-      version = "a previous version",
-    }) => `${projectName} documentation was restored to ${version}.`,
+    messageTemplate: ({ projectName = "A project", version = "a previous version" }) =>
+      `${projectName} documentation was restored to ${version}.`,
   },
   DOC_STATUS_CHANGED: {
     priority: "LOW",
@@ -71,30 +46,22 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "MEDIUM",
     entityType: "DOCUMENTATION",
     titleTemplate: () => "Changes requested on documentation",
-    messageTemplate: ({
-      projectName = "A project",
-      requesterName = "A team member",
-    }) => `${requesterName} requested changes on ${projectName} documentation.`,
+    messageTemplate: ({ projectName = "A project", requesterName = "A team member" }) =>
+      `${requesterName} requested changes on ${projectName} documentation.`,
   },
   DOC_APPROVED: {
     priority: "LOW",
     entityType: "DOCUMENTATION",
     titleTemplate: () => "Documentation approved",
-    messageTemplate: ({
-      projectName = "A project",
-      approverName = "A team member",
-    }) => `${approverName} approved ${projectName} documentation.`,
+    messageTemplate: ({ projectName = "A project", approverName = "A team member" }) =>
+      `${approverName} approved ${projectName} documentation.`,
   },
 
-  // ── Security ────────────────────────────────────────────────────
   SECURITY_CRITICAL_FINDING: {
     priority: "CRITICAL",
     entityType: "SECURITY",
     titleTemplate: () => "Critical security vulnerability detected",
-    messageTemplate: ({
-      projectName = "Your project",
-      finding = "a critical vulnerability",
-    }) =>
+    messageTemplate: ({ projectName = "Your project", finding = "a critical vulnerability" }) =>
       `${projectName} security scan found ${finding}. Immediate action required.`,
   },
   SECURITY_HIGH_FINDING: {
@@ -114,7 +81,6 @@ export const NOTIFICATION_TYPE_CONFIG = {
       `Security analysis for ${projectName} is complete and ready to review.`,
   },
 
-  // ── Sharing ─────────────────────────────────────────────────────
   SHARE_INVITE_RECEIVED: {
     priority: "MEDIUM",
     entityType: "SHARE",
@@ -126,10 +92,8 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "LOW",
     entityType: "SHARE",
     titleTemplate: () => "Collaboration invite accepted",
-    messageTemplate: ({
-      inviteeName = "Someone",
-      projectName = "your project",
-    }) => `${inviteeName} accepted your invite and joined ${projectName}.`,
+    messageTemplate: ({ inviteeName = "Someone", projectName = "your project" }) =>
+      `${inviteeName} accepted your invite and joined ${projectName}.`,
   },
   SHARE_MEMBER_REMOVED: {
     priority: "LOW",
@@ -146,7 +110,6 @@ export const NOTIFICATION_TYPE_CONFIG = {
       `Your role in ${projectName} was changed to ${newRole}.`,
   },
 
-  // ── Portal ──────────────────────────────────────────────────────
   PORTAL_PUBLISHED: {
     priority: "LOW",
     entityType: "PORTAL",
@@ -158,13 +121,10 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "LOW",
     entityType: "PORTAL",
     titleTemplate: () => "Portal reached a view milestone",
-    messageTemplate: ({
-      projectName = "Your project",
-      count = "a milestone",
-    }) => `${projectName} portal has reached ${count} views.`,
+    messageTemplate: ({ projectName = "Your project", count = "a milestone" }) =>
+      `${projectName} portal has reached ${count} views.`,
   },
 
-  // ── Subscription & Billing ──────────────────────────────────────
   SUBSCRIPTION_PAYMENT_SUCCESS: {
     priority: "LOW",
     entityType: "PAYMENT",
@@ -211,11 +171,7 @@ export const NOTIFICATION_TYPE_CONFIG = {
     priority: "MEDIUM",
     entityType: "SUBSCRIPTION",
     titleTemplate: () => "Approaching plan limit",
-    messageTemplate: ({
-      resource = "resources",
-      percent = "80",
-      plan = "your plan",
-    }) =>
+    messageTemplate: ({ resource = "resources", percent = "80", plan = "your plan" }) =>
       `You've used ${percent}% of your ${resource} limit on the ${plan} plan.`,
   },
   PLAN_LIMIT_REACHED: {
@@ -226,7 +182,6 @@ export const NOTIFICATION_TYPE_CONFIG = {
       `You've reached the ${resource} limit on the ${plan} plan. Upgrade to continue.`,
   },
 
-  // ── Integrations ────────────────────────────────────────────────
   SLACK_CONNECTED: {
     priority: "LOW",
     entityType: "SLACK",
@@ -249,14 +204,11 @@ export const NOTIFICATION_TYPE_CONFIG = {
       `${projectName} ${format} export is ready for download.`,
   },
 
-  // ── System ──────────────────────────────────────────────────────
   SYSTEM_ANNOUNCEMENT: {
     priority: "MEDIUM",
     entityType: "SYSTEM",
     titleTemplate: () => "Announcement",
-    messageTemplate: ({
-      body = "Please check the Docnine dashboard for details.",
-    }) => body,
+    messageTemplate: ({ body = "Please check the Docnine dashboard for details." }) => body,
   },
   SYSTEM_MAINTENANCE: {
     priority: "HIGH",
@@ -274,38 +226,22 @@ export const NOTIFICATION_TYPE_CONFIG = {
   },
 };
 
-/**
- * Resolve the title for a notification type + context.
- * Falls back to a formatted version of the type string if type is unknown.
- */
 export function resolveTitle(type, ctx = {}) {
   const config = NOTIFICATION_TYPE_CONFIG[type];
   if (!config) return type.replace(/_/g, " ").toLowerCase();
   return config.titleTemplate(ctx);
 }
 
-/**
- * Resolve the message for a notification type + context.
- * Falls back to an empty string if type is unknown.
- */
 export function resolveMessage(type, ctx = {}) {
   const config = NOTIFICATION_TYPE_CONFIG[type];
   if (!config) return "";
   return config.messageTemplate(ctx);
 }
 
-/**
- * Resolve the default priority for a notification type.
- * Falls back to "MEDIUM".
- */
 export function resolvePriority(type) {
   return NOTIFICATION_TYPE_CONFIG[type]?.priority ?? "MEDIUM";
 }
 
-/**
- * Resolve the entity type for a notification type.
- * Falls back to "SYSTEM".
- */
 export function resolveEntityType(type) {
   return NOTIFICATION_TYPE_CONFIG[type]?.entityType ?? "SYSTEM";
 }

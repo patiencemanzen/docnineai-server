@@ -1,15 +1,3 @@
-// ===================================================================
-// User model : stores all auth-related state.
-//
-// Security notes:
-//   • password     : bcrypt hashed (NEVER stored in plain text)
-//   • refreshTokenHash : SHA-256 hash of the refresh JWT
-//                        (raw token lives in httpOnly cookie only)
-//   • emailVerificationToken : SHA-256 hash of the raw token sent in email
-//   • passwordResetToken     : SHA-256 hash of the raw token sent in email
-//   All *Token fields store hashes. Raw values are only in transit.
-// ===================================================================
-
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -17,7 +5,6 @@ const { Schema, model } = mongoose;
 
 const UserSchema = new Schema(
   {
-    // ── Identity ──────────────────────────────────────────────
     name: {
       type: String,
       required: [true, "Name is required"],
@@ -32,21 +19,19 @@ const UserSchema = new Schema(
       trim: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
     },
-    // Optional for OAuth users (provider !== 'email')
+
     password: {
       type: String,
       minlength: [8, "Password must be at least 8 characters"],
-      select: false, // never returned in queries by default
+      select: false,
     },
 
-    // ── Auth provider ─────────────────────────────────────────
     provider: {
       type: String,
       enum: ["email", "github", "google"],
       default: "email",
     },
 
-    // ── Email verification ────────────────────────────────────
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -60,7 +45,6 @@ const UserSchema = new Schema(
       select: false,
     },
 
-    // ── Password reset ────────────────────────────────────────
     passwordResetToken: {
       type: String,
       select: false,
@@ -70,18 +54,14 @@ const UserSchema = new Schema(
       select: false,
     },
 
-    // ── Session management ────────────────────────────────────
-    // Hash of the current refresh JWT : allows server-side invalidation.
-    // Set to null on logout. One active session per user.
     refreshTokenHash: {
       type: String,
       select: false,
     },
 
-    // ── GitHub connection (optional) ──────────────────────────
     githubId: {
       type: String,
-      sparse: true, // allows null + unique index
+      sparse: true,
       unique: true,
     },
     githubUsername: {
@@ -89,7 +69,6 @@ const UserSchema = new Schema(
       trim: true,
     },
 
-    // ── GitLab connection (optional) ──────────────────────────
     gitlabId: {
       type: String,
       sparse: true,
@@ -109,7 +88,6 @@ const UserSchema = new Schema(
     },
     gitlabConnectedAt: Date,
 
-    // ── Bitbucket connection (optional) ───────────────────────
     bitbucketId: {
       type: String,
       sparse: true,
@@ -129,7 +107,6 @@ const UserSchema = new Schema(
     },
     bitbucketConnectedAt: Date,
 
-    // ── Azure DevOps connection (optional) ────────────────────
     azureDevOpsId: {
       type: String,
       sparse: true,
@@ -149,7 +126,6 @@ const UserSchema = new Schema(
     },
     azureDevOpsConnectedAt: Date,
 
-    // ── Google connection (optional) ──────────────────────────
     googleId: {
       type: String,
       sparse: true,
@@ -160,10 +136,9 @@ const UserSchema = new Schema(
       trim: true,
     },
 
-    // ── Global Webhook Integration (settings-level) ──────────
     webhookSecret: {
       type: String,
-      select: false, // Never returned in queries by default
+      select: false,
     },
     webhookEnabled: {
       type: Boolean,
@@ -176,7 +151,6 @@ const UserSchema = new Schema(
       default: null,
     },
 
-    // ── Role ─────────────────────────────────────────────────
     role: {
       type: String,
       enum: ["user", "super-admin"],
@@ -184,12 +158,11 @@ const UserSchema = new Schema(
     },
   },
   {
-    timestamps: true, // adds createdAt, updatedAt automatically
+    timestamps: true,
     versionKey: false,
   },
 );
 
-// ── Pre-save validation : password required for email provider ──
 UserSchema.pre("validate", function (next) {
   if (this.provider === "email" && this.isNew && !this.password) {
     this.invalidate("password", "Password is required for email sign-up");
@@ -197,23 +170,19 @@ UserSchema.pre("validate", function (next) {
   next();
 });
 
-// ── Pre-save hook : hash password if modified ─────────────────
 UserSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
-// ── Instance method : compare candidate password ──────────────
 UserSchema.methods.comparePassword = async function (candidate) {
   if (!this.password) {
-    // OAuth-only account : password login not allowed
     throw new Error("PASSWORD_LOGIN_NOT_AVAILABLE");
   }
   return bcrypt.compare(candidate, this.password);
 };
 
-// ── toJSON transform : strip internal fields from API responses ─
 UserSchema.set("toJSON", {
   transform(doc, ret) {
     delete ret.password;

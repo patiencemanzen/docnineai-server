@@ -1,11 +1,3 @@
-// =============================================================
-// apispec.routes.js
-//
-// Mounted under /projects/:id/apispec (nested router).
-// All routes require the caller to already be authenticated
-// via the parent project router's `protect + apiLimiter`.
-// =============================================================
-
 import { Router } from "express";
 import { body, param } from "express-validator";
 import multer from "multer";
@@ -14,9 +6,8 @@ import { validate } from "../../../middleware/validate.middleware.js";
 import { requireApiImporter } from "../../../middleware/plan-gate.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
 
-const router = Router({ mergeParams: true }); // gives access to :id from parent
+const router = Router({ mergeParams: true });
 
-// Multer: memory storage, 5 MB, only accept JSON / YAML / text
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -29,18 +20,13 @@ const upload = multer({
       "text/plain",
       "text/x-yaml",
     ];
-    const ok =
-      allowed.includes(file.mimetype) ||
-      /\.(json|yaml|yml)$/i.test(file.originalname);
+    const ok = allowed.includes(file.mimetype) || /\.(json|yaml|yml)$/i.test(file.originalname);
     cb(ok ? null : new Error("Only JSON / YAML files are accepted."), ok);
   },
 });
 
-// ── GET /projects/:id/apispec ─────────────────────────────────
 router.get("/", wrap(ctrl.getSpec));
 
-// ── POST /projects/:id/apispec/import ─────────────────────────
-// Accepts multipart (file upload) OR JSON body { method, raw|url, autoSync }
 router.post(
   "/import",
   requireApiImporter,
@@ -59,34 +45,25 @@ router.post(
   wrap(ctrl.importSpec),
 );
 
-// ── POST /projects/:id/apispec/sync ──────────────────────────
 router.post("/sync", requireApiImporter, wrap(ctrl.syncSpec));
 
-// ── DELETE /projects/:id/apispec ─────────────────────────────
 router.delete("/", wrap(ctrl.deleteSpec));
 
-// ── PATCH /projects/:id/apispec/endpoint ─────────────────────
 router.patch(
   "/endpoint",
   [
-    body("endpointId")
-      .isString()
-      .notEmpty()
-      .withMessage("endpointId is required"),
+    body("endpointId").isString().notEmpty().withMessage("endpointId is required"),
     body("note").optional().isString(),
     validate,
   ],
   wrap(ctrl.updateEndpointNote),
 );
 
-// ── POST /projects/:id/apispec/try ───────────────────────────
 router.post(
   "/try",
   [
     body("method").isString().notEmpty().withMessage("method is required"),
-    body("baseUrl")
-      .isURL({ require_protocol: true })
-      .withMessage("baseUrl must be a valid URL"),
+    body("baseUrl").isURL({ require_protocol: true }).withMessage("baseUrl must be a valid URL"),
     body("path").isString().notEmpty().withMessage("path is required"),
     validate,
   ],

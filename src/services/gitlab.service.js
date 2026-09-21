@@ -1,17 +1,3 @@
-// =============================================================
-// GitLab API client : mirrors github.service.js interface exactly.
-//
-// Every exported function has the same name and return shape as
-// its GitHub counterpart so provider.adapter.js can swap them
-// transparently without touching the orchestrator or sync pipeline.
-//
-// Key difference from GitHub: GitLab uses per-user OAuth access tokens
-// passed in as `accessToken` at call time, not a server-level env var.
-// The token is stored encrypted on the Project document.
-//
-// GitLab REST API v4: https://docs.gitlab.com/ee/api/rest/
-// =============================================================
-
 import axios from "axios";
 import crypto from "crypto";
 
@@ -21,8 +7,6 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-// ── Relevance-based file selection (mirrors github.service.js) ────
 
 const HIGH_PRIORITY = [
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|go\.mod|pom\.xml|build\.gradle|Cargo\.toml|pyproject\.toml|setup\.py|composer\.json)$/i,
@@ -58,23 +42,14 @@ function selectRelevantFiles(files, cap) {
     .map(({ f }) => f);
 }
 
-// ── Internal helpers ──────────────────────────────────────────
-
 function glHeaders(accessToken) {
   return { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
 }
 
-/** GitLab requires "owner%2Frepo" encoding in project API paths */
 function encodePath(owner, repo) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
 
-// ── URL parsing ───────────────────────────────────────────────
-
-/**
- * Parse a GitLab repo URL into { owner, repo }.
- * Accepts HTTPS, SSH, and shorthand (owner/repo) formats.
- */
 export function parseRepoUrl(url) {
   const s = String(url || "")
     .trim()
@@ -96,9 +71,6 @@ export function parseRepoUrl(url) {
   throw err;
 }
 
-// ── OAuth ─────────────────────────────────────────────────────
-
-/** Build the GitLab OAuth authorisation URL. Scopes: read_api + read_repository. */
 export function getOAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: process.env.GITLAB_CLIENT_ID,
@@ -110,7 +82,6 @@ export function getOAuthUrl(state) {
   return `https://gitlab.com/oauth/authorize?${params}`;
 }
 
-/** Exchange an OAuth code for tokens. Returns { access_token, refresh_token, expires_in }. */
 export async function exchangeCode(code) {
   const { data } = await axios.post("https://gitlab.com/oauth/token", {
     client_id: process.env.GITLAB_CLIENT_ID,
@@ -122,7 +93,6 @@ export async function exchangeCode(code) {
   return data;
 }
 
-/** Refresh an expired GitLab access token. */
 export async function refreshAccessToken(refreshToken) {
   const { data } = await axios.post("https://gitlab.com/oauth/token", {
     client_id: process.env.GITLAB_CLIENT_ID,
@@ -134,7 +104,6 @@ export async function refreshAccessToken(refreshToken) {
   return data;
 }
 
-/** Fetch the authenticated GitLab user profile. */
 export async function getAuthenticatedUser(accessToken) {
   const { data } = await axios.get(`${GL_API}/user`, {
     headers: glHeaders(accessToken),
@@ -148,11 +117,10 @@ export async function getAuthenticatedUser(accessToken) {
   };
 }
 
-/** List repos the user has access to. */
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   try {
     console.log("[gitlab.service] Fetching repositories", { page, perPage });
-    
+
     const { data } = await axios.get(`${GL_API}/projects`, {
       headers: glHeaders(accessToken),
       params: {
@@ -163,10 +131,12 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
         page,
       },
     });
-    
+
     console.log("[gitlab.service] Raw GitLab API response", {
       projectCount: data?.length || 0,
-      firstProject: data?.[0] ? { id: data[0].id, name: data[0].name, path_with_namespace: data[0].path_with_namespace } : null,
+      firstProject: data?.[0]
+        ? { id: data[0].id, name: data[0].name, path_with_namespace: data[0].path_with_namespace }
+        : null,
     });
 
     const repos = data.map((p) => {
@@ -203,14 +173,10 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   }
 }
 
-// ── Repo metadata ─────────────────────────────────────────────
-
-/** Same return shape as github.service.js → getRepoMeta(). */
 export async function getRepoMeta(owner, repo, accessToken) {
-  const { data } = await axios.get(
-    `${GL_API}/projects/${encodePath(owner, repo)}`,
-    { headers: glHeaders(accessToken) },
-  );
+  const { data } = await axios.get(`${GL_API}/projects/${encodePath(owner, repo)}`, {
+    headers: glHeaders(accessToken),
+  });
   return {
     name: data.name,
     description: data.description,
@@ -223,9 +189,6 @@ export async function getRepoMeta(owner, repo, accessToken) {
   };
 }
 
-// ── Commit SHA resolution ─────────────────────────────────────
-
-/** Same signature as github.service.js → getCommitSha(). */
 export async function getCommitSha(owner, repo, branch, accessToken) {
   const { data } = await axios.get(
     `${GL_API}/projects/${encodePath(owner, repo)}/repository/branches/${encodeURIComponent(branch)}`,
@@ -234,26 +197,16 @@ export async function getCommitSha(owner, repo, branch, accessToken) {
   return data.commit.id;
 }
 
-// ── File tree with blob SHAs ──────────────────────────────────
-
-/**
- * Fetch the recursive file tree with per-file blob SHAs.
- * GitLab's tree API paginates : we exhaust all pages.
- * Same return shape as github.service.js → getFileTreeWithSha().
- */
 export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
   const pid = encodePath(owner, repo);
   const all = [];
   let page = 1;
 
   while (true) {
-    const { data, headers: res } = await axios.get(
-      `${GL_API}/projects/${pid}/repository/tree`,
-      {
-        headers: glHeaders(accessToken),
-        params: { ref: branch, recursive: true, per_page: 100, page },
-      },
-    );
+    const { data, headers: res } = await axios.get(`${GL_API}/projects/${pid}/repository/tree`, {
+      headers: glHeaders(accessToken),
+      params: { ref: branch, recursive: true, per_page: 100, page },
+    });
     all.push(...data.filter((i) => i.type === "blob"));
     const total = parseInt(res["x-total-pages"] || "1");
     if (page >= total) break;
@@ -265,28 +218,13 @@ export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
     .map((i) => ({ path: i.path, sha: i.id, size: null }));
 }
 
-/** Same as getFileTreeWithSha but drops SHA : used for full runs. */
 export async function getFileTree(owner, repo, branch, accessToken) {
   const items = await getFileTreeWithSha(owner, repo, branch, accessToken);
   return items.map((i) => ({ path: i.path, size: i.size }));
 }
 
-// ── Compute file diff from stored manifest ────────────────────
-
-/** Same return shape as github.service.js → computeFileDiff(). */
-export async function computeFileDiff(
-  owner,
-  repo,
-  branch,
-  storedManifest,
-  accessToken,
-) {
-  const currentTree = await getFileTreeWithSha(
-    owner,
-    repo,
-    branch,
-    accessToken,
-  );
+export async function computeFileDiff(owner, repo, branch, storedManifest, accessToken) {
+  const currentTree = await getFileTreeWithSha(owner, repo, branch, accessToken);
   const eligible = currentTree.filter((f) => !SKIP_EXT.test(f.path));
 
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
@@ -300,8 +238,7 @@ export async function computeFileDiff(
   for (const [path, cur] of currentMap) {
     const stored = manifestMap.get(path);
     if (!stored) added.push({ path, sha: cur.sha, status: "added" });
-    else if (stored.sha !== cur.sha)
-      modified.push({ path, sha: cur.sha, status: "modified" });
+    else if (stored.sha !== cur.sha) modified.push({ path, sha: cur.sha, status: "modified" });
     else unchanged.push({ path });
   }
   for (const [path] of manifestMap) {
@@ -311,16 +248,7 @@ export async function computeFileDiff(
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
 
-// ── File content ──────────────────────────────────────────────
-
-/** Same signature as github.service.js → getFileContent(). */
-export async function getFileContent(
-  owner,
-  repo,
-  filePath,
-  accessToken,
-  ref = "HEAD",
-) {
+export async function getFileContent(owner, repo, filePath, accessToken, ref = "HEAD") {
   const pid = encodePath(owner, repo);
   try {
     const { data } = await axios.get(
@@ -329,7 +257,7 @@ export async function getFileContent(
         headers: glHeaders(accessToken),
         params: { ref },
         responseType: "text",
-        transformResponse: [(d) => d], // prevent axios auto-JSON-parsing
+        transformResponse: [(d) => d],
       },
     );
     return typeof data === "string" ? data : "";
@@ -339,14 +267,7 @@ export async function getFileContent(
   }
 }
 
-/** Same signature as github.service.js → fetchFileContents(). */
-export async function fetchFileContents(
-  owner,
-  repo,
-  filePaths,
-  onProgress,
-  accessToken,
-) {
+export async function fetchFileContents(owner, repo, filePaths, onProgress, accessToken) {
   const files = [];
   for (const [i, path] of filePaths.entries()) {
     const content = await getFileContent(owner, repo, path, accessToken);
@@ -358,59 +279,33 @@ export async function fetchFileContents(
   return files;
 }
 
-// ── Full repo fetch ───────────────────────────────────────────
-
-/** Same return shape as github.service.js → fetchRepoFiles(). */
 export async function fetchRepoFiles(repoUrl, accessToken) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, repo, accessToken);
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path)),
     MAX_FILES,
   );
 
-  console.log(
-    `📂 Fetching ${eligible.length} files from ${owner}/${repo} (GitLab)…`,
-  );
+  console.log(`📂 Fetching ${eligible.length} files from ${owner}/${repo} (GitLab)…`);
 
   const files = [];
   for (const file of eligible) {
-    const content = await getFileContent(
-      owner,
-      repo,
-      file.path,
-      accessToken,
-      meta.defaultBranch,
-    );
+    const content = await getFileContent(owner, repo, file.path, accessToken, meta.defaultBranch);
     if (content.trim()) files.push({ path: file.path, content });
   }
   return { meta, files, owner, repo };
 }
 
-/** Same as fetchRepoFiles with progress callbacks. */
-export async function fetchRepoFilesWithProgress(
-  repoUrl,
-  onProgress,
-  accessToken,
-) {
+export async function fetchRepoFilesWithProgress(repoUrl, onProgress, accessToken) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   onProgress?.(`Reading repo info for ${owner}/${repo}…`);
 
   const meta = await getRepoMeta(owner, repo, accessToken);
   onProgress?.(`Reading file tree on branch "${meta.defaultBranch}"…`);
 
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path)),
     MAX_FILES,
@@ -419,13 +314,7 @@ export async function fetchRepoFilesWithProgress(
 
   const files = [];
   for (const [i, file] of eligible.entries()) {
-    const content = await getFileContent(
-      owner,
-      repo,
-      file.path,
-      accessToken,
-      meta.defaultBranch,
-    );
+    const content = await getFileContent(owner, repo, file.path, accessToken, meta.defaultBranch);
     if (content.trim()) files.push({ path: file.path, content });
     if ((i + 1) % 20 === 0 || i === eligible.length - 1) {
       onProgress?.(`Downloaded ${i + 1} / ${eligible.length} files…`);
@@ -434,16 +323,7 @@ export async function fetchRepoFilesWithProgress(
   return { meta, files, owner, repo };
 }
 
-// ── Webhook ───────────────────────────────────────────────────
-
-/**
- * Validate a GitLab webhook token.
- * GitLab sends the configured secret as a plain X-Gitlab-Token header : no HMAC.
- * We use constant-time comparison to prevent timing attacks.
- */
 export function validateWebhookToken(incomingToken, expectedSecret) {
-  // Fail closed: if no secret is configured for this project, reject the webhook.
-  // Accepting arbitrary webhooks without a shared secret is a security risk.
   if (!expectedSecret) return false;
   if (!incomingToken) return false;
   const a = Buffer.from(String(incomingToken));
@@ -452,17 +332,7 @@ export function validateWebhookToken(incomingToken, expectedSecret) {
   return crypto.timingSafeEqual(a, b);
 }
 
-/**
- * Register a push webhook on a GitLab project.
- * Called automatically when a user connects their repo.
- */
-export async function registerWebhook(
-  owner,
-  repo,
-  accessToken,
-  webhookUrl,
-  secret,
-) {
+export async function registerWebhook(owner, repo, accessToken, webhookUrl, secret) {
   const { data } = await axios.post(
     `${GL_API}/projects/${encodePath(owner, repo)}/hooks`,
     {
@@ -476,13 +346,11 @@ export async function registerWebhook(
   return { hookId: data.id };
 }
 
-/** Delete a webhook : called on project delete or GitLab disconnect. */
 export async function deleteWebhook(owner, repo, accessToken, hookId) {
   try {
-    await axios.delete(
-      `${GL_API}/projects/${encodePath(owner, repo)}/hooks/${hookId}`,
-      { headers: glHeaders(accessToken) },
-    );
+    await axios.delete(`${GL_API}/projects/${encodePath(owner, repo)}/hooks/${hookId}`, {
+      headers: glHeaders(accessToken),
+    });
   } catch (err) {
     if (err.response?.status !== 404) throw err;
   }

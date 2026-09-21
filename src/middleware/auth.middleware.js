@@ -1,20 +1,8 @@
-// ===================================================================
-// Protect routes by verifying the Bearer access token.
-// Attaches req.user = { userId, email } on success.
-//
-// The verifyAccessToken function reads JWT_ACCESS_SECRET lazily
-// (inside the function), so there is no module-load dotenv race.
-// ===================================================================
-
 import { verifyAccessToken, isTokenDenylisted } from "../utils/jwt.util.js";
 import { fail } from "../utils/response.util.js";
 import { authenticateAPIToken } from "./token-auth.middleware.js";
 import { User } from "../models/User.js";
 
-/**
- * Hard auth guard : 401 if Bearer token is missing, expired, or invalid.
- * Attaches req.user = { userId, email } on success.
- */
 export async function protect(req, res, next) {
   const header = req.headers.authorization || "";
 
@@ -29,9 +17,6 @@ export async function protect(req, res, next) {
 
   const token = header.slice(7).trim();
 
-  // Support Docnine API tokens (`docnine_...`) for MCP/CLI/programmatic calls.
-  // This is necessary because some `/projects/*/mcp/*` endpoints authenticate
-  // using APITokens rather than JWT access tokens.
   if (token.startsWith("docnine_")) {
     return authenticateAPIToken(req, res, next);
   }
@@ -39,7 +24,6 @@ export async function protect(req, res, next) {
   try {
     const payload = verifyAccessToken(token);
 
-    // Check server-side denylist (async : non-blocking on Redis unavailability)
     const revoked = await isTokenDenylisted(token);
     if (revoked) {
       return fail(res, "TOKEN_REVOKED", "Session has been revoked. Run: docnine login", 401);
@@ -53,26 +37,12 @@ export async function protect(req, res, next) {
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
-      return fail(
-        res,
-        "TOKEN_EXPIRED",
-        "Access token has expired. Use POST /auth/refresh.",
-        401,
-      );
+      return fail(res, "TOKEN_EXPIRED", "Access token has expired. Use POST /auth/refresh.", 401);
     }
-    return fail(
-      res,
-      "INVALID_TOKEN",
-      "Access token is invalid or malformed.",
-      401,
-    );
+    return fail(res, "INVALID_TOKEN", "Access token is invalid or malformed.", 401);
   }
 }
 
-/**
- * Soft auth guard : attaches req.user if token is valid, otherwise continues
- * as unauthenticated. Never returns a 401.
- */
 export function optionalAuth(req, res, next) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) return next();
@@ -85,35 +55,19 @@ export function optionalAuth(req, res, next) {
       email: payload.email,
       role: payload.role ?? "user",
     };
-  } catch {
-    // Invalid or expired : treat as anonymous
-  }
+  } catch {}
   next();
 }
 
-/**
- * Role guard : must be used after `protect`.
- * @param {...string} roles : allowed roles (e.g. 'super-admin')
- */
 export function requireRole(...roles) {
   return async (req, res, next) => {
     try {
       if (!req.user?.userId) {
-        return fail(
-          res,
-          "FORBIDDEN",
-          "You do not have permission to access this resource.",
-          403,
-        );
+        return fail(res, "FORBIDDEN", "You do not have permission to access this resource.", 403);
       }
       const user = await User.findById(req.user.userId).select("role").lean();
       if (!user || !roles.includes(user.role)) {
-        return fail(
-          res,
-          "FORBIDDEN",
-          "You do not have permission to access this resource.",
-          403,
-        );
+        return fail(res, "FORBIDDEN", "You do not have permission to access this resource.", 403);
       }
       req.user.role = user.role;
       next();

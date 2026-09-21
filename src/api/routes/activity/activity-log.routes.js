@@ -9,10 +9,7 @@ const router = Router();
 
 router.use(protect);
 
-// GET /activity-logs
 router.get("/", listActivityLogs);
-
-// GET /activity-logs/project/:projectId
 router.get("/project/:projectId", listProjectActivityLogs);
 
 export default router;

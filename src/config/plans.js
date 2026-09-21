@@ -1,63 +1,20 @@
-// ===================================================================
-// Plans : single source of truth for every pricing tier.
-//
-// NEVER store pricing logic in the database. The DB stores which plan
-// a subscription is on (id string). This file owns all rules.
-//
-// Prices are in USD cents (amounts) so proration math stays integer-safe.
-// For display, divide by 100.
-//
-// Tier hierarchy (for gate comparisons):
-//   free < starter < pro < team
-// ===================================================================
-
-/**
- * @typedef {Object} PlanLimits
- * @property {number|null} projects         - max projects (null = unlimited)
- * @property {number|null} seats            - max seats (null = unlimited)
- * @property {number|null} extraSeatPriceMonthly - cents per extra seat/mo (null = N/A)
- * @property {number|null} attachmentsPerProject - null = unlimited
- * @property {number}      maxFileSizeMb    - max upload per file
- * @property {number|null} aiChatsPerMonth  - null = unlimited, 0 = none
- * @property {number|null} portals          - public doc portals (null = unlimited)
- * @property {number|null} versionHistoryDays - null = full history, 0 = none
- * @property {string[]}    exportFormats    - e.g. ['pdf', 'google_docs', 'notion']
- */
-
-/**
- * @typedef {Object} PlanFeatures
- * @property {boolean} shareViewOnly  - project sharing (view-only)
- * @property {boolean} shareEdit      - project sharing with edit role
- * @property {number}  maxShares      - max active share links (0 = none)
- * @property {boolean} archiveRestore
- * @property {boolean} customDomain
- * @property {boolean} docApproval
- * @property {boolean} progressTracker
- * @property {boolean} openApiImporter
- * @property {boolean} apiWebhookAccess
- * @property {boolean} githubSync
- */
-
 export const PLAN_IDS = ["free", "starter", "pro", "team"];
 
-// Hierarchy level : higher = more powerful
 export const PLAN_LEVEL = { free: 0, starter: 1, pro: 2, team: 3 };
-export const TRIAL_DAYS = 7; // trial length for new users (who have never had a subscription before)
-export const DUNNING_MAX_DAYS = 10; // after this, consider subscription lost and stop retrying
-export const DUNNING_RETRY_DAYS = [0, 3, 7]; // retry on day 0, 3, 7
-export const DUNNING_EMAIL_DAYS = [1, 5, 10]; // email on day 1, 5, 10
+export const TRIAL_DAYS = 7;
+export const DUNNING_MAX_DAYS = 10;
+export const DUNNING_RETRY_DAYS = [0, 3, 7];
+export const DUNNING_EMAIL_DAYS = [1, 5, 10];
 
-// ── Billing plans ───────────────────────────────────
 export const PLANS = {
-  // ── Free ──────────────────────────────────────────────────────
   free: {
     id: "free",
     name: "Free",
     tagline: "Solo devs exploring the platform",
     prices: {
-      monthly: 0, // $0.00
-      annual: 0, // $0.00/mo billed annually
-      annualTotal: 0, // $0.00/yr
+      monthly: 0,
+      annual: 0,
+      annualTotal: 0,
       annualSavingsPct: 0,
     },
     limits: {
@@ -85,24 +42,21 @@ export const PLANS = {
     },
   },
 
-  // ── Starter ───────────────────────────────────────────────────
-  // Monthly:  $6.00/mo
-  // Annual:   $4.86/mo → $58.32/yr  (Save 19%)
   starter: {
     id: "starter",
     name: "Starter",
     tagline: "Freelancers & solo developers",
     prices: {
-      monthly: 600, // $6.00/mo
-      annual: 486, // $4.86/mo billed annually
-      annualTotal: 5832, // $58.32/yr
+      monthly: 600,
+      annual: 486,
+      annualTotal: 5832,
       annualSavingsPct: 19,
     },
     limits: {
-      projects: null, // unlimited
+      projects: null,
       seats: 1,
       extraSeatPriceMonthly: null,
-      attachmentsPerProject: null, // unlimited
+      attachmentsPerProject: null,
       maxFileSizeMb: 20,
       aiChatsPerMonth: 0,
       portals: 1,
@@ -123,34 +77,31 @@ export const PLANS = {
     },
   },
 
-  // ── Pro ───────────────────────────────────────────────────────
-  // Monthly:  $10.00/mo
-  // Annual:   $7.60/mo → $91.20/yr  (Save 24%)
   pro: {
     id: "pro",
     name: "Pro",
     tagline: "Small teams up to 5 seats",
     prices: {
-      monthly: 1000, // $10.00/mo
-      annual: 760, // $7.60/mo billed annually
-      annualTotal: 9120, // $91.20/yr
+      monthly: 1000,
+      annual: 760,
+      annualTotal: 9120,
       annualSavingsPct: 24,
     },
     limits: {
       projects: null,
       seats: 5,
-      extraSeatPriceMonthly: 700, // $7.00 per extra seat
+      extraSeatPriceMonthly: 700,
       attachmentsPerProject: null,
       maxFileSizeMb: 50,
       aiChatsPerMonth: 50,
-      portals: null, // unlimited
-      versionHistoryDays: null, // full
+      portals: null,
+      versionHistoryDays: null,
       exportFormats: ["pdf", "google_docs"],
     },
     features: {
       shareViewOnly: true,
       shareEdit: true,
-      maxShares: null, // unlimited
+      maxShares: null,
       archiveRestore: true,
       customDomain: true,
       docApproval: true,
@@ -161,27 +112,23 @@ export const PLANS = {
     },
   },
 
-  // ── Team ──────────────────────────────────────────────────────
-  // Monthly:  $12.00/user/mo
-  // Annual:   $10.20/user/mo → $122.40/user/yr  (Save 15%)
-  // annualTotal is computed at runtime: 1020 * 12 * seats
   team: {
     id: "team",
     name: "Team",
     tagline: "Mid-size companies (6+ users)",
     prices: {
-      monthly: 1200, // $12.00/user/mo
-      annual: 1020, // $10.20/user/mo billed annually
-      annualTotal: null, // computed: 1020 * 12 * seats = $122.40/user/yr
+      monthly: 1200,
+      annual: 1020,
+      annualTotal: null,
       annualSavingsPct: 15,
     },
     limits: {
       projects: null,
-      seats: null, // unlimited
-      extraSeatPriceMonthly: 1200, // $12.00/mo per extra seat (monthly plan)
+      seats: null,
+      extraSeatPriceMonthly: 1200,
       attachmentsPerProject: null,
       maxFileSizeMb: 100,
-      aiChatsPerMonth: null, // unlimited
+      aiChatsPerMonth: null,
       portals: null,
       versionHistoryDays: null,
       exportFormats: ["pdf", "google_docs", "notion"],
@@ -201,14 +148,6 @@ export const PLANS = {
   },
 };
 
-// ── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Compute the monthly price (cents) for a given plan, cycle, and seat count.
- * @param {string}  planId
- * @param {'monthly'|'annual'} cycle
- * @param {number}  seats   - only meaningful for 'team' plan
- */
 export function computeMonthlyPrice(planId, cycle, seats = 1) {
   const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: ${planId}`);
@@ -217,11 +156,6 @@ export function computeMonthlyPrice(planId, cycle, seats = 1) {
   return perUnit;
 }
 
-/**
- * Compute the amount to charge NOW for an annual subscription.
- * @param {string} planId
- * @param {number} seats   - for team plan
- */
 export function computeAnnualTotal(planId, seats = 1) {
   const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: ${planId}`);
@@ -229,42 +163,25 @@ export function computeAnnualTotal(planId, seats = 1) {
   return plan.prices.annualTotal;
 }
 
-/**
- * Plan id that gates should use for this subscription.
- * Paused and lapsed accounts are treated as free.
- */
 export function effectivePlanId(sub) {
   if (!sub) return "free";
   if (sub.status === "paused") return "free";
-  if (
-    sub.status === "trialing" ||
-    sub.status === "active" ||
-    sub.status === "past_due"
-  ) {
+  if (sub.status === "trialing" || sub.status === "active" || sub.status === "past_due") {
     return sub.plan || "free";
   }
   return "free";
 }
 
-/**
- * Get the plan config object. Throws if not found.
- */
 export function getPlan(planId) {
   const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: "${planId}"`);
   return plan;
 }
 
-/**
- * Return true if targetPlan is higher than currentPlan.
- */
 export function isUpgrade(currentPlanId, targetPlanId) {
   return (PLAN_LEVEL[targetPlanId] ?? 0) > (PLAN_LEVEL[currentPlanId] ?? 0);
 }
 
-/**
- * Return true if targetPlan is lower than currentPlan.
- */
 export function isDowngrade(currentPlanId, targetPlanId) {
   return (PLAN_LEVEL[targetPlanId] ?? 0) < (PLAN_LEVEL[currentPlanId] ?? 0);
 }

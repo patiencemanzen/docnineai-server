@@ -1,17 +1,3 @@
-// ===================================================================
-// Plan gate middleware : enforces feature access based on subscription.
-//
-// Usage in routes:
-//   router.post('/projects', gate.requirePlan('starter'), ...)
-//   router.post('/projects', gate.checkProjectLimit, ...)
-//   router.post('/export/pdf', gate.requireFeature('exportFormats', 'pdf'), ...)
-//
-// Behaviour:
-//   • Fetches the user's subscription on each gated request.
-//   • Caches subscription in req.subscription to avoid repeated DB calls.
-//   • Returns 403 PLAN_GATE with which plan unlocks the feature.
-// ===================================================================
-
 import { Subscription } from "../models/Subscription.js";
 import { PlanUsage } from "../models/PlanUsage.js";
 import { getPlan, PLAN_LEVEL, PLANS, effectivePlanId } from "../config/plans.js";
@@ -19,13 +5,10 @@ import { fail } from "../utils/response.util.js";
 import { Project } from "../models/Project.js";
 import { Portal } from "../models/Portal.js";
 
-// ── Internal: load subscription (cached per request) ─────────────
-
 async function loadSubscription(req) {
   if (req.subscription) return req.subscription;
   const sub = await Subscription.findOne({ userId: req.user.userId }).lean();
   if (!sub) {
-    // Default to free if no record yet
     req.subscription = { plan: "free", status: "free", seats: 1 };
     return req.subscription;
   }
@@ -37,12 +20,6 @@ function effectivePlan(sub) {
   return effectivePlanId(sub);
 }
 
-// ── Middleware factories ───────────────────────────────────────────
-
-/**
- * Require a minimum plan to access the route.
- * @param {'starter'|'pro'|'team'} minPlan
- */
 export function requirePlan(minPlan) {
   return async (req, res, next) => {
     try {
@@ -62,10 +39,6 @@ export function requirePlan(minPlan) {
   };
 }
 
-/**
- * Gate based on a boolean feature flag in plan.features.
- * @param {string} featureKey  - key in plan.features
- */
 export function requireFeature(featureKey) {
   return async (req, res, next) => {
     try {
@@ -74,33 +47,17 @@ export function requireFeature(featureKey) {
       const planConfig = getPlan(plan);
       if (planConfig.features[featureKey]) return next();
 
-      // Find the lowest plan that has this feature
       const requiredPlan = findMinPlanForFeature(featureKey);
-      return fail(
-        res,
-        "PLAN_GATE",
-        `This feature is not available on your current plan.`,
-        403,
-        { requiredPlan, featureKey },
-      );
+      return fail(res, "PLAN_GATE", `This feature is not available on your current plan.`, 403, {
+        requiredPlan,
+        featureKey,
+      });
     } catch (err) {
       next(err);
     }
   };
 }
 
-/**
- * Check project creation limit.
- *
- * Uses an atomic findOneAndUpdate to both CHECK and RESERVE a project slot in
- * a single round-trip, eliminating the TOCTOU race where concurrent requests
- * could all pass a countDocuments check before any project was saved.
- *
- * On success, sets req._projectSlotReserved = true so the downstream controller
- * knows NOT to call PlanUsage.increment({ projectCount: 1 }) again.
- * The controller MUST call PlanUsage.increment({ projectCount: -1 }) if project
- * creation subsequently fails so the reserved slot is released.
- */
 export async function checkProjectLimit(req, res, next) {
   try {
     const sub = await loadSubscription(req);
@@ -108,9 +65,8 @@ export async function checkProjectLimit(req, res, next) {
     const planConfig = getPlan(plan);
     const maxProjects = planConfig.limits.projects;
 
-    if (maxProjects === null) return next(); // unlimited
+    if (maxProjects === null) return next();
 
-    // Plan explicitly forbids any projects.
     if (maxProjects === 0) {
       return fail(
         res,
@@ -121,14 +77,6 @@ export async function checkProjectLimit(req, res, next) {
       );
     }
 
-    // Atomically check the current count AND reserve a slot in one operation:
-    //   • New user (no PlanUsage doc yet): upsert creates it with projectCount=1. ✓
-    //   • Existing user under limit: increments projectCount, returns updated doc. ✓
-    //   • At or over limit (projectCount >= maxProjects): filter doesn't match;
-    //     unique-key constraint suppresses the upsert → returns null → 403. ✓
-    //
-    // Two concurrent upserts for the same brand-new user produce an E11000 on the
-    // second one. We retry without upsert in that case : the doc now exists.
     let reserved = null;
     try {
       reserved = await PlanUsage.findOneAndUpdate(
@@ -138,7 +86,7 @@ export async function checkProjectLimit(req, res, next) {
       );
     } catch (upsertErr) {
       if (upsertErr.code !== 11000) throw upsertErr;
-      // Duplicate-key: a concurrent request created the doc first. Retry as plain update.
+
       reserved = await PlanUsage.findOneAndUpdate(
         { userId: req.user.userId, projectCount: { $lt: maxProjects } },
         { $inc: { projectCount: 1 } },
@@ -156,8 +104,6 @@ export async function checkProjectLimit(req, res, next) {
       );
     }
 
-    // Slot reserved atomically. Controller must NOT increment again on success,
-    // and MUST decrement if project creation fails.
     req._projectSlotReserved = true;
     return next();
   } catch (err) {
@@ -165,14 +111,6 @@ export async function checkProjectLimit(req, res, next) {
   }
 }
 
-/**
- * Check portal publish limit.
- * Free plan = 0 portals (cannot publish).
- * Starter = 1 published portal at a time.
- * Pro/Team = unlimited.
- *
- * Unpublishing is always allowed regardless of plan.
- */
 export async function checkPortalPublishLimit(req, res, next) {
   try {
     const sub = await loadSubscription(req);
@@ -180,15 +118,13 @@ export async function checkPortalPublishLimit(req, res, next) {
     const planConfig = getPlan(plan);
     const maxPortals = planConfig.limits.portals;
 
-    if (maxPortals === null) return next(); // unlimited
+    if (maxPortals === null) return next();
 
-    // If the portal is already published the user wants to unpublish → always allow
     const currentPortal = await Portal.findOne({ projectId: req.params.id })
       .select("isPublished")
       .lean();
     if (currentPortal?.isPublished) return next();
 
-    // User wants to publish : enforce limit
     if (maxPortals === 0) {
       return fail(
         res,
@@ -199,10 +135,7 @@ export async function checkPortalPublishLimit(req, res, next) {
       );
     }
 
-    // Count published portals across all projects owned by this user
-    const userProjectIds = await Project.find({ userId: req.user.userId })
-      .select("_id")
-      .lean();
+    const userProjectIds = await Project.find({ userId: req.user.userId }).select("_id").lean();
     const projectIds = userProjectIds.map((p) => p._id);
     const publishedCount = await Portal.countDocuments({
       projectId: { $in: projectIds },
@@ -223,10 +156,6 @@ export async function checkPortalPublishLimit(req, res, next) {
   }
 }
 
-/**
- * Check file upload size limit.
- * @param {number} fileSizeBytes
- */
 export function checkFileSizeLimit(fileSizeBytes) {
   return async (req, res, next) => {
     try {
@@ -235,8 +164,7 @@ export function checkFileSizeLimit(fileSizeBytes) {
       const maxMb = getPlan(plan).limits.maxFileSizeMb;
       const maxBytes = maxMb * 1024 * 1024;
 
-      const size =
-        fileSizeBytes || req.headers["content-length"] || req.file?.size || 0;
+      const size = fileSizeBytes || req.headers["content-length"] || req.file?.size || 0;
 
       if (size <= maxBytes) return next();
 
@@ -253,25 +181,12 @@ export function checkFileSizeLimit(fileSizeBytes) {
   };
 }
 
-/**
- * Gate the OpenAPI / Swagger importer to Pro+.
- */
 export const requireApiImporter = requireFeature("openApiImporter");
 
-/**
- * Gate GitHub sync to Pro+.
- */
 export const requireGithubSync = requireFeature("githubSync");
 
-/**
- * Gate custom domain to Pro+.
- */
 export const requireCustomDomain = requireFeature("customDomain");
 
-/**
- * Gate export format.
- * @param {'pdf'|'google_docs'|'notion'} format
- */
 export function requireExportFormat(format) {
   return async (req, res, next) => {
     try {
@@ -294,9 +209,6 @@ export function requireExportFormat(format) {
   };
 }
 
-/**
- * Gate AI chat : check per-month quota.
- */
 export async function checkAiChatLimit(req, res, next) {
   try {
     const sub = await loadSubscription(req);
@@ -304,7 +216,7 @@ export async function checkAiChatLimit(req, res, next) {
     const planConfig = getPlan(plan);
     const limit = planConfig.limits.aiChatsPerMonth;
 
-    if (limit === null) return next(); // unlimited
+    if (limit === null) return next();
     if (limit === 0) {
       return fail(
         res,
@@ -319,7 +231,6 @@ export async function checkAiChatLimit(req, res, next) {
     const used = usage?.aiChatsUsed ?? 0;
 
     if (used < limit) {
-      // Increment will happen in the chat handler after successful response
       req.aiChatAllowed = true;
       return next();
     }
@@ -336,9 +247,6 @@ export async function checkAiChatLimit(req, res, next) {
   }
 }
 
-/**
- * Gate portal creation : check portal limit.
- */
 export async function checkPortalLimit(req, res, next) {
   try {
     const sub = await loadSubscription(req);
@@ -346,7 +254,7 @@ export async function checkPortalLimit(req, res, next) {
     const planConfig = getPlan(plan);
     const limit = planConfig.limits.portals;
 
-    if (limit === null) return next(); // unlimited
+    if (limit === null) return next();
     if (limit === 0) {
       return fail(
         res,
@@ -373,8 +281,6 @@ export async function checkPortalLimit(req, res, next) {
     next(err);
   }
 }
-
-// ── Helpers ──────────────────────────────────────────────────────
 
 function findMinPlanForFeature(featureKey) {
   for (const planId of ["free", "starter", "pro", "team"]) {

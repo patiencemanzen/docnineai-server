@@ -43,8 +43,11 @@ export async function initCliSession({ userAgent, ipAddress, frontendBaseUrl }) 
     ipAddress: ipAddress || null,
   });
 
-  const baseUrl = (frontendBaseUrl || process.env.CLI_AUTH_FRONTEND_URL || "https://docnineai.com")
-    .replace(/\/$/, "");
+  const baseUrl = (
+    frontendBaseUrl ||
+    process.env.CLI_AUTH_FRONTEND_URL ||
+    "https://docnineai.com"
+  ).replace(/\/$/, "");
 
   return {
     sessionId,
@@ -79,8 +82,6 @@ export async function pollCliSession(sessionId) {
 
   const plan = await getUserPlan(session.userId);
 
-  // Capture token before clearing it : one-time retrieval prevents any future
-  // poll (even with the correct sessionId) from re-fetching the token.
   const token = session.cliToken;
   session.status = "expired";
   session.cliToken = null;

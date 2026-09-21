@@ -1,7 +1,3 @@
-// =============================================================
-// GitLab OAuth Controller
-// =============================================================
-
 import * as gitlabOAuthService from "../../services/gitlab/gitlab-oauth.service.js";
 import * as gitlabService from "../../../services/gitlab.service.js";
 import { User } from "../../../models/User.js";
@@ -68,23 +64,17 @@ function isExpiredTokenError(err) {
 
 export async function listRepos(req, res) {
   try {
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
     const user = await User.findById(req.user.userId).select("+gitlabTokenEncrypted");
     if (!user || !user.gitlabTokenEncrypted) {
-      console.log("[gitlab.controller] No GitLab token found for user", { 
-        userId: req.user.userId 
+      console.log("[gitlab.controller] No GitLab token found for user", {
+        userId: req.user.userId,
       });
       return ok(res, { repos: [], hasNextPage: false });
     }
 
-    let token = gitlabOAuthService.decryptProvidersToken(
-      user.gitlabTokenEncrypted,
-    );
+    let token = gitlabOAuthService.decryptProvidersToken(user.gitlabTokenEncrypted);
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const perPage = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.perPage || "30", 10)),
-    );
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage || "30", 10)));
 
     console.log("[gitlab.controller] Fetching repos from GitLab service", {
       page,
@@ -108,7 +98,7 @@ export async function listRepos(req, res) {
       }
       result = await gitlabService.listUserRepos(token, page, perPage);
     }
-    
+
     console.log("[gitlab.controller] Successfully fetched GitLab repos", {
       count: result.length,
       hasNextPage: result.length === perPage,
@@ -150,7 +140,7 @@ export async function connectionStatus(req, res) {
     });
 
     const hasConnection = !!user.gitlabTokenEncrypted;
-    
+
     if (!hasConnection) {
       console.warn("[GitLab Status] No token found for user", {
         userId: user._id,

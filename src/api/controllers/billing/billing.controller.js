@@ -1,10 +1,3 @@
-// ===================================================================
-// Billing controller : handles all billing-related HTTP requests.
-//
-// Every handler returns using ok() / fail() / serverError() for
-// consistency with the rest of the API.
-// ===================================================================
-
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { PLANS, getPlan } from "../../../config/plans.js";
 import {
@@ -32,27 +25,20 @@ import {
   buildPaymentMethodSnapshot,
   extractChargeToken,
 } from "../../../services/flutterwave.service.js";
-import {
-  upsertPaymentMethod,
-  activateFromPayment,
-} from "../../../services/billing.service.js";
+import { upsertPaymentMethod, activateFromPayment } from "../../../services/billing.service.js";
 
-// ── GET /billing/plans ────────────────────────────────────────────
 export async function getPlans(req, res) {
   try {
-    // Sanitise: remove internal pricing details, expose only what the UI needs
     const plans = Object.values(PLANS).map((p) => ({
       id: p.id,
       name: p.name,
       tagline: p.tagline,
       prices: {
-        monthly: p.prices.monthly / 100, // in dollars
+        monthly: p.prices.monthly / 100,
         annual: p.prices.annual / 100,
         annualTotal: p.prices.annualTotal ? p.prices.annualTotal / 100 : null,
         savingsPercent:
-          p.prices.monthly > 0
-            ? Math.round((1 - p.prices.annual / p.prices.monthly) * 100)
-            : 0,
+          p.prices.monthly > 0 ? Math.round((1 - p.prices.annual / p.prices.monthly) * 100) : 0,
       },
       limits: p.limits,
       features: p.features,
@@ -63,7 +49,6 @@ export async function getPlans(req, res) {
   }
 }
 
-// ── GET /billing/subscription ─────────────────────────────────────
 export async function getSubscription(req, res) {
   try {
     const sub = await getOrCreateSubscription(req.user.userId);
@@ -92,7 +77,7 @@ export async function getSubscription(req, res) {
       usage: {
         aiChatsUsed: usage?.aiChatsUsed ?? 0,
         aiChatsResetAt: usage?.aiChatsResetAt ?? null,
-        // Count real (non-archived) projects for accuracy
+
         projectCount: await Project.countDocuments({
           userId: sub.userId,
           status: { $ne: "archived" },
@@ -106,17 +91,10 @@ export async function getSubscription(req, res) {
   }
 }
 
-// ── GET /billing/team-seats ──────────────────────────────────────
-/**
- * Get Team plan seat breakdown for UI display.
- * Shows: owner (1) + collaborators (count) + monthly rate.
- * Only available for Team plan subscribers.
- */
 export async function getTeamSeatsDetails(req, res) {
   try {
     const sub = await getOrCreateSubscription(req.user.userId);
 
-    // Only Team plan subscribers can access this
     if (sub.plan !== "team") {
       return fail(
         res,
@@ -126,16 +104,11 @@ export async function getTeamSeatsDetails(req, res) {
       );
     }
 
-    // Count actual billable seats (owner + accepted collaborators)
     const currentSeats = await countTeamBillableSeats(req.user.userId);
 
-    // Get all projects owned by this user
-    const projects = await Project.find({ userId: req.user.userId })
-      .select("_id")
-      .lean();
+    const projects = await Project.find({ userId: req.user.userId }).select("_id").lean();
     const projectIds = projects.map((p) => p._id);
 
-    // Get all accepted shares with collaborator details
     const shares = await ProjectShare.find(
       { projectId: { $in: projectIds }, status: "accepted" },
       "projectId inviteeUserId inviteeEmail role",
@@ -143,7 +116,6 @@ export async function getTeamSeatsDetails(req, res) {
       .populate("inviteeUserId", "name email")
       .lean();
 
-    // Group by unique user to avoid double-counting (user may have access to multiple projects)
     const uniqueCollaborators = {};
     for (const share of shares) {
       const userId = share.inviteeUserId?._id?.toString();
@@ -163,11 +135,9 @@ export async function getTeamSeatsDetails(req, res) {
 
     const collaboratorList = Object.values(uniqueCollaborators);
 
-    // Calculate monthly costs (exact decimal, no rounding)
-    const TEAM_RATE_PER_USER = 12.0; // $12/user/mo
+    const TEAM_RATE_PER_USER = 12.0;
     const monthlyRate = currentSeats * TEAM_RATE_PER_USER;
 
-    // If mid-cycle, calculate prorated amount for this period
     const daysRemaining = Math.max(
       0,
       Math.ceil((sub.currentPeriodEnd - new Date()) / (1000 * 60 * 60 * 24)),
@@ -177,8 +147,7 @@ export async function getTeamSeatsDetails(req, res) {
     );
     const proratedDaily =
       daysRemaining > 0
-        ? Math.round((monthlyRate * 100 * daysRemaining) / totalDaysInCycle) /
-          100
+        ? Math.round((monthlyRate * 100 * daysRemaining) / totalDaysInCycle) / 100
         : 0;
 
     return ok(
@@ -194,18 +163,15 @@ export async function getTeamSeatsDetails(req, res) {
           collaborators: collaboratorList,
           totalSeats: currentSeats,
 
-          // Billing info
           billingCycle: sub.billingCycle || "monthly",
           monthlyRate: monthlyRate.toFixed(2),
           ratePerUser: TEAM_RATE_PER_USER.toFixed(2),
 
-          // Current billing period
           periodStart: sub.currentPeriodStart,
           periodEnd: sub.currentPeriodEnd,
           daysRemaining,
           proratedDaily: proratedDaily.toFixed(2),
 
-          // Breakdown
           seatBreakdown: {
             owner: 1,
             collaborators: collaboratorList.length,
@@ -220,7 +186,6 @@ export async function getTeamSeatsDetails(req, res) {
   }
 }
 
-// ── POST /billing/checkout ────────────────────────────────────────
 export async function checkout(req, res) {
   try {
     const { planId, cycle, seats = 1 } = req.body;
@@ -229,15 +194,9 @@ export async function checkout(req, res) {
       return fail(res, "INVALID_PLAN", "Invalid plan selected", 400);
     }
     if (!["monthly", "annual"].includes(cycle)) {
-      return fail(
-        res,
-        "INVALID_CYCLE",
-        "Billing cycle must be monthly or annual",
-        400,
-      );
+      return fail(res, "INVALID_CYCLE", "Billing cycle must be monthly or annual", 400);
     }
 
-    // preferTrial is a hint. Eligibility (one trial per user) is decided server-side.
     const preferTrial = req.body.startTrial !== false;
 
     const result = await initiateCheckout({
@@ -248,19 +207,12 @@ export async function checkout(req, res) {
       preferTrial,
     });
 
-    return ok(
-      res,
-      result,
-      result.type === "trial" ? "Trial started" : "Checkout initiated",
-      200,
-    );
+    return ok(res, result, result.type === "trial" ? "Trial started" : "Checkout initiated", 200);
   } catch (err) {
     return serverError(res, err, "checkout");
   }
 }
 
-// ── POST /billing/verify-payment ──────────────────────────────────
-// Called from the FW redirect URL after payment completes.
 export async function verifyPayment(req, res) {
   try {
     const { txRef, transactionId } = req.body;
@@ -276,12 +228,7 @@ export async function verifyPayment(req, res) {
     }
 
     if (fwTx?.status !== "successful") {
-      return fail(
-        res,
-        "PAYMENT_UNSUCCESSFUL",
-        "Payment was not successful",
-        402,
-      );
+      return fail(res, "PAYMENT_UNSUCCESSFUL", "Payment was not successful", 402);
     }
 
     const owned = await Invoice.findOne({
@@ -301,7 +248,6 @@ export async function verifyPayment(req, res) {
   }
 }
 
-// ── POST /billing/change-plan ─────────────────────────────────────
 export async function changePlanHandler(req, res) {
   try {
     const { planId, cycle, seats = 1 } = req.body;
@@ -323,16 +269,11 @@ export async function changePlanHandler(req, res) {
   }
 }
 
-// ── POST /billing/cancel ──────────────────────────────────────────
 export async function cancelHandler(req, res) {
   try {
     const { reason } = req.body;
     const result = await cancelSubscription(req.user.userId, reason);
-    return ok(
-      res,
-      result,
-      "Subscription cancelled. Access continues until period end.",
-    );
+    return ok(res, result, "Subscription cancelled. Access continues until period end.");
   } catch (err) {
     if (err.message === "No active subscription to cancel") {
       return fail(res, "NO_ACTIVE_SUBSCRIPTION", err.message, 400);
@@ -341,7 +282,6 @@ export async function cancelHandler(req, res) {
   }
 }
 
-// ── POST /billing/pause ───────────────────────────────────────────
 export async function pauseHandler(req, res) {
   try {
     const { months = 1 } = req.body;
@@ -355,18 +295,11 @@ export async function pauseHandler(req, res) {
   }
 }
 
-// ── POST /billing/seats ───────────────────────────────────────────
 export async function addSeatsHandler(req, res) {
   try {
     const { seats } = req.body;
     const n = parseInt(seats, 10);
-    if (!n || n < 1)
-      return fail(
-        res,
-        "INVALID_SEATS",
-        "seats must be a positive integer",
-        400,
-      );
+    if (!n || n < 1) return fail(res, "INVALID_SEATS", "seats must be a positive integer", 400);
     const result = await addSeats(req.user.userId, n);
     return ok(res, result, "Seats added");
   } catch (err) {
@@ -374,10 +307,8 @@ export async function addSeatsHandler(req, res) {
   }
 }
 
-// ── GET /billing/payment-methods ──────────────────────────────────
 export async function getPaymentMethods(req, res) {
   try {
-    // Do NOT use .lean() : we need Mongoose virtuals (displayLabel) serialized.
     const methods = await PaymentMethod.find({
       userId: req.user.userId,
       deletedAt: null,
@@ -388,7 +319,6 @@ export async function getPaymentMethods(req, res) {
   }
 }
 
-// ── DELETE /billing/payment-methods/:id ───────────────────────────
 export async function deletePaymentMethod(req, res) {
   try {
     const pm = await PaymentMethod.findOne({
@@ -406,10 +336,8 @@ export async function deletePaymentMethod(req, res) {
   }
 }
 
-// ── PATCH /billing/payment-methods/:id/default ────────────────────
 export async function setDefaultPaymentMethod(req, res) {
   try {
-    // Clear all defaults for this user, then set the selected one
     await PaymentMethod.updateMany(
       { userId: req.user.userId, deletedAt: null },
       { $set: { isDefault: false } },
@@ -426,7 +354,6 @@ export async function setDefaultPaymentMethod(req, res) {
   }
 }
 
-// ── GET /billing/history ──────────────────────────────────────────
 export async function getBillingHistoryHandler(req, res) {
   try {
     const page = parseInt(req.query.page, 10) || 1;
@@ -438,25 +365,18 @@ export async function getBillingHistoryHandler(req, res) {
   }
 }
 
-// ── GET /billing/invoices/:id/pdf ─────────────────────────────────
 export async function downloadInvoicePdf(req, res) {
   try {
     const pdfBuffer = await generateInvoicePdf(req.params.id, req.user.userId);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="invoice-${req.params.id}.pdf"`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="invoice-${req.params.id}.pdf"`);
     return res.end(pdfBuffer);
   } catch (err) {
-    if (err.status === 404)
-      return fail(res, "NOT_FOUND", "Invoice not found", 404);
+    if (err.status === 404) return fail(res, "NOT_FOUND", "Invoice not found", 404);
     return serverError(res, err, "downloadInvoicePdf");
   }
 }
 
-// ── PATCH /billing/invoice/:id/details ───────────────────────────
-// Allow users to set company name / VAT on their invoice (for expense reports)
 export async function updateInvoiceDetails(req, res) {
   try {
     const { companyName, vatNumber } = req.body;

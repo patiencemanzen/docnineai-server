@@ -1,7 +1,3 @@
-// =============================================================
-// Azure DevOps OAuth Controller
-// =============================================================
-
 import * as azureOAuthService from "../../services/azure/azure-oauth.service.js";
 import * as azureService from "../../../services/azure-devops.service.js";
 import { User } from "../../../models/User.js";
@@ -11,11 +7,7 @@ import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 export async function oauthStart(req, res) {
   try {
     const url = azureOAuthService.buildOAuthUrl(req.user.userId);
-    return ok(
-      res,
-      { url },
-      "Redirect to this URL to authorise Azure DevOps access.",
-    );
+    return ok(res, { url }, "Redirect to this URL to authorise Azure DevOps access.");
   } catch (err) {
     if (err.message?.includes("AZURE")) {
       return fail(res, "AZURE_NOT_CONFIGURED", err.message, 503);
@@ -65,20 +57,14 @@ export async function oauthCallback(req, res) {
 export async function listRepos(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const perPage = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.perPage || "30", 10)),
-    );
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage || "30", 10)));
     console.log("[Azure.controller] Fetching repos from service", {
       userId: req.user.userId,
       page,
       perPage,
     });
 
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
-    const user = await User.findById(req.user.userId).select(
-      "+azureDevOpsTokenEncrypted",
-    );
+    const user = await User.findById(req.user.userId).select("+azureDevOpsTokenEncrypted");
 
     if (!user || !user.azureDevOpsTokenEncrypted) {
       console.warn("[Azure.controller] No Azure DevOps token found for user", {
@@ -89,9 +75,7 @@ export async function listRepos(req, res) {
       return ok(res, { repos: [], hasNextPage: false });
     }
 
-    const token = await azureOAuthService.decryptProvidersToken(
-      user.azureDevOpsTokenEncrypted,
-    );
+    const token = await azureOAuthService.decryptProvidersToken(user.azureDevOpsTokenEncrypted);
 
     const result = await azureService.listUserRepos(token, page, perPage);
     console.log("[Azure.controller] Successfully fetched repos", {
@@ -129,9 +113,7 @@ export async function connectionStatus(req, res) {
       userId: req.user.userId,
     });
 
-    const user = await User.findById(req.user.userId).select(
-      "+azureDevOpsTokenEncrypted",
-    );
+    const user = await User.findById(req.user.userId).select("+azureDevOpsTokenEncrypted");
     if (!user) {
       console.error("[Azure Status] User not found", {
         userId: req.user.userId,

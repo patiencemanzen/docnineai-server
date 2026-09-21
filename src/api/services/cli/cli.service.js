@@ -114,22 +114,25 @@ async function runFullCliPipeline({ files, project, agentsOnly = [] }) {
 
   const routeFiles = roleCount(structure, ["route", "controller", "entry"]);
   const schemaFiles = roleCount(structure, ["model", "schema", "migration", "entity"]);
-  const componentFiles = roleCount(
-    structure,
-    ["service", "middleware", "utility", "helper", "hook", "component", "store", "config", "guard", "provider"],
-  );
+  const componentFiles = roleCount(structure, [
+    "service",
+    "middleware",
+    "utility",
+    "helper",
+    "hook",
+    "component",
+    "store",
+    "config",
+    "guard",
+    "provider",
+  ]);
 
   const wantsSecurityOnly =
     Array.isArray(agentsOnly) &&
     agentsOnly.length === 1 &&
     String(agentsOnly[0]).toLowerCase() === "security";
 
-  const [
-    apiRes,
-    schemaRes,
-    componentRes,
-    securityRes,
-  ] = await Promise.all([
+  const [apiRes, schemaRes, componentRes, securityRes] = await Promise.all([
     !wantsSecurityOnly && routeFiles > 0
       ? apiExtractorAgent({ files, projectMap })
       : Promise.resolve({ endpoints: [] }),
@@ -286,12 +289,11 @@ export async function generateFromCli({ userId, projectId, files, agentsOnly = [
 
     await project.save();
 
-    // Log pipeline completion to changelog
     try {
       const { logProjectChange } = await import("../../../services/changelog.service.js");
       await logProjectChange(project._id, project.userId, "pipeline_completed", {
         details: "Analysis pipeline completed successfully",
-        affectedCount: 5, // readme, api, schema, internal, security
+        affectedCount: 5,
       });
     } catch (err) {
       console.warn("[changelog] Failed to log pipeline completion:", err.message);
@@ -309,7 +311,6 @@ export async function generateFromCli({ userId, projectId, files, agentsOnly = [
     project.errorMessage = err.message || "CLI generation failed.";
     await project.save();
 
-    // Log pipeline failure to changelog
     try {
       const { logProjectChange } = await import("../../../services/changelog.service.js");
       await logProjectChange(project._id, project.userId, "pipeline_failed", {
@@ -344,8 +345,6 @@ export async function chatFromCli({ userId, projectId, question }) {
     sources: [],
   };
 }
-
-// ── Helpers for diff / export ─────────────────────────────────
 
 const CHANGETYPE_TO_DIFF = {
   section_edited: "modified",
@@ -393,9 +392,10 @@ function buildOpenApiSpec(spec, project) {
         ? ep.parameters.filter((p) => String(p?.in || "").toLowerCase() !== "body")
         : [],
       requestBody: ep?.requestBody || undefined,
-      responses: ep?.responses && typeof ep.responses === "object"
-        ? ep.responses
-        : { default: { description: "No response schema provided." } },
+      responses:
+        ep?.responses && typeof ep.responses === "object"
+          ? ep.responses
+          : { default: { description: "No response schema provided." } },
       security: ep?.security || undefined,
     };
   }
@@ -418,8 +418,11 @@ function buildOpenApiSpec(spec, project) {
 }
 
 function buildOpenApiFromDocs(project, output) {
-  const title = project.meta?.name ||
-    (project.repoOwner && project.repoName ? `${project.repoOwner}/${project.repoName}` : "API Export");
+  const title =
+    project.meta?.name ||
+    (project.repoOwner && project.repoName
+      ? `${project.repoOwner}/${project.repoName}`
+      : "API Export");
   const text = `${output?.apiReference || ""}\n${output?.internalDocs || ""}`;
   const endpointRegex =
     /\b(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+((?:\/|https?:\/\/)[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%{}]+)\b/g;
@@ -430,7 +433,11 @@ function buildOpenApiFromDocs(project, output) {
     const method = String(match[1] || "GET").toLowerCase();
     let rawPath = String(match[2] || "/").trim();
     if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
-      try { rawPath = new URL(rawPath).pathname || "/"; } catch { rawPath = "/"; }
+      try {
+        rawPath = new URL(rawPath).pathname || "/";
+      } catch {
+        rawPath = "/";
+      }
     }
     if (!rawPath.startsWith("/")) rawPath = `/${rawPath}`;
     const key = `${method}:${rawPath}`;
@@ -492,11 +499,7 @@ export async function diffFromCli({ userId, projectId, since }) {
     }
   }
 
-  const changelog = await ProjectChangeLog
-    .find(query)
-    .sort({ createdAt: -1 })
-    .limit(50)
-    .lean();
+  const changelog = await ProjectChangeLog.find(query).sort({ createdAt: -1 }).limit(50).lean();
 
   const changes = changelog.map(mapChangeLogEntry);
 
@@ -516,7 +519,11 @@ export async function exportFromCli({ userId, projectId, format }) {
 
   const project = await findOwnedProject({ projectId, userId });
   if (project.status !== "done") {
-    throw domainError("Documentation not ready. Pipeline has not completed yet.", "PROJECT_NOT_READY", 409);
+    throw domainError(
+      "Documentation not ready. Pipeline has not completed yet.",
+      "PROJECT_NOT_READY",
+      409,
+    );
   }
 
   const output = mergeEffectiveOutput(project);
@@ -535,11 +542,8 @@ export async function exportFromCli({ userId, projectId, format }) {
   const { ApiSpec } = await import("../../../models/ApiSpec.js");
   const spec = await ApiSpec.findOne({ projectId }).lean();
 
-  const openapi = spec
-    ? buildOpenApiSpec(spec, project)
-    : buildOpenApiFromDocs(project, output);
+  const openapi = spec ? buildOpenApiSpec(spec, project) : buildOpenApiFromDocs(project, output);
 
   if (format === "openapi") return openapi;
   return buildPostmanCollection(openapi);
 }
-

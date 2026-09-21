@@ -1,22 +1,3 @@
-// ===================================================================
-// Central API router
-//
-// Route map:
-//   /auth            : authentication & session management
-//   /github          : GitHub OAuth + repository access
-//   /gitlab          : GitLab OAuth + repository access
-//   /bitbucket       : Bitbucket OAuth + repository access
-//   /azure           : Azure DevOps OAuth + repository access
-//   /projects        : project CRUD + pipeline + SSE stream + exports
-//   /webhook         : user-level GitHub webhooks + billing webhooks
-//   /document        : legacy document processing (backward compatibility)
-//   /stream          : SSE streaming for jobs (backward compatibility)
-//   /chat            : chat service
-//   /export          : pdf & notion exports (backward compatibility)
-//   /activity-logs   : user activity feed
-//   /notifications   : in-app notification feed
-// ===================================================================
-
 import { Router } from "express";
 import authRoutes from "./auth/auth.routes.js";
 import githubRoutes from "./github/github.routes.js";
@@ -47,14 +28,12 @@ router.use("/azure", azureRoutes);
 router.use("/projects", projectRoutes);
 router.use("/cli", cliRoutes);
 router.use("/api/cli", cliRoutes);
-router.use("/slack", slackRoutes); // Slack OAuth, commands, events
-router.use("/portal", portalRoutes); // public : no auth
+router.use("/slack", slackRoutes);
+router.use("/portal", portalRoutes);
 router.use("/billing", billingRoutes);
 router.use("/admin", adminRoutes);
 router.use("/activity-logs", activityLogRoutes);
 router.use("/notifications", notificationRoutes);
-
-// ── Service Status & Lazy Loading ──────────────────────────────────
 
 export const serviceStatus = {
   orchestrator: false,
@@ -116,15 +95,12 @@ export async function loadServices() {
     .join(", ");
   console.log(`[services] Ready: ${loaded || "none"}`);
 
-  // Register loaded webhook service handlers with controller
   if (_handleGlobalWebhook || _handleFlutterwaveWebhook) {
     registerWebhookHandlers(_handleGlobalWebhook, _handleFlutterwaveWebhook);
   }
 }
 
 router.post("/webhook/github", handleWebhook);
-
-// ── Flutterwave Webhook ────────────────────────────────────────────
 router.post("/webhook/flutterwave", handleFlutterwaveWebhook);
 
 export default router;

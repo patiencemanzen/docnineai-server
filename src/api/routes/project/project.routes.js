@@ -1,52 +1,3 @@
-// =============================================================
-// Full route map:
-//
-//   POST   /projects                          create + start pipeline
-//   GET    /projects                          list (paginated, filtered)
-//   GET    /projects/:id                      detail + effectiveOutput
-//   PATCH  /projects/:id                      archive
-//   DELETE /projects/:id                      hard delete
-//   POST   /projects/:id/retry                full re-run
-//   POST   /projects/:id/sync                 incremental sync (?force=true for full)
-//   GET    /projects/:id/stream               SSE live events
-//
-//   ── ZIP Upload ──────────────────────────────────────────────
-//   POST   /projects/zip/validate             validate ZIP without creating project
-//   POST   /projects/zip/upload               create project from ZIP
-//
-//   ── Document editing ────────────────────────────────────────
-//   PATCH  /projects/:id/docs/:section        save user edit
-//   DELETE /projects/:id/docs/:section/edit   revert to AI version
-//   POST   /projects/:id/docs/:section/accept-ai  accept new AI after stale sync
-//
-//   ── Version history ─────────────────────────────────────────
-//   GET    /projects/:id/docs/:section/versions             list (no content)
-//   GET    /projects/:id/docs/:section/versions/:versionId  full content
-//   POST   /projects/:id/docs/:section/versions/:versionId/restore
-//
-//   ── Exports (read from MongoDB : survive server restarts) ───
-//   GET    /projects/:id/export/pdf
-//   GET    /projects/:id/export/yaml
-//   POST   /projects/:id/export/notion
-//
-//   ── Attachments (Other Docs) ─────────────────────────────────
-//   GET    /projects/:id/attachments
-//   POST   /projects/:id/attachments          (multipart/form-data, field: file)
-//   GET    /projects/:id/attachments/:attachmentId   (stream / download)
-//   PATCH  /projects/:id/attachments/:attachmentId   (update description)
-//   DELETE /projects/:id/attachments/:attachmentId
-//
-
-//
-//   ── API Spec (OpenAPI / Postman importer) ────────────────────
-//   GET    /projects/:id/apispec
-//   POST   /projects/:id/apispec/import          (file | url | raw)
-//   POST   /projects/:id/apispec/sync            (URL source only)
-//   DELETE /projects/:id/apispec
-//   PATCH  /projects/:id/apispec/endpoint        (custom note)
-//   POST   /projects/:id/apispec/try             (Try It proxy)
-// =============================================================
-
 import { Router } from "express";
 import { param, body } from "express-validator";
 import multer from "multer";
@@ -77,21 +28,14 @@ import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 const router = Router();
 router.use(protect, apiLimiter);
 
-// ── ZIP Upload routes (must come before /:id param matching) ────
 router.use("/zip", zipRoutes);
 
-// ── Multer : in-memory storage for file uploads ───────────────
-// 10 MB limit; all file types accepted (content-type checked in controller).
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// ── Param validators ──────────────────────────────────────────
-const validateMongoId = [
-  param("id").isMongoId().withMessage("Invalid project ID"),
-  validate,
-];
+const validateMongoId = [param("id").isMongoId().withMessage("Invalid project ID"), validate];
 const validatePatchBody = [...rules.updateProject, validate];
 const validateSection = [
   param("section")
@@ -104,51 +48,28 @@ const validateVersionId = [
   validate,
 ];
 
-// ── Shared-with-me (must come before /:id to avoid param collision) ──────────
 router.get("/shared", wrap(shareCtrl.getSharedProjects));
 
-// ── Collection ────────────────────────────────────────────────
-router.post(
-  "/",
-  rules.createProject,
-  validate,
-  checkProjectLimit,
-  wrap(ctrl.createProject),
-);
-router.post(
-  "/from-scratch",
-  checkProjectLimit,
-  wrap(ctrl.createFromScratchProject),
-);
+router.post("/", rules.createProject, validate, checkProjectLimit, wrap(ctrl.createProject));
+router.post("/from-scratch", checkProjectLimit, wrap(ctrl.createFromScratchProject));
 router.get("/", rules.listProjects, validate, wrap(ctrl.listProjects));
 
-// ── Item ──────────────────────────────────────────────────────
 router.get("/:id", validateMongoId, wrap(ctrl.getProject));
 router.delete("/:id", validateMongoId, wrap(ctrl.deleteProject));
-router.patch(
-  "/:id",
-  validateMongoId,
-  validatePatchBody,
-  wrap(ctrl.updateProject),
-);
+router.patch("/:id", validateMongoId, validatePatchBody, wrap(ctrl.updateProject));
 
-// ── Pipeline actions ──────────────────────────────────────────
 router.post("/:id/retry", validateMongoId, wrap(ctrl.retryProject));
 router.post("/:id/sync", validateMongoId, requireGithubSync, wrap(ctrl.syncProject));
 
-// SSE (not wrapped : streaming response)
 router.get("/:id/stream", validateMongoId, ctrl.streamProject);
-// Persisted event log
+
 router.get("/:id/events", validateMongoId, wrap(ctrl.getProjectEvents));
-// ── Document editing ──────────────────────────────────────────
+
 router.patch(
   "/:id/docs/:section",
   validateMongoId,
   validateSection,
-  [
-    body("content").isString().notEmpty().withMessage("content is required"),
-    validate,
-  ],
+  [body("content").isString().notEmpty().withMessage("content is required"), validate],
   wrap(ctrl.editDocSection),
 );
 
@@ -166,7 +87,6 @@ router.post(
   wrap(ctrl.acceptAISection),
 );
 
-// ── Version history ───────────────────────────────────────────
 router.get(
   "/:id/docs/:section/versions",
   validateMongoId,
@@ -190,35 +110,29 @@ router.post(
   wrap(ctrl.restoreVersion),
 );
 
-// ── Change Log / Activity History ──────────────────────────────
-router.get(
-  "/:id/changelog",
-  validateMongoId,
-  wrap(ctrl.getProjectChangeLog),
-);
-// Allow both GET and POST for PDF/YAML to support optional data from frontend
+router.get("/:id/changelog", validateMongoId, wrap(ctrl.getProjectChangeLog));
+
 router.get("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), wrap(ctrl.exportPdf));
-router.post("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.post(
+  "/:id/export/pdf",
+  validateMongoId,
+  requireExportFormat("pdf"),
+  autoLog("EXPORT_PDF"),
+  wrap(ctrl.exportPdf),
+);
 router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
 router.post("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
-router.post("/:id/export/notion", validateMongoId, requireExportFormat("notion"), autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
+router.post(
+  "/:id/export/notion",
+  validateMongoId,
+  requireExportFormat("notion"),
+  autoLog("EXPORT_NOTION"),
+  wrap(ctrl.exportNotion),
+);
 
-// Google Docs export
-router.get(
-  "/:id/export/google-docs/connect",
-  validateMongoId,
-  wrap(ctrl.googleDocsConnect),
-);
-router.get(
-  "/:id/export/google-docs/status",
-  validateMongoId,
-  wrap(ctrl.googleDocsStatus),
-);
-router.delete(
-  "/:id/export/google-docs",
-  validateMongoId,
-  wrap(ctrl.googleDocsDisconnect),
-);
+router.get("/:id/export/google-docs/connect", validateMongoId, wrap(ctrl.googleDocsConnect));
+router.get("/:id/export/google-docs/status", validateMongoId, wrap(ctrl.googleDocsStatus));
+router.delete("/:id/export/google-docs", validateMongoId, wrap(ctrl.googleDocsDisconnect));
 router.post(
   "/:id/export/google-docs",
   validateMongoId,
@@ -227,27 +141,16 @@ router.post(
   wrap(ctrl.exportGoogleDocs),
 );
 
-// ── Chat (streaming SSE : chatHandler not wrapped; resetChat is wrapped) ──────
 router.post("/:id/chat", validateMongoId, checkAiChatLimit, ctrl.chatHandler);
 router.delete("/:id/chat", validateMongoId, wrap(ctrl.resetChat));
 
-// ── Sharing ───────────────────────────────────────────────────
-const validateShareId = [
-  param("shareId").isMongoId().withMessage("Invalid share ID"),
-  validate,
-];
+const validateShareId = [param("shareId").isMongoId().withMessage("Invalid share ID"), validate];
 
-// Accept an invite : requires the user be logged in
 router.post("/share/accept/:token", wrap(shareCtrl.acceptInvite));
 
 router.post("/:id/share", validateMongoId, wrap(shareCtrl.inviteUsers));
 router.get("/:id/share", validateMongoId, wrap(shareCtrl.listAccess));
-router.patch(
-  "/:id/share/:shareId",
-  validateMongoId,
-  validateShareId,
-  wrap(shareCtrl.changeRole),
-);
+router.patch("/:id/share/:shareId", validateMongoId, validateShareId, wrap(shareCtrl.changeRole));
 router.delete(
   "/:id/share/:shareId",
   validateMongoId,
@@ -267,24 +170,19 @@ router.delete(
   wrap(shareCtrl.cancelInvite),
 );
 
-// ── Attachments (Other Docs) ──────────────────────────────────
 const validateAttachmentId = [
   param("attachmentId").isMongoId().withMessage("Invalid attachment ID"),
   validate,
 ];
 
-router.get(
-  "/:id/attachments",
-  validateMongoId,
-  wrap(attachmentCtrl.listAttachments),
-);
+router.get("/:id/attachments", validateMongoId, wrap(attachmentCtrl.listAttachments));
 router.post(
   "/:id/attachments",
   validateMongoId,
   upload.single("file"),
   wrap(attachmentCtrl.uploadAttachment),
 );
-// Download / preview : not wrapped (binary streaming response)
+
 router.get(
   "/:id/attachments/:attachmentId",
   validateMongoId,
@@ -295,10 +193,7 @@ router.patch(
   "/:id/attachments/:attachmentId",
   validateMongoId,
   validateAttachmentId,
-  [
-    body("description").isString().withMessage("description must be a string"),
-    validate,
-  ],
+  [body("description").isString().withMessage("description must be a string"), validate],
   wrap(attachmentCtrl.updateAttachment),
 );
 router.delete(
@@ -307,11 +202,6 @@ router.delete(
   validateAttachmentId,
   wrap(attachmentCtrl.deleteAttachment),
 );
-
-// ── Portal (owner only) ───────────────────────────────────────
-// GET    /projects/:id/portal          : get portal settings
-// PUT    /projects/:id/portal          : upsert portal settings
-// POST   /projects/:id/portal/publish  : toggle isPublished
 
 router.get("/:id/portal", validateMongoId, wrap(portalCtrl.getOwnerPortal));
 router.put("/:id/portal", validateMongoId, wrap(portalCtrl.upsertPortal));
@@ -322,69 +212,28 @@ router.post(
   wrap(portalCtrl.togglePublish),
 );
 
-// ── Custom Tabs ───────────────────────────────────────────────
-// POST   /projects/:id/custom-tabs          : create custom tab
-// GET    /projects/:id/custom-tabs          : list custom tabs
-// PATCH  /projects/:id/custom-tabs/:tabId   : update custom tab
-// DELETE /projects/:id/custom-tabs/:tabId   : delete custom tab
-// PATCH  /projects/:id/custom-tabs/reorder  : reorder custom tabs
-
-const validateTabId = [
-  param("tabId").isMongoId().withMessage("Invalid tab ID"),
-  validate,
-];
+const validateTabId = [param("tabId").isMongoId().withMessage("Invalid tab ID"), validate];
 
 router.post("/:id/custom-tabs", validateMongoId, wrap(ctrl.createCustomTab));
 router.get("/:id/custom-tabs", validateMongoId, wrap(ctrl.listCustomTabs));
-router.patch(
-  "/:id/custom-tabs/:tabId",
-  validateMongoId,
-  validateTabId,
-  wrap(ctrl.updateCustomTab),
-);
+router.patch("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.updateCustomTab));
 router.delete(
   "/:id/custom-tabs/:tabId",
   validateMongoId,
   validateTabId,
   wrap(ctrl.deleteCustomTab),
 );
-router.patch(
-  "/:id/custom-tabs/reorder",
-  validateMongoId,
-  wrap(ctrl.reorderCustomTabs),
-);
-
-// ── API Spec (OpenAPI / Postman importer) ─────────────────────
-// GET    /projects/:id/apispec          : get imported spec
-// POST   /projects/:id/apispec/import   : import (file | url | raw)
-// POST   /projects/:id/apispec/sync     : re-fetch URL source
-// DELETE /projects/:id/apispec          : remove spec
-// PATCH  /projects/:id/apispec/endpoint : update endpoint custom note
-// POST   /projects/:id/apispec/try      : Try-It proxy
+router.patch("/:id/custom-tabs/reorder", validateMongoId, wrap(ctrl.reorderCustomTabs));
 
 router.use("/:id/apispec", validateMongoId, apispecRoutes);
 
-// ── MCP Server ────────────────────────────────────────────────
-// GET    /projects/mcp/list_projects   : list all user projects (MCP)
-// GET    /projects/:id/mcp/health      : health check
-// GET    /projects/:id/mcp/info        : get MCP server info
-// GET    /projects/:id/mcp/tools       : list available tools
-// POST   /projects/:id/mcp/call        : call tool (generic)
-// POST   /projects/:id/mcp/:tool       : call specific tool
-
-// Special route for list_projects (no project ID needed)
 router.post(
   "/mcp/list_projects",
   protect,
   checkTokenScope(["mcp"]),
   wrap(async (req, res) => {
     const userId = req.tokenAuth?.userId || req.user?.userId;
-    const result = await MCPController.invokeTool(
-      "list_projects",
-      {},
-      null,
-      userId,
-    );
+    const result = await MCPController.invokeTool("list_projects", {}, null, userId);
     res.json(result);
   }),
 );

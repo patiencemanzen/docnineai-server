@@ -1,10 +1,3 @@
-// =============================================================
-// ZIP Upload Routes
-//
-// POST   /projects/zip/upload     : create project from ZIP
-// POST   /projects/zip/validate   : validate ZIP without creating
-// =============================================================
-
 import { Router } from "express";
 import multer from "multer";
 import * as ctrl from "../../controllers/project/zip-upload.controller.js";
@@ -15,16 +8,11 @@ import { wrap } from "../../../utils/response.util.js";
 
 const router = Router();
 
-// ── Middleware ────────────────────────────────────────────────
-// Multer: in-memory storage, 50MB ZIP limit
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype === "application/zip" ||
-      file.originalname.endsWith(".zip")
-    ) {
+    if (file.mimetype === "application/zip" || file.originalname.endsWith(".zip")) {
       cb(null, true);
     } else {
       cb(new Error("Only ZIP files are accepted"));
@@ -34,21 +22,8 @@ const upload = multer({
 
 router.use(protect, apiLimiter);
 
-// ── Routes ────────────────────────────────────────────────────
+router.post("/validate", upload.single("file"), wrap(ctrl.validateZipUpload));
 
-// Validate ZIP without creating project
-router.post(
-  "/validate",
-  upload.single("file"),
-  wrap(ctrl.validateZipUpload)
-);
-
-// Upload and create project
-router.post(
-  "/upload",
-  checkProjectLimit,
-  upload.single("file"),
-  wrap(ctrl.uploadZipProject)
-);
+router.post("/upload", checkProjectLimit, upload.single("file"), wrap(ctrl.uploadZipProject));
 
 export default router;

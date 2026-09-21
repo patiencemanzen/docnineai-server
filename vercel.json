@@ -1,19 +1,19 @@
 {
-    "version": 2,
-    "builds": [
-        {
-            "src": "src/server.js",
-            "use": "@vercel/node",
-            "config": {
-                "runtime": "nodejs20.x",
-                "maxDuration": 60
-            }
-        }
-    ],
-    "routes": [
-        {
-            "src": "/(.*)",
-            "dest": "src/server.js"
-        }
-    ]
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/server.js",
+      "use": "@vercel/node",
+      "config": {
+        "runtime": "nodejs20.x",
+        "maxDuration": 60
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "src/server.js"
+    }
+  ]
 }

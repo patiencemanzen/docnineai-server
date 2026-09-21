@@ -1,22 +1,3 @@
-// ===================================================================
-// Flutterwave webhook handler.
-//
-// Mounted at POST /webhook/github/flutterwave (raw body : see app.js).
-//
-// Security:
-//   1. `verif-hash` header is compared against FLW_WEBHOOK_HASH env var.
-//   2. Only "successful" transactions are acted upon : never trust status
-//      from client-side; always verify server-side via FW transaction API.
-//   3. All processing is idempotent : duplicate webhook calls are safe.
-//
-// FW webhook events handled:
-//   charge.completed        → activate plan / confirm invoice
-//   subscription.renewed    → extend billing period, send receipt
-//   subscription.cancelled  → schedule downgrade / cancellation
-//   payment.failed          → start dunning flow
-//   refund.completed        → mark invoice refunded
-// ===================================================================
-
 import { verifyWebhookSignature } from "../../../services/flutterwave.service.js";
 import { verifyTransaction } from "../../../services/flutterwave.service.js";
 import {
@@ -29,25 +10,17 @@ import { Invoice } from "../../../models/Invoice.js";
 import { sendAccountDowngradedEmail } from "../../../config/email.js";
 import { User } from "../../../models/User.js";
 
-/**
- * POST /webhook/github/flutterwave
- * Express handler : receives raw Buffer body (parsed by express.raw).
- */
 export async function handleFlutterwaveWebhook(req, res) {
-  // ── Signature verification ─────────────────────────────────
   const headerHash = req.headers["verif-hash"];
   if (!verifyWebhookSignature(headerHash)) {
     console.warn("[fw-webhook] Invalid verif-hash : rejecting");
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  // ── Parse body ─────────────────────────────────────────────
   let payload;
   try {
     const raw = req.body;
-    const json = Buffer.isBuffer(raw)
-      ? raw.toString("utf8")
-      : JSON.stringify(raw);
+    const json = Buffer.isBuffer(raw) ? raw.toString("utf8") : JSON.stringify(raw);
     payload = JSON.parse(json);
   } catch {
     console.error("[fw-webhook] Failed to parse body");
@@ -59,11 +32,8 @@ export async function handleFlutterwaveWebhook(req, res) {
 
   console.log(`[fw-webhook] Event: ${event}`);
 
-  // ── Respond immediately : process async ────────────────────
-  // Flutterwave expects a 200 within 30s or will retry.
   res.status(200).json({ received: true });
 
-  // ── Process event ──────────────────────────────────────────
   try {
     switch (event) {
       case "charge.completed":
@@ -71,7 +41,6 @@ export async function handleFlutterwaveWebhook(req, res) {
         break;
 
       case "subscription.renewed":
-        // FW-managed subscriptions (if used): extend period + send receipt
         await handleSubscriptionRenewed(data);
         break;
 
@@ -88,23 +57,16 @@ export async function handleFlutterwaveWebhook(req, res) {
         break;
 
       case "subscription.expiry_reminder":
-        // Handled by our cron jobs : no additional action needed here.
-        console.log(
-          "[fw-webhook] subscription.expiry_reminder received (handled by cron)",
-        );
+        console.log("[fw-webhook] subscription.expiry_reminder received (handled by cron)");
         break;
 
       default:
         console.log(`[fw-webhook] Unhandled event type: ${event}`);
     }
   } catch (err) {
-    // Log full stack : payment processing failures must never be silent.
-    // TODO: feed into a dead-letter queue / alerting system for production.
     console.error(`[fw-webhook] PAYMENT PROCESSING ERROR : event: ${event}`, err);
   }
 }
-
-// ── Event handlers ────────────────────────────────────────────────
 
 async function handleChargeCompleted(data) {
   if (data?.status !== "successful") {
@@ -114,12 +76,9 @@ async function handleChargeCompleted(data) {
     return;
   }
 
-  // Always verify server-side : never trust the webhook payload alone
   const verified = await verifyTransaction(data.id);
   if (verified?.status !== "successful") {
-    console.log(
-      `[fw-webhook] Server-side verification failed for tx ${data.id}`,
-    );
+    console.log(`[fw-webhook] Server-side verification failed for tx ${data.id}`);
     return;
   }
 
@@ -127,16 +86,13 @@ async function handleChargeCompleted(data) {
 }
 
 async function handleSubscriptionRenewed(data) {
-  // If using Flutterwave's own subscription system (optional integration)
-  // For our custom subscription logic, renewals are triggered by our cron.
-  // This handler catches FW-initiated renewals as a safety net.
   if (data?.status !== "successful") return;
 
   const txRef = data.tx_ref;
   if (!txRef) return;
 
   const invoice = await Invoice.findOne({ flutterwaveRef: txRef });
-  if (!invoice || invoice.status === "paid") return; // already processed
+  if (!invoice || invoice.status === "paid") return;
 
   const verified = await verifyTransaction(data.id);
   if (verified?.status === "successful") {
@@ -145,8 +101,6 @@ async function handleSubscriptionRenewed(data) {
 }
 
 async function handleSubscriptionCancelled(data) {
-  // FW subscription cancelled : if we're using FW subscriptions
-  // For our custom billing, this is handled by the cancel endpoint.
   const customerId = data?.customer?.id;
   if (!customerId) return;
 
@@ -178,7 +132,6 @@ async function handleRefundCompleted(data) {
   const fwRefId = data?.id;
   if (!fwRefId) return;
 
-  // Find the original invoice
   const invoice = await Invoice.findOne({
     flutterwaveTxId: data?.transaction_id,
   });
@@ -188,7 +141,5 @@ async function handleRefundCompleted(data) {
   invoice.refundedAt = new Date();
   await invoice.save();
 
-  console.log(
-    `[fw-webhook] Refund processed for invoice ${invoice.invoiceNumber}`,
-  );
+  console.log(`[fw-webhook] Refund processed for invoice ${invoice.invoiceNumber}`);
 }

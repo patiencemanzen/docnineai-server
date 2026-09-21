@@ -1,35 +1,6 @@
-// =============================================================
-// Represents one documentation project for a GitHub repository.
-//
-// v3.1 additions:
-//
-//   editedOutput     : user overrides per section. Sparse: only
-//                      set sections are stored. The API merges
-//                      editedOutput on top of AI output when reading.
-//
-//   editedSections   : tracks which sections have user edits +
-//                      whether each edit is stale (AI has newer
-//                      content the user hasn't reviewed yet).
-//
-//   lastDocumentedCommit : git SHA at the time of last successful
-//                      full or incremental pipeline run.
-//
-//   fileManifest     : [{path, sha, role}] snapshot of the repo
-//                      tree as of lastDocumentedCommit. Used for
-//                      SHA-based diffing without GitHub compare API.
-//
-//   agentOutputs     : raw structured outputs from each agent.
-//                      select:false : not returned in queries.
-//                      Stored so incremental sync can surgically
-//                      remove/merge changed-file entries without
-//                      re-running agents on the whole repo.
-// =============================================================
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
-
-// ── Security sub-schemas ──────────────────────────────────────
 
 const SecurityFindingSchema = new Schema(
   {
@@ -59,8 +30,6 @@ const SecuritySchema = new Schema(
   { _id: false },
 );
 
-// ── Stats sub-schema ──────────────────────────────────────────
-
 const StatsSchema = new Schema(
   {
     filesAnalysed: { type: Number, default: 0 },
@@ -68,17 +37,12 @@ const StatsSchema = new Schema(
     models: { type: Number, default: 0 },
     relationships: { type: Number, default: 0 },
     components: { type: Number, default: 0 },
-    // ── Incremental sync timing ────────────────────────────────
-    // Populated after each successful incremental or full sync.
+
     lastSyncedAt: { type: Date, default: null },
-    lastSyncDuration: { type: Number, default: null }, // milliseconds
+    lastSyncDuration: { type: Number, default: null },
   },
   { _id: false },
 );
-
-// ── Output sub-schema : AI-generated documentation ────────────
-// This always holds the latest AI content.
-// Do not write user edits here : use editedOutput.
 
 const OutputSchema = new Schema(
   {
@@ -91,58 +55,44 @@ const OutputSchema = new Schema(
   { _id: false },
 );
 
-// ── Edited sections tracking ──────────────────────────────────
-
 const EditedSectionSchema = new Schema(
   {
     section: { type: String, required: true },
     editedAt: { type: Date, required: true },
-    // stale: true when AI has regenerated the section since the user
-    // last edited it. The user should review and decide: keep their
-    // edit or accept the new AI content.
+
     stale: { type: Boolean, default: false },
   },
   { _id: false },
 );
 
-// ── File manifest entry : for incremental diff ────────────────
-
 const FileManifestEntrySchema = new Schema(
   {
     path: { type: String, required: true },
-    sha: { type: String, required: true }, // Git blob SHA
-    role: { type: String }, // from repoScannerAgent classification
+    sha: { type: String, required: true },
+    role: { type: String },
   },
   { _id: false },
 );
 
-// ── Agent outputs : raw structured data for incremental merge ─
-// Each entry has a `file` field so stale entries can be removed
-// when that file changes, without touching entries from other files.
-
 const AgentOutputsSchema = new Schema(
   {
-    // From apiExtractorAgent: [{method, path, description, file, ...}]
     endpoints: { type: [Schema.Types.Mixed], default: [] },
-    // From schemaAnalyserAgent: [{name, fields, description, file, ...}]
+
     models: { type: [Schema.Types.Mixed], default: [] },
-    // From schemaAnalyserAgent: [{from, to, type, through}]
+
     relationships: { type: [Schema.Types.Mixed], default: [] },
-    // From componentMapperAgent: [{name, file, type, description, ...}]
+
     components: { type: [Schema.Types.Mixed], default: [] },
-    // From securityAuditorAgent: [{id, severity, title, file, ...}]
+
     findings: { type: [Schema.Types.Mixed], default: [] },
-    // From repoScannerAgent: [{path, role, summary}]
+
     projectMap: { type: [Schema.Types.Mixed], default: [] },
   },
   { _id: false },
 );
 
-// ── Main schema ───────────────────────────────────────────────
-
 const ProjectSchema = new Schema(
   {
-    // ── Ownership ─────────────────────────────────────────────
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -150,12 +100,10 @@ const ProjectSchema = new Schema(
       index: true,
     },
 
-    // ── Repository identity ───────────────────────────────────
     repoUrl: { type: String, required: true, trim: true },
     repoOwner: { type: String, required: true, trim: true },
     repoName: { type: String, required: true, trim: true },
 
-    // ── Pipeline state ────────────────────────────────────────
     jobId: {
       type: String,
       unique: true,
@@ -171,7 +119,6 @@ const ProjectSchema = new Schema(
 
     errorMessage: String,
 
-    // ── GitHub repo metadata ──────────────────────────────────
     meta: {
       name: String,
       description: String,
@@ -184,54 +131,39 @@ const ProjectSchema = new Schema(
 
     techStack: [String],
 
-    // ── Pipeline results ──────────────────────────────────────
     stats: { type: StatsSchema, default: () => ({}) },
     security: { type: SecuritySchema, default: () => ({}) },
 
-    // AI-generated documentation (always latest AI version)
     output: { type: OutputSchema, default: () => ({}) },
 
-    // ── User edits (v3.1) ─────────────────────────────────────
-    // Sparse : only sections the user has edited are set.
-    // The API merges this on top of `output` when reading.
     editedOutput: {
       type: OutputSchema,
       default: () => ({}),
     },
 
-    // Tracks which sections have user edits and their staleness.
     editedSections: {
       type: [EditedSectionSchema],
       default: [],
     },
 
-    // ── Incremental sync state (v3.1) ─────────────────────────
-    // Git SHA of the commit that `output` was generated from.
-    // null = never synced or full run happened without capturing SHA.
     lastDocumentedCommit: { type: String, default: null },
 
-    // File tree snapshot as of lastDocumentedCommit.
-    // Used to compute diffs via SHA comparison : no compare API needed.
     fileManifest: {
       type: [FileManifestEntrySchema],
       default: [],
-      select: false, // large array : only fetched when needed
+      select: false,
     },
 
-    // Raw structured agent outputs : needed for incremental merging.
     agentOutputs: {
       type: AgentOutputsSchema,
       default: () => ({}),
-      select: false, // only fetched during sync operations
+      select: false,
     },
 
-    // ── Chat session ──────────────────────────────────────────
     chatSessionId: String,
 
-    // ── Soft delete / archive ─────────────────────────────────
     archivedAt: Date,
 
-    // ── Pipeline event log (last 200 events) ──────────────────
     events: {
       type: [Schema.Types.Mixed],
       default: [],
@@ -243,42 +175,32 @@ const ProjectSchema = new Schema(
       default: "github",
     },
 
-    // Encrypted OAuth access token for git providers that need per-user auth.
-    // GitHub uses the connected user's GitHubToken when present; otherwise public API.
     providerToken: {
       type: String,
-      select: false, // never returned in queries unless explicitly selected
+      select: false,
     },
 
-    // ── Source type tracking ─────────────────────────────────
-    // Differentiates between git providers and ZIP uploads
     sourceType: {
       type: String,
       enum: ["github", "gitlab", "bitbucket", "azure", "zip", "manual"],
       default: "github",
     },
 
-    // ── ZIP-specific metadata ────────────────────────────────
-    // Only populated for sourceType === "zip"
     zipMetadata: {
       type: Schema.Types.Mixed,
       default: () => ({}),
-      select: false, // only fetched when needed
+      select: false,
     },
 
-    // ── Custom tabs (user-created documentation sections) ─────
-    // Users can create additional tabs beyond the native ones.
-    // Each tab has a name, description, content, and order.
-    // The "Other Docs" tab is reserved and cannot be renamed/deleted.
     customTabs: {
       type: [
         {
           _id: { type: Schema.Types.ObjectId, auto: true },
-          name: { type: String, required: true }, // e.g. "Custom Guide", "FAQ"
+          name: { type: String, required: true },
           description: { type: String, default: "" },
-          content: { type: String, default: "" }, // Markdown content
-          order: { type: Number, required: true }, // For UI ordering
-          isNative: { type: Boolean, default: false }, // Always false for custom tabs (for future extensibility)
+          content: { type: String, default: "" },
+          order: { type: Number, required: true },
+          isNative: { type: Boolean, default: false },
           createdAt: { type: Date, default: Date.now },
           updatedAt: { type: Date, default: Date.now },
           createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -287,7 +209,6 @@ const ProjectSchema = new Schema(
       default: [],
     },
 
-    // Tracks edited custom tabs (following same pattern as editedSections)
     editedCustomTabs: {
       type: [
         {
@@ -305,32 +226,15 @@ const ProjectSchema = new Schema(
   },
 );
 
-// ── Compound index for webhook matching (repoOwner + repoName) ──────────────
-// Used heavily by webhook.service.js to look up projects by repository identity.
 ProjectSchema.index({ repoOwner: 1, repoName: 1 }, { name: "project_repo_lookup" });
 
-// ── Text index for search ─────────────────────────────────────
-// language_override points to a non-existent field ("search_language")
-// so MongoDB never reads meta.language (e.g. "TypeScript", "Python")
-// as a text stemming language override. Without this, storing a project
-// whose repo language is anything other than a valid ISO 639-1 name
-// causes: "language override unsupported: TypeScript" on findAndModify.
 ProjectSchema.index(
   { repoName: "text", repoOwner: "text", "meta.description": "text" },
   { name: "project_search", language_override: "search_language" },
 );
 
-// ── Virtual: merged output ────────────────────────────────────
-// Returns editedOutput where set, falls back to AI output.
-// Used by the API to give the client the "effective" content.
 ProjectSchema.virtual("effectiveOutput").get(function () {
-  const sections = [
-    "readme",
-    "internalDocs",
-    "apiReference",
-    "schemaDocs",
-    "securityReport",
-  ];
+  const sections = ["readme", "internalDocs", "apiReference", "schemaDocs", "securityReport"];
   const merged = {};
   for (const s of sections) {
     merged[s] = this.editedOutput?.[s] || this.output?.[s] || "";

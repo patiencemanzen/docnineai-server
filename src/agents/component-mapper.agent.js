@@ -1,10 +1,4 @@
-// ===================================================================
-// Agent 4: Component Mapper (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
-
-// ─── System Prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a senior software engineer and technical documentation specialist with deep expertise in reading and analyzing codebases across multiple languages and frameworks (Node.js, TypeScript, React, Vue, Python, Java, Go, PHP, Ruby, etc.).
 
@@ -90,7 +84,7 @@ If no components are found, return exactly: []
 - Zustand/Pinia/Redux: store files = store type with state.manages = true
 - React Context: createContext/Provider pattern = context type
 - Express: function(req, res, next) signature = middleware type
-- Flask: @app.route(), @blueprint.route() = route/middleware  
+- Flask: @app.route(), @blueprint.route() = route/middleware
 - Django: View classes, ViewSets, @require_http_method = handler/middleware
 - Laravel (PHP): Controller classes, service providers, jobs
 - Rails (Ruby): controllers, services, ActiveRecord scopes
@@ -167,8 +161,6 @@ If no components are found, return exactly: []
   }
 ]`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const TARGET_ROLES = new Set([
   "service",
   "middleware",
@@ -192,15 +184,10 @@ const EXCLUDE_REGEX =
   /route|controller|handler|model|schema|entity|migration|spec|test|\.d\.ts$|__mocks__|fixture/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 6000; // was 200 : completely insufficient for real files
+const CHARS_PER_FILE = 6000;
 const MAX_FILES = 40;
 const MAX_RETRIES = 2;
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Safe JSON parser with markdown fence stripping fallback.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
@@ -217,10 +204,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single component object.
- * Returns null if too malformed to be useful.
- */
 function validateComponent(comp, fallbackFile) {
   if (!comp || typeof comp !== "object") return null;
 
@@ -246,13 +229,7 @@ function validateComponent(comp, fallbackFile) {
     "type",
     "other",
   ];
-  const VALID_LAYERS = [
-    "frontend",
-    "backend",
-    "shared",
-    "infrastructure",
-    "database",
-  ];
+  const VALID_LAYERS = ["frontend", "backend", "shared", "infrastructure", "database"];
   const VALID_COMPLEXITY = ["low", "medium", "high"];
 
   return {
@@ -262,27 +239,19 @@ function validateComponent(comp, fallbackFile) {
     type: VALID_TYPES.includes(comp.type) ? comp.type : "other",
     layer: VALID_LAYERS.includes(comp.layer) ? comp.layer : "unknown",
     description: comp.description || "",
-    responsibilities: Array.isArray(comp.responsibilities)
-      ? comp.responsibilities
-      : [],
+    responsibilities: Array.isArray(comp.responsibilities) ? comp.responsibilities : [],
     exports: {
       default: comp.exports?.default ?? null,
       named: Array.isArray(comp.exports?.named) ? comp.exports.named : [],
     },
-    parameters: Array.isArray(comp.parameters)
-      ? comp.parameters.map(normalizeParam)
-      : [],
+    parameters: Array.isArray(comp.parameters) ? comp.parameters.map(normalizeParam) : [],
     returns: {
       type: comp.returns?.type || "void",
       description: comp.returns?.description || "",
     },
     dependencies: {
-      internal: Array.isArray(comp.dependencies?.internal)
-        ? comp.dependencies.internal
-        : [],
-      external: Array.isArray(comp.dependencies?.external)
-        ? comp.dependencies.external
-        : [],
+      internal: Array.isArray(comp.dependencies?.internal) ? comp.dependencies.internal : [],
+      external: Array.isArray(comp.dependencies?.external) ? comp.dependencies.external : [],
     },
     state: {
       manages: comp.state?.manages ?? false,
@@ -295,9 +264,7 @@ function validateComponent(comp, fallbackFile) {
     singleton: comp.singleton ?? null,
     testable: comp.testable ?? true,
     deprecated: comp.deprecated ?? false,
-    complexity: VALID_COMPLEXITY.includes(comp.complexity)
-      ? comp.complexity
-      : "unknown",
+    complexity: VALID_COMPLEXITY.includes(comp.complexity) ? comp.complexity : "unknown",
     tags: Array.isArray(comp.tags) ? comp.tags : inferTags(name, file),
     notes: comp.notes || "",
   };
@@ -314,13 +281,9 @@ function normalizeParam(p) {
   };
 }
 
-/**
- * Infer tags from component name and file path.
- */
 function inferTags(name, file) {
   const tags = new Set();
 
-  // From file path segments
   const segments = file.split("/").filter(Boolean);
   segments.forEach((seg) => {
     const clean = seg
@@ -330,7 +293,6 @@ function inferTags(name, file) {
     if (clean && clean !== "src" && clean !== "index") tags.add(clean);
   });
 
-  // From camelCase/PascalCase name breakdown
   const words = name
     .replace(/([A-Z])/g, " $1")
     .toLowerCase()
@@ -341,9 +303,6 @@ function inferTags(name, file) {
   return Array.from(tags).slice(0, 4);
 }
 
-/**
- * Score completeness of a component for deduplication merge.
- */
 function scoreCompleteness(comp) {
   let score = 0;
   if (comp.description) score += 2;
@@ -362,17 +321,13 @@ function scoreCompleteness(comp) {
   return score;
 }
 
-/**
- * Create a minimal stub component when LLM fails for a file.
- * Better than losing the file entirely from the output.
- */
 function createFallbackComponent(file, projectMap) {
   const meta = projectMap?.find((m) => m.path === file.path);
   const name = file.path
     .split("/")
     .pop()
     .replace(/\.[^.]+$/, "")
-    .replace(/[-_.](.)/g, (_, c) => c.toUpperCase()); // basic camelCase
+    .replace(/[-_.](.)/g, (_, c) => c.toUpperCase());
 
   return {
     name,
@@ -399,14 +354,7 @@ function createFallbackComponent(file, projectMap) {
   };
 }
 
-/**
- * LLM call with exponential back-off retry.
- */
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -417,9 +365,6 @@ async function llmCallWithRetry({
   }
 }
 
-/**
- * Build a summary report from all extracted components.
- */
 function buildSummary(components) {
   const byType = {};
   const byLayer = {};
@@ -444,8 +389,6 @@ function buildSummary(components) {
   };
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function componentMapperAgent({
   files,
   projectMap,
@@ -455,7 +398,6 @@ export async function componentMapperAgent({
 }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
-  // ── 1. Filter to component-relevant files ─────────────────────
   const targetFiles = files
     .filter((f) => {
       if (!f?.path || !f?.content) return false;
@@ -472,17 +414,13 @@ export async function componentMapperAgent({
     return { components: [], summary: buildSummary([]) };
   }
 
-  // ── fastMode: build components from projectMap metadata ───────
-  // createFallbackComponent already uses projectMap role + summary,
-  // so this gives us structured component stubs with zero LLM cost.
-  // Enriched by heuristic scan data (exports, flags, layer).
   if (fastMode) {
     notify(`Mapping components via heuristics…`, `${targetFiles.length} files (fast mode)`);
     const components = targetFiles
       .map((f) => {
         const meta = projectMap?.find((m) => m.path === f.path);
         const stub = createFallbackComponent(f, projectMap);
-        // Enrich stub with heuristic scan metadata from projectMap
+
         return {
           ...stub,
           layer: meta?.layer || stub.layer,
@@ -493,8 +431,11 @@ export async function componentMapperAgent({
             named: meta?.exports || [],
           },
           async: /async\s+function|=>\s*{|\.then\s*\(|await\s+/m.test(f.content.slice(0, 1000)),
-          side_effects: meta?.flags?.includes("has_db") ? ["Database operations"] :
-                        meta?.flags?.includes("has_side_effects") ? ["Side effects detected"] : [],
+          side_effects: meta?.flags?.includes("has_db")
+            ? ["Database operations"]
+            : meta?.flags?.includes("has_side_effects")
+              ? ["Side effects detected"]
+              : [],
           notes: meta ? "" : "⚠ Auto-generated stub : LLM extraction skipped (fast mode).",
         };
       })
@@ -507,7 +448,16 @@ export async function componentMapperAgent({
     }
     const deduped = Array.from(componentMap.values());
     const summary = buildSummary(deduped);
-    notify(`${deduped.length} components mapped (heuristic)`, `${summary.byType ? Object.entries(summary.byType).map(([t, n]) => `${n} ${t}`).join(", ") : ""}`);
+    notify(
+      `${deduped.length} components mapped (heuristic)`,
+      `${
+        summary.byType
+          ? Object.entries(summary.byType)
+              .map(([t, n]) => `${n} ${t}`)
+              .join(", ")
+          : ""
+      }`,
+    );
     return { components: deduped, summary };
   }
 
@@ -517,7 +467,6 @@ export async function componentMapperAgent({
     `Processing in ${totalBatches} batch${totalBatches > 1 ? "es" : ""}`,
   );
 
-  // ── 2. Process batches ────────────────────────────────────────
   const rawComponents = [];
   const batchErrors = [];
 
@@ -532,9 +481,7 @@ export async function componentMapperAgent({
         const truncated = f.content.length > CHARS_PER_FILE;
         return [
           `=== FILE: ${f.path} ===`,
-          truncated
-            ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]`
-            : "",
+          truncated ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]` : "",
           f.content.slice(0, CHARS_PER_FILE),
         ]
           .filter(Boolean)
@@ -554,38 +501,28 @@ export async function componentMapperAgent({
           batch: batchNum,
           error: "Response was not a JSON array",
         });
-        // Fall back to stubs for this batch
-        batch.forEach((f) =>
-          rawComponents.push(createFallbackComponent(f, projectMap)),
-        );
+
+        batch.forEach((f) => rawComponents.push(createFallbackComponent(f, projectMap)));
         continue;
       }
 
       for (const comp of parsed) {
-        // Match reported file back to the correct batch file
         const matchedFile = batch.find((f) =>
-          comp.file
-            ? f.path.endsWith(comp.file) || comp.file.endsWith(f.path)
-            : false,
+          comp.file ? f.path.endsWith(comp.file) || comp.file.endsWith(f.path) : false,
         );
         const fallbackFile =
-          batch.length === 1
-            ? batch[0].path
-            : matchedFile?.path || comp.file || batch[0].path;
+          batch.length === 1 ? batch[0].path : matchedFile?.path || comp.file || batch[0].path;
 
         const validated = validateComponent(comp, fallbackFile);
         if (validated) rawComponents.push(validated);
       }
     } catch (err) {
       batchErrors.push({ batch: batchNum, error: err.message });
-      // Produce stubs so no file is silently lost
-      batch.forEach((f) =>
-        rawComponents.push(createFallbackComponent(f, projectMap)),
-      );
+
+      batch.forEach((f) => rawComponents.push(createFallbackComponent(f, projectMap)));
     }
   }
 
-  // ── 3. Deduplicate : keep the richer of any two duplicates ────
   const componentMap = new Map();
 
   for (const comp of rawComponents) {
@@ -601,16 +538,8 @@ export async function componentMapperAgent({
     }
   }
 
-  // ── 4. Sort by layer, then type, then name ────────────────────
   const components = Array.from(componentMap.values()).sort((a, b) => {
-    const layerOrder = [
-      "backend",
-      "frontend",
-      "shared",
-      "infrastructure",
-      "database",
-      "unknown",
-    ];
+    const layerOrder = ["backend", "frontend", "shared", "infrastructure", "database", "unknown"];
     const typeOrder = [
       "service",
       "middleware",
@@ -636,7 +565,6 @@ export async function componentMapperAgent({
     return a.name.localeCompare(b.name);
   });
 
-  // ── 5. Build summary ──────────────────────────────────────────
   const summary = buildSummary(components);
 
   if (batchErrors.length > 0) {

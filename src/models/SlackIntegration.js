@@ -1,15 +1,9 @@
-// ===================================================================
-// Slack Integration Model
-// Stores workspace configuration, tokens, and alert settings
-// ===================================================================
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
 const SlackIntegrationSchema = new Schema(
   {
-    // ── User & Workspace ──────────────────────────────────────
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -23,11 +17,9 @@ const SlackIntegrationSchema = new Schema(
       index: true,
     },
 
-    // ── Slack Workspace Info ──────────────────────────────────
     workspaceId: {
       type: String,
-      // T12345ABC (workspace ID from Slack)
-      // Set during OAuth callback, not required during initialization
+
       trim: true,
     },
     workspaceName: {
@@ -35,89 +27,70 @@ const SlackIntegrationSchema = new Schema(
       trim: true,
     },
     teamId: {
-      // Legacy Slack field
       type: String,
       trim: true,
     },
 
-    // ── Custom Slack App Credentials (per-workspace) ──────────
-    // Users can provide their own Slack app credentials for custom workspaces
-    // If present, these override the global env vars for this integration
     isCustomApp: {
       type: Boolean,
       default: false,
-      // true if using custom Slack app credentials (user-provided)
     },
     slackClientId: {
       type: String,
-      select: false, // Never return in queries by default (plaintext temporary)
+      select: false,
     },
     slackClientSecret: {
       type: String,
-      select: false, // Never return in queries by default (plaintext temporary)
+      select: false,
     },
     slackSigningSecret: {
       type: String,
-      select: false, // Never return in queries by default (plaintext temporary)
+      select: false,
     },
     slackClientIdEncrypted: {
       type: String,
-      // Encrypted Client ID (optional, if null uses global env)
     },
     slackClientSecretEncrypted: {
       type: String,
-      // Encrypted Client Secret (optional, if null uses global env)
     },
     slackSigningSecretEncrypted: {
       type: String,
-      // Encrypted Signing Secret (optional, if null uses global env)
     },
 
-    // ── Slack App Installation ────────────────────────────────
     botUserId: {
       type: String,
-      // U12345ABC (bot user ID)
-      // Set during OAuth callback, not required during initialization
+
       trim: true,
     },
     botAccessToken: {
       type: String,
-      // Set during OAuth callback, not required during initialization
-      select: false, // Never return in queries by default
+
+      select: false,
     },
     botTokenEncrypted: {
       type: String,
-      // Encrypted version of botAccessToken
-      // Set during OAuth callback, not required during initialization
     },
     appId: {
       type: String,
       trim: true,
     },
     installedAt: Date,
-    installedBy: String, // Slack user ID who installed
+    installedBy: String,
 
-    // ── OAuth & State ─────────────────────────────────────────
     oauthState: {
       type: String,
       trim: true,
     },
 
-    // ── Alert Configuration ───────────────────────────────────
     alertChannelId: {
       type: String,
-      trim: true, // C12345ABC (channel ID for security alerts)
+      trim: true,
     },
     alertChannelName: {
       type: String,
       trim: true,
     },
 
-    // Alert rules:
-    // CRITICAL always alerts with @channel
-    // HIGH always alerts without ping
-    // MEDIUM batched into weekly digest
-    // LOW suppressed unless requested
     enableCriticalAlerts: {
       type: Boolean,
       default: true,
@@ -139,10 +112,9 @@ const SlackIntegrationSchema = new Schema(
       default: true,
     },
 
-    // ── Last Security Scan ────────────────────────────────────
     lastAlertedSecurityScore: {
       type: Number,
-      default: 100, // A grade
+      default: 100,
     },
     lastAlertedCriticalCount: {
       type: Number,
@@ -154,7 +126,6 @@ const SlackIntegrationSchema = new Schema(
     },
     lastAlertSentAt: Date,
 
-    // ── Status & Health ───────────────────────────────────────
     isActive: {
       type: Boolean,
       default: true,
@@ -168,7 +139,6 @@ const SlackIntegrationSchema = new Schema(
     },
     healthMessage: String,
 
-    // ── Events Logging ────────────────────────────────────────
     events: [
       {
         type: {
@@ -198,17 +168,14 @@ const SlackIntegrationSchema = new Schema(
   },
 );
 
-// Encrypt/decrypt helpers for sensitive fields
 SlackIntegrationSchema.pre("validate", async function (next) {
   try {
     const { encrypt } = await import("../utils/crypto.util.js");
-    
-    // Encrypt bot access token
+
     if (this.isModified("botAccessToken")) {
       this.botTokenEncrypted = encrypt(this.botAccessToken);
     }
-    
-    // Encrypt custom Slack credentials if provided
+
     if (this.isModified("slackClientId")) {
       this.slackClientIdEncrypted = encrypt(this.slackClientId);
     }
@@ -218,7 +185,7 @@ SlackIntegrationSchema.pre("validate", async function (next) {
     if (this.isModified("slackSigningSecret")) {
       this.slackSigningSecretEncrypted = encrypt(this.slackSigningSecret);
     }
-    
+
     next();
   } catch (err) {
     next(err);
@@ -226,7 +193,6 @@ SlackIntegrationSchema.pre("validate", async function (next) {
 });
 
 SlackIntegrationSchema.pre("save", function (next) {
-  // Never store plaintext sensitive values
   if (this.isModified("botAccessToken")) {
     this.botAccessToken = undefined;
   }
@@ -281,18 +247,12 @@ SlackIntegrationSchema.methods.getDecryptedSigningSecret = async function () {
   }
 };
 
-SlackIntegrationSchema.methods.recordEvent = async function (
-  type,
-  message,
-) {
+SlackIntegrationSchema.methods.recordEvent = async function (type, message) {
   this.events.push({ type, message, timestamp: new Date() });
   if (this.events.length > 100) {
-    this.events = this.events.slice(-100); // Keep last 100 events
+    this.events = this.events.slice(-100);
   }
   await this.save();
 };
 
-export const SlackIntegration = model(
-  "SlackIntegration",
-  SlackIntegrationSchema,
-);
+export const SlackIntegration = model("SlackIntegration", SlackIntegrationSchema);

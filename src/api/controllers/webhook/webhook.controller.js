@@ -1,50 +1,13 @@
-// =============================================================
-// Webhook Handler Controller
-// =============================================================
-// Processes incoming GitHub webhooks at the user account level.
-//
-// Architecture:
-//   - One shared webhook secret per user (stored in User document)
-//   - Server-side repo URL matching to identify project
-//   - Single global endpoint for all user webhooks
-//
-// Routes:
-//   POST /webhook             : GitHub push webhook (user-level)
-//   POST /webhook/flutterwave : Flutterwave billing webhook
-// =============================================================
-
 import { serverError } from "../../../utils/response.util.js";
 
 let _handleGlobalWebhook = null;
 let _handleFlutterwaveWebhook = null;
 
-/**
- * Register webhook service handlers
- * Called during service initialization
- */
 export function registerWebhookHandlers(globalHook, flutterwaveHook) {
   if (globalHook) _handleGlobalWebhook = globalHook;
   if (flutterwaveHook) _handleFlutterwaveWebhook = flutterwaveHook;
 }
 
-/**
- * POST /webhook
- *
- * Handle incoming GitHub webhook from user's repositories.
- * Validates HMAC signature using the user's webhook secret.
- * Extracts repo URL from payload and identifies matching project.
- * Triggers incremental sync for the matched project.
- *
- * Headers:
- *   x-hub-signature-256: SHA256 HMAC signature
- *
- * Flow:
- *   1. Validate signature using user's webhook secret
- *   2. Extract repository URL from payload
- *   3. Find user's project matching the repo URL
- *   4. Trigger incremental sync for matched project
- *   5. Return 200 OK
- */
 export async function handleWebhook(req, res) {
   if (!_handleGlobalWebhook) {
     return res.status(503).json({
@@ -58,8 +21,6 @@ export async function handleWebhook(req, res) {
     const rawSig = req.headers["x-hub-signature-256"];
     const signature = Array.isArray(rawSig) ? rawSig[0] : rawSig || "";
 
-    // Forward the GitHub event type so the service can ignore non-push events
-    // (ping, pull_request, etc.) without needing to inspect the payload shape.
     const rawEvent = req.headers["x-github-event"];
     const githubEvent = Array.isArray(rawEvent) ? rawEvent[0] : rawEvent || "";
 
@@ -76,12 +37,6 @@ export async function handleWebhook(req, res) {
   }
 }
 
-/**
- * POST /webhook/flutterwave
- *
- * Handle incoming Flutterwave billing webhook.
- * Validates webhook signature and processes payment events.
- */
 export async function handleFlutterwaveWebhook(req, res) {
   if (!_handleFlutterwaveWebhook) {
     return res.status(503).json({
@@ -93,16 +48,7 @@ export async function handleFlutterwaveWebhook(req, res) {
   try {
     await _handleFlutterwaveWebhook(req, res);
   } catch (err) {
-    console.error(
-      "[webhook:flutterwave] Unhandled error:",
-      err.message,
-      err.stack,
-    );
-    return serverError(
-      res,
-      err,
-      "handleFlutterwaveWebhook",
-      "Failed to process billing webhook",
-    );
+    console.error("[webhook:flutterwave] Unhandled error:", err.message, err.stack);
+    return serverError(res, err, "handleFlutterwaveWebhook", "Failed to process billing webhook");
   }
 }

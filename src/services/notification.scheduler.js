@@ -1,15 +1,3 @@
-// ===================================================================
-// notification.scheduler.js
-//
-// Daily cron jobs that generate proactive notifications:
-//   1. Subscription expiry reminders (7 / 3 / 1 days before)
-//   2. Subscription expired today
-//   3. Plan usage limit alerts (80% / 95% of project quota)
-//
-// Follows the same pattern as cron.service.js (startBillingCron).
-// Called from app.js → initOnce().
-// ===================================================================
-
 import cron from "node-cron";
 import { Subscription } from "../models/Subscription.js";
 import { PlanUsage } from "../models/PlanUsage.js";
@@ -18,33 +6,21 @@ import { NotificationService } from "./notification.service.js";
 
 let _started = false;
 
-/**
- * Start all notification cron jobs.
- * Safe to call multiple times : only initialises once.
- */
 export function startNotificationScheduler() {
   if (_started) return;
   _started = true;
   console.log("-- Notification scheduler starting…");
 
-  // Daily at 09:00 UTC : friendly morning delivery
   cron.schedule("0 9 * * *", runNotificationJobs, { timezone: "UTC" });
 
   console.log("-- Notification scheduler registered (daily @ 09:00 UTC)");
 }
 
-// ── Job orchestrator ─────────────────────────────────────────────
-
 async function runNotificationJobs() {
   console.log("[cron/notifications] Daily notification jobs starting");
-  await Promise.allSettled([
-    runSubscriptionExpiryReminders(),
-    runPlanLimitAlerts(),
-  ]);
+  await Promise.allSettled([runSubscriptionExpiryReminders(), runPlanLimitAlerts()]);
   console.log("[cron/notifications] Daily notification jobs complete");
 }
-
-// ── Job: subscription expiry reminders ───────────────────────────
 
 async function runSubscriptionExpiryReminders() {
   try {
@@ -64,7 +40,9 @@ async function runSubscriptionExpiryReminders() {
         status: { $in: ["active", "trialing"] },
         cancelAtPeriodEnd: true,
         currentPeriodEnd: { $gte: windowStart, $lt: windowEnd },
-      }).select("userId plan").lean();
+      })
+        .select("userId plan")
+        .lean();
 
       for (const sub of expiringSubs) {
         const plan = PLANS[sub.plan];
@@ -80,7 +58,6 @@ async function runSubscriptionExpiryReminders() {
       }
     }
 
-    // Plans that expired today (no renewal)
     const expiredStart = new Date(startOfToday);
     const expiredEnd = new Date(startOfToday);
     expiredEnd.setUTCDate(expiredEnd.getUTCDate() + 1);
@@ -89,7 +66,9 @@ async function runSubscriptionExpiryReminders() {
       status: { $in: ["active", "trialing"] },
       cancelAtPeriodEnd: true,
       currentPeriodEnd: { $gte: expiredStart, $lt: expiredEnd },
-    }).select("userId plan").lean();
+    })
+      .select("userId plan")
+      .lean();
 
     for (const sub of expiredSubs) {
       const plan = PLANS[sub.plan];
@@ -107,11 +86,8 @@ async function runSubscriptionExpiryReminders() {
   }
 }
 
-// ── Job: plan limit alerts ────────────────────────────────────────
-
 async function runPlanLimitAlerts() {
   try {
-    // Only users on plans with a project limit
     const allUsage = await PlanUsage.find({}).select("userId projectCount").lean();
     if (!allUsage.length) return;
 
@@ -124,7 +100,6 @@ async function runPlanLimitAlerts() {
       .select("userId plan")
       .lean();
 
-    // Index subscriptions by userId for O(1) lookup
     const subByUser = new Map();
     for (const sub of subscriptions) {
       subByUser.set(String(sub.userId), sub);
@@ -138,7 +113,7 @@ async function runPlanLimitAlerts() {
       if (!plan) continue;
 
       const limit = plan.limits?.projects;
-      if (!limit || limit === null) continue; // unlimited plan : skip
+      if (!limit || limit === null) continue;
 
       const percent = (usage.projectCount / limit) * 100;
 

@@ -97,6 +97,7 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 ### Features
 
 ✅ **12+ AI-powered tools** for codebase analysis:
+
 - Documentation (README, API refs, schemas, components)
 - QA (Ask codebase, semantic search)
 - Security (OWASP audit, critical findings, security score)
@@ -104,16 +105,18 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 
 ✅ **Token-based authentication** : Secure API tokens created from dashboard  
 ✅ **Per-project isolation** : Each token scoped to specific projects  
-✅ **Zero setup overhead** : One line in your MCP config  
+✅ **Zero setup overhead** : One line in your MCP config
 
 ### Quick Example
 
 **1. Create token in dashboard:**
+
 - Settings → API Tokens → New Token
 - Check scopes: `api`, `mcp`
 - Copy token: `docnine_abc123xyz...`
 
 **2. Configure Claude:**
+
 ```json
 {
   "mcpServers": {
@@ -126,6 +129,7 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 ```
 
 **3. Use in Claude:**
+
 ```
 @docnine What security vulnerabilities did you find?
 ```
@@ -133,6 +137,7 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 ### Full Documentation
 
 👉 **[MCP-TOKEN.md](./MCP-TOKEN.md)** : Complete MCP setup guide with:
+
 - Step-by-step configuration for Claude, Cursor, VS Code
 - All 12 available tools reference
 - HTTP API for raw requests
@@ -142,16 +147,17 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 
 ### API Endpoints
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/projects/:id/mcp/health` | No | Health check |
-| `GET` | `/projects/:id/mcp/tools` | Bearer | List available tools |
-| `POST` | `/projects/:id/mcp/call` | Bearer | Generic tool call |
-| `POST` | `/projects/:id/mcp/:tool` | Bearer | Direct tool endpoint |
+| Method | Endpoint                   | Auth   | Description          |
+| ------ | -------------------------- | ------ | -------------------- |
+| `GET`  | `/projects/:id/mcp/health` | No     | Health check         |
+| `GET`  | `/projects/:id/mcp/tools`  | Bearer | List available tools |
+| `POST` | `/projects/:id/mcp/call`   | Bearer | Generic tool call    |
+| `POST` | `/projects/:id/mcp/:tool`  | Bearer | Direct tool endpoint |
 
 ### Testing
 
 👉 **[TESTING.md](./TESTING.md)** : Complete testing guide with:
+
 - Step-by-step test cases
 - API request examples with curl
 - Authentication error scenarios
@@ -165,23 +171,24 @@ Get a free Groq key at [console.groq.com](https://console.groq.com).
 
 See `.env.example` for the full annotated list. Key variables:
 
-| Variable                                   | Required      | Purpose                                                   |
-| ------------------------------------------ | ------------- | --------------------------------------------------------- |
+| Variable                                   | Required       | Purpose                                                   |
+| ------------------------------------------ | -------------- | --------------------------------------------------------- |
 | `MONGODB_URI`                              | ✅             | MongoDB connection string                                 |
 | `GROQ_API_KEY`                             | ✅             | Powers all 6 AI agents                                    |
 | `JWT_ACCESS_SECRET`                        | ✅             | Signs 15-min access tokens                                |
 | `JWT_REFRESH_SECRET`                       | ✅             | Signs 7-day refresh tokens                                |
 | `ENCRYPTION_KEY`                           | ✅             | AES-256-GCM key for GitHub token storage (64 hex chars)   |
 | `GITHUB_TOKEN`                             | ⚠️ Recommended | Server-level PAT : raises GitHub API limit 60→5000 req/hr |
-| `GITHUB_CLIENT_ID`                         | OAuth only    | Required for GitHub repo picker                           |
-| `GITHUB_CLIENT_SECRET`                     | OAuth only    | Required for GitHub repo picker                           |
-| `GITHUB_REDIRECT_URI`                      | OAuth only    | Must match GitHub OAuth App settings                      |
-| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`    | Email only    | Without these, emails are logged to console               |
-| `NOTION_API_KEY` / `NOTION_PARENT_PAGE_ID` | Notion only   | Required for Notion export                                |
-| `WEBHOOK_SECRET`                           | Webhook only  | HMAC secret for GitHub push webhook                       |
-| `FRONTEND_URL`                             | Prod          | Locked CORS origin + OAuth redirect target                |
+| `GITHUB_CLIENT_ID`                         | OAuth only     | Required for GitHub repo picker                           |
+| `GITHUB_CLIENT_SECRET`                     | OAuth only     | Required for GitHub repo picker                           |
+| `GITHUB_REDIRECT_URI`                      | OAuth only     | Must match GitHub OAuth App settings                      |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`    | Email only     | Without these, emails are logged to console               |
+| `NOTION_API_KEY` / `NOTION_PARENT_PAGE_ID` | Notion only    | Required for Notion export                                |
+| `WEBHOOK_SECRET`                           | Webhook only   | HMAC secret for GitHub push webhook                       |
+| `FRONTEND_URL`                             | Prod           | Locked CORS origin + OAuth redirect target                |
 
 **Generating secrets:**
+
 ```bash
 # JWT secrets and webhook secret
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
@@ -214,6 +221,7 @@ All responses follow a consistent envelope:
 ### Auth Routes
 
 #### `POST /auth/signup`
+
 Create a new account. Sends a verification email.
 
 ```bash
@@ -228,26 +236,31 @@ curl -X POST /auth/signup \
 ---
 
 #### `POST /auth/login`
+
 ```bash
 curl -X POST /auth/login \
   -d '{"email":"alice@example.com","password":"secret123"}'
 ```
+
 **Response 200:** `{ user, accessToken }` + sets `refreshToken` httpOnly cookie
 
 ---
 
 #### `POST /auth/refresh`
+
 Exchange the refresh-token cookie for a new access token. Rotates the refresh token : each use invalidates the previous one.
 
 ```bash
 curl -X POST /auth/refresh --cookie "refreshToken=<token>"
 ```
+
 **No Authorization header needed.** Reads `refreshToken` cookie.  
 **Response 200:** `{ user, accessToken }` + new `refreshToken` cookie
 
 ---
 
 #### `POST /auth/logout`
+
 Invalidates the refresh token server-side and clears the cookie.
 
 ```bash
@@ -257,15 +270,19 @@ curl -X POST /auth/logout -H "Authorization: Bearer <token>"
 ---
 
 #### `POST /auth/verify-email`
-**Body:** `{ token }` : the raw token from the email link  
+
+**Body:** `{ token }` : the raw token from the email link
 
 #### `POST /auth/forgot-password`
-**Body:** `{ email }` : always returns 200 (no email enumeration)  
+
+**Body:** `{ email }` : always returns 200 (no email enumeration)
 
 #### `POST /auth/reset-password`
-**Body:** `{ token, password, confirmPassword }`  
+
+**Body:** `{ token, password, confirmPassword }`
 
 #### `GET /auth/me`
+
 Returns the current authenticated user's profile.
 
 ---
@@ -273,6 +290,7 @@ Returns the current authenticated user's profile.
 ### GitHub Routes
 
 #### `GET /github/oauth/start` 🔒
+
 Returns the GitHub authorization URL. The client must navigate to it (`window.location.href = data.url`).
 
 ```bash
@@ -283,11 +301,13 @@ curl /github/oauth/start -H "Authorization: Bearer <token>"
 ---
 
 #### `GET /github/oauth/callback`
+
 **Public : no Authorization header.** GitHub redirects the browser here after the user grants access. Redirects to `FRONTEND_URL/?github=connected&user=<username>` on success, or `?github=error&msg=<message>` on failure.
 
 ---
 
 #### `GET /github/repos` 🔒
+
 List the authenticated user's GitHub repositories.
 
 ```bash
@@ -301,11 +321,13 @@ curl "/github/repos?page=1&perPage=30&type=all&sort=updated" \
 ---
 
 #### `GET /github/status` 🔒
+
 Returns GitHub connection status for the current user.
 
 **Response:** `{ connected: false }` or `{ connected: true, githubUsername, scopes[], connectedAt }`
 
 #### `DELETE /github/disconnect` 🔒
+
 Removes the stored GitHub token and unlinks the GitHub account.
 
 ---
@@ -315,6 +337,7 @@ Removes the stored GitHub token and unlinks the GitHub account.
 All project routes require authentication (`🔒`).
 
 #### `POST /projects` 🔒
+
 Create a project and immediately start the AI documentation pipeline.
 
 ```bash
@@ -331,6 +354,7 @@ curl -X POST /projects \
 ---
 
 #### `GET /projects` 🔒
+
 List your projects with pagination, filtering, and full-text search.
 
 ```bash
@@ -353,6 +377,7 @@ curl "/projects?page=1&limit=20&status=done&sort=-createdAt&search=express" \
 ---
 
 #### `GET /projects/:id` 🔒
+
 Full project detail including all generated output (readme, apiReference, schemaDocs, internalDocs, securityReport).
 
 **Response:** `{ project }` with all fields populated after a successful pipeline run.
@@ -360,6 +385,7 @@ Full project detail including all generated output (readme, apiReference, schema
 ---
 
 #### `PATCH /projects/:id` 🔒
+
 Archive a project (the only currently supported mutation).
 
 ```bash
@@ -373,6 +399,7 @@ curl -X PATCH /projects/:id \
 ---
 
 #### `DELETE /projects/:id` 🔒
+
 Hard-delete a project and all its data. Blocked while the pipeline is running.
 
 **Error 409:** `PROJECT_RUNNING`
@@ -380,6 +407,7 @@ Hard-delete a project and all its data. Blocked while the pipeline is running.
 ---
 
 #### `POST /projects/:id/retry` 🔒
+
 Re-run the documentation pipeline. Allowed for `done` and `error` projects only. Resets all output fields and starts a fresh run.
 
 ```bash
@@ -392,16 +420,21 @@ curl -X POST /projects/:id/retry -H "Authorization: Bearer <token>"
 ---
 
 #### `GET /projects/:id/stream` 🔒
+
 SSE stream of live pipeline events. Replays all buffered events for late-connecting clients. Works after server restarts : reconstructs a synthetic done event from MongoDB if the in-memory job is gone.
 
 ```javascript
 const es = new EventSource(`/projects/${id}/stream`, {
-  headers: { Authorization: `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${token}` },
 });
 es.onmessage = (e) => {
   const event = JSON.parse(e.data);
-  if (event.step === "done") { /* pipeline complete */ }
-  if (event.step === "error") { /* pipeline failed */ }
+  if (event.step === "done") {
+    /* pipeline complete */
+  }
+  if (event.step === "error") {
+    /* pipeline failed */
+  }
 };
 ```
 
@@ -414,6 +447,7 @@ es.onmessage = (e) => {
 All export routes read from MongoDB : they work even after a server restart, unlike the legacy `/api/export/*` routes which require the in-memory job to still exist.
 
 #### `GET /projects/:id/export/pdf` 🔒
+
 Stream a multi-section PDF of the documentation.
 
 ```bash
@@ -428,6 +462,7 @@ curl /projects/:id/export/pdf \
 ---
 
 #### `GET /projects/:id/export/yaml` 🔒
+
 Download a ready-to-use GitHub Actions workflow file that auto-regenerates documentation on every push to `main`.
 
 ```bash
@@ -439,6 +474,7 @@ curl /projects/:id/export/yaml \
 ---
 
 #### `POST /projects/:id/export/notion` 🔒
+
 Push the documentation to a Notion workspace. Requires `NOTION_API_KEY` and `NOTION_PARENT_PAGE_ID` in `.env`.
 
 ```bash
@@ -462,13 +498,14 @@ These routes are **unauthenticated** and work exactly as they did in v2. They us
 | `GET`  | `/api/export/pdf/:jobId`      | Download PDF (job must be in memory)                                  |
 | `POST` | `/api/export/notion/:jobId`   | Push to Notion (job must be in memory)                                |
 | `GET`  | `/api/export/workflow/:jobId` | Download GitHub Actions YAML                                          |
-| `POST` | `/webhook/github`                | GitHub push webhook receiver                                          |
+| `POST` | `/webhook/github`             | GitHub push webhook receiver                                          |
 
 > **Note:** Legacy export routes require the job to still be in memory. Use the authenticated `/projects/:id/export/*` routes for persistent exports.
 
 ---
 
 #### `GET /health`
+
 ```jsonc
 {
   "status": "ok",
@@ -480,8 +517,8 @@ These routes are **unauthenticated** and work exactly as they did in v2. They us
     "chat": true,
     "pdf": true,
     "notion": false,
-    "webhook": true
-  }
+    "webhook": true,
+  },
 }
 ```
 
@@ -500,6 +537,7 @@ These routes are **unauthenticated** and work exactly as they did in v2. They us
    ```
 
 **Flow:**
+
 1. Client calls `GET /github/oauth/start` → receives `{ url }` → navigates to `url`
 2. User approves on GitHub → GitHub redirects browser to `GITHUB_REDIRECT_URI`
 3. Server exchanges code, fetches profile, stores AES-256-GCM encrypted token
@@ -533,6 +571,7 @@ Download a pre-configured workflow from `GET /projects/:id/export/yaml` and plac
 The server has no filesystem state : all data lives in MongoDB. It can be deployed to any platform that supports Node.js and environment variables.
 
 ### Railway
+
 ```bash
 npm install -g @railway/cli
 railway login && railway init && railway up
@@ -540,9 +579,11 @@ railway login && railway init && railway up
 ```
 
 ### Render
+
 Connect your GitHub repository to [render.com](https://render.com), set environment variables in the dashboard, and deploy.
 
 ### Docker
+
 ```dockerfile
 FROM node:20-alpine
 WORKDIR /app

@@ -1,12 +1,3 @@
-// ===================================================================
-// Pipeline Validation & Error Recovery Utility
-// ===================================================================
-// Provides enhanced validation and error handling for agents that work with
-// multiple programming languages and frameworks (PHP, Java, Python, C++, C, Go, Kotlin, Swift)
-
-/**
- * Validates agent output structure and provides detailed error messages
- */
 export function validateAgentOutput(output, agentType, schema = null) {
   if (!output) {
     return {
@@ -24,7 +15,6 @@ export function validateAgentOutput(output, agentType, schema = null) {
     };
   }
 
-  // Type-specific validation
   switch (agentType) {
     case "repo-scanner":
       return validateRepoScannerOutput(output);
@@ -111,15 +101,7 @@ function validateApiExtractorOutput(output) {
     };
   }
 
-  const validMethods = new Set([
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ]);
+  const validMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
   const issues = [];
   for (let i = 0; i < output.length; i++) {
@@ -147,8 +129,7 @@ function validateSchemaAnalyserOutput(output) {
   if (typeof output !== "object" || !output.models) {
     return {
       valid: false,
-      error:
-        "Schema analyser output must have 'models' and 'relationships' keys",
+      error: "Schema analyser output must have 'models' and 'relationships' keys",
       recovery: "Check schema-analyser output format",
     };
   }
@@ -223,31 +204,21 @@ function validateSecurityAuditorOutput(output) {
   return { valid: true, error: null };
 }
 
-/**
- * Safely parse JSON with comprehensive error recovery
- */
 export function safeParseJSON(raw, context = "") {
   if (!raw) return null;
 
-  // First attempt: direct parse
   try {
     return JSON.parse(raw);
-  } catch {
-    // No action
-  }
+  } catch {}
 
-  // Second attempt: strip markdown fences
   try {
     const stripped = raw
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/i, "")
       .trim();
     return JSON.parse(stripped);
-  } catch {
-    // No action
-  }
+  } catch {}
 
-  // Third attempt: find first valid JSON object/array
   try {
     const start = raw.search(/[\[\{]/);
     const end = Math.max(raw.lastIndexOf("]"), raw.lastIndexOf("}"));
@@ -255,16 +226,11 @@ export function safeParseJSON(raw, context = "") {
       const chunk = raw.substring(start, end + 1);
       return JSON.parse(chunk);
     }
-  } catch {
-    // No action
-  }
+  } catch {}
 
   return null;
 }
 
-/**
- * Enhanced error handler for agent pipeline
- */
 export function handlePipelineError(error, agentType, context = {}) {
   const errorObj = {
     timestamp: new Date().toISOString(),
@@ -285,27 +251,17 @@ export function handlePipelineError(error, agentType, context = {}) {
   } else if (error?.message?.includes("ENOENT")) {
     errorObj.recovery = "Check file paths : may be missing or inaccessible";
   } else {
-    errorObj.recovery =
-      "Check LLM context and prompt for the agent : may need refinement";
+    errorObj.recovery = "Check LLM context and prompt for the agent : may need refinement";
   }
 
   return errorObj;
 }
 
-/**
- * Filter and sanitize agent output for downstream processing
- */
 export function sanitizeAgentOutput(output, agentType) {
-  if (!output)
-    return agentType === "schema-analyser"
-      ? { models: [], relationships: [] }
-      : [];
+  if (!output) return agentType === "schema-analyser" ? { models: [], relationships: [] } : [];
 
-  const sanitized = Array.isArray(output)
-    ? output.filter(Boolean)
-    : output || {};
+  const sanitized = Array.isArray(output) ? output.filter(Boolean) : output || {};
 
-  // Remove internal fields
   if (Array.isArray(sanitized)) {
     return sanitized.map((item) => {
       const clean = { ...item };
@@ -318,36 +274,22 @@ export function sanitizeAgentOutput(output, agentType) {
   return sanitized;
 }
 
-/**
- * Check if output requires retry
- */
 export function shouldRetry(output, agentType, maxRetries = 2) {
   if (!output) return true;
 
   const validation = validateAgentOutput(output, agentType);
   if (!validation.valid) return true;
 
-  // Empty results don't necessarily need retry
   if (Array.isArray(output) && output.length === 0) return false;
 
   return false;
 }
 
-/**
- * Language-aware context builder for agents
- */
 export function buildLanguageContext(detectedLanguage, detectedFramework) {
   const contexts = {
     "JavaScript/TypeScript": {
       fileExts: [".js", ".ts", ".jsx", ".tsx"],
-      popularFrameworks: [
-        "Express",
-        "Fastify",
-        "NestJS",
-        "Next.js",
-        "React",
-        "Vue",
-      ],
+      popularFrameworks: ["Express", "Fastify", "NestJS", "Next.js", "React", "Vue"],
       packageManager: "npm/yarn",
       testFrameworks: ["Jest", "Vitest", "Mocha"],
     },

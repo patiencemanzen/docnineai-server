@@ -1,10 +1,3 @@
-// =============================================================
-// apispec.service.js
-//
-// Business logic for importing, fetching, syncing, and
-// proxying OpenAPI / Postman specs.
-// =============================================================
-
 import axios from "axios";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -12,31 +5,27 @@ import { ApiSpec } from "../../../models/ApiSpec.js";
 import { parseSpec } from "./apispec.parser.js";
 import { getShareRole } from "../projects/share.service.js";
 
-/**
- * Returns true if the URL resolves to a private / link-local / loopback
- * address that should never be reachable from the server (SSRF guard).
- */
 function isPrivateUrl(urlString) {
   let parsed;
   try {
     parsed = new URL(urlString);
   } catch {
-    return true; // unparseable : reject
+    return true;
   }
-  const h = parsed.hostname.toLowerCase().replace(/^\[|]$/g, ""); // strip IPv6 brackets
+  const h = parsed.hostname.toLowerCase().replace(/^\[|]$/g, "");
   return (
     h === "localhost" ||
     h === "0.0.0.0" ||
     h.endsWith(".local") ||
-    /^127\./.test(h) ||                          // 127.x.x.x loopback
-    /^10\./.test(h) ||                           // 10.x.x.x private
-    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||     // 172.16–31.x.x private
-    /^192\.168\./.test(h) ||                     // 192.168.x.x private
-    /^169\.254\./.test(h) ||                     // 169.254.x.x link-local / IMDS
-    h === "::1" ||                               // IPv6 loopback
-    /^fe80:/i.test(h) ||                         // IPv6 link-local
-    /^fc00:/i.test(h) ||                         // IPv6 ULA
-    /^fd[0-9a-f]{2}:/i.test(h)                  // IPv6 ULA (fd00::/8)
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^169\.254\./.test(h) ||
+    h === "::1" ||
+    /^fe80:/i.test(h) ||
+    /^fc00:/i.test(h) ||
+    /^fd[0-9a-f]{2}:/i.test(h)
   );
 }
 
@@ -115,8 +104,6 @@ function sanitiseForwardHeaders(headers = {}) {
   return out;
 }
 
-// ── Permission helpers ────────────────────────────────────────
-
 function makeError(msg, code, status = 400) {
   const e = new Error(msg);
   e.code = code;
@@ -133,21 +120,10 @@ async function assertRead(projectId, userId) {
 async function assertWrite(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw makeError("Project not found.", "PROJECT_NOT_FOUND", 404);
-  if (role === "viewer")
-    throw makeError("Viewers cannot modify the API spec.", "FORBIDDEN", 403);
+  if (role === "viewer") throw makeError("Viewers cannot modify the API spec.", "FORBIDDEN", 403);
   return role;
 }
 
-// ── Import ────────────────────────────────────────────────────
-
-/**
- * Import a spec from one of three sources.
- *
- * @param {string} projectId
- * @param {string} userId
- * @param {{ method: "file"|"url"|"raw", content?: string, url?: string, autoSync?: boolean }} opts
- * @returns {Promise<ApiSpec>}
- */
 export async function importSpec(projectId, userId, opts) {
   await assertWrite(projectId, userId);
 
@@ -177,32 +153,22 @@ export async function importSpec(projectId, userId, opts) {
     try {
       const resp = await axios.get(url.trim(), {
         timeout: 15_000,
-        maxContentLength: 5 * 1024 * 1024, // 5 MB
+        maxContentLength: 5 * 1024 * 1024,
         maxRedirects: 0,
         responseType: "text",
         headers: {
           Accept: "application/json, application/yaml, text/yaml, text/plain",
         },
       });
-      rawText =
-        typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
+      rawText = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
       sourceUrl = url.trim();
     } catch (err) {
-      throw makeError(
-        `Failed to fetch spec from URL: ${err.message}`,
-        "FETCH_FAILED",
-        422,
-      );
+      throw makeError(`Failed to fetch spec from URL: ${err.message}`, "FETCH_FAILED", 422);
     }
   } else {
-    throw makeError(
-      "Invalid import method. Use file, url, or raw.",
-      "BAD_METHOD",
-      400,
-    );
+    throw makeError("Invalid import method. Use file, url, or raw.", "BAD_METHOD", 400);
   }
 
-  // Parse
   let parsed;
   try {
     parsed = parseSpec(rawText);
@@ -210,7 +176,6 @@ export async function importSpec(projectId, userId, opts) {
     throw makeError(err.message, "PARSE_FAILED", 422);
   }
 
-  // Upsert
   const doc = await ApiSpec.findOneAndUpdate(
     { projectId },
     {
@@ -230,16 +195,12 @@ export async function importSpec(projectId, userId, opts) {
   return doc;
 }
 
-// ── Get spec (no raw content) ─────────────────────────────────
-
 export async function getSpec(projectId, userId) {
   await assertRead(projectId, userId);
 
   const spec = await ApiSpec.findOne({ projectId });
-  return spec; // null if never imported
+  return spec;
 }
-
-// ── Sync (URL source only) ────────────────────────────────────
 
 export async function syncSpec(projectId, userId) {
   await assertWrite(projectId, userId);
@@ -247,14 +208,9 @@ export async function syncSpec(projectId, userId) {
   const existing = await ApiSpec.findOne({ projectId });
   if (!existing) throw makeError("No spec imported yet.", "NO_SPEC", 404);
   if (existing.source !== "url" || !existing.sourceUrl) {
-    throw makeError(
-      "Spec was not imported from a URL; cannot sync.",
-      "SYNC_NOT_AVAILABLE",
-      400,
-    );
+    throw makeError("Spec was not imported from a URL; cannot sync.", "SYNC_NOT_AVAILABLE", 400);
   }
 
-  // Re-import from the same URL
   return importSpec(projectId, userId, {
     method: "url",
     url: existing.sourceUrl,
@@ -262,14 +218,10 @@ export async function syncSpec(projectId, userId) {
   });
 }
 
-// ── Delete spec ───────────────────────────────────────────────
-
 export async function deleteSpec(projectId, userId) {
   await assertWrite(projectId, userId);
   await ApiSpec.deleteOne({ projectId });
 }
-
-// ── Update custom note on a single endpoint ───────────────────
 
 export async function updateEndpointNote(projectId, userId, endpointId, note) {
   await assertWrite(projectId, userId);
@@ -285,38 +237,17 @@ export async function updateEndpointNote(projectId, userId, endpointId, note) {
   return spec;
 }
 
-// ── Try It proxy ──────────────────────────────────────────────
-
-/**
- * Proxy a request to the target API so the browser avoids CORS.
- * The endpoint URL is constructed from the spec's first server
- * base-url + the endpoint path.
- *
- * @param {string} projectId
- * @param {string} userId
- * @param {{ method, baseUrl, path, headers, queryParams, body }} opts
- */
 export async function tryRequest(projectId, userId, opts) {
   await assertRead(projectId, userId);
 
-  const {
-    method,
-    baseUrl,
-    path: epPath,
-    headers = {},
-    queryParams = {},
-    body,
-  } = opts;
+  const { method, baseUrl, path: epPath, headers = {}, queryParams = {}, body } = opts;
 
   if (!baseUrl) throw makeError("baseUrl is required.", "BAD_REQUEST", 400);
   if (!epPath) throw makeError("path is required.", "BAD_REQUEST", 400);
 
-  // Sanitise: do not allow internal/private network calls
   let targetUrl;
   try {
-    targetUrl = new URL(
-      epPath.startsWith("http") ? epPath : baseUrl.replace(/\/$/, "") + epPath,
-    );
+    targetUrl = new URL(epPath.startsWith("http") ? epPath : baseUrl.replace(/\/$/, "") + epPath);
   } catch {
     throw makeError("Invalid endpoint URL.", "BAD_URL", 400);
   }
@@ -340,18 +271,15 @@ export async function tryRequest(projectId, userId, opts) {
       data: body ?? undefined,
       timeout: 20_000,
       maxRedirects: 0,
-      maxContentLength: 2 * 1024 * 1024, // 2 MB response cap
-      validateStatus: () => true, // forward non-2xx as-is
+      maxContentLength: 2 * 1024 * 1024,
+      validateStatus: () => true,
       decompress: true,
     });
 
     return {
       status: resp.status,
       headers: resp.headers,
-      body:
-        typeof resp.data === "string"
-          ? resp.data
-          : JSON.stringify(resp.data, null, 2),
+      body: typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data, null, 2),
     };
   } catch (err) {
     throw makeError(`Proxy request failed: ${err.message}`, "PROXY_ERROR", 502);

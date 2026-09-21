@@ -1,11 +1,3 @@
-/**
- * Human-readable activity copy. Used when writing ActivityLog.summary
- * and as a fallback for older rows that have no summary.
- *
- * Sentences are actor-prefixed except pipeline/system outcomes, which
- * read as project events ("Documentation finished for Acme/api").
- */
-
 const SECTION_LABELS = {
   readme: "README",
   apiReference: "API reference",
@@ -20,11 +12,7 @@ const ROLE_LABELS = {
   owner: "owner",
 };
 
-export const SESSION_NOISE_ACTIONS = [
-  "AUTH_LOGIN",
-  "AUTH_LOGOUT",
-  "AUTH_SIGNUP",
-];
+export const SESSION_NOISE_ACTIONS = ["AUTH_LOGIN", "AUTH_LOGOUT", "AUTH_SIGNUP"];
 
 export function sectionLabel(section) {
   if (!section) return "a section";
@@ -37,16 +25,11 @@ function projectPhrase(projectName, { asObject = false } = {}) {
   return asObject ? name : ` for ${name}`;
 }
 
-/**
- * @param {{ action: string, actorName?: string, actorEmail?: string, projectName?: string, metadata?: object, isSelf?: boolean }} log
- * @returns {string}
- */
 export function formatActivitySummary(log) {
   const isSelf = !!log.isSelf;
-  const actor =
-    isSelf
-      ? "You"
-      : (log.actorName || "").trim() || (log.actorEmail || "").trim() || "A teammate";
+  const actor = isSelf
+    ? "You"
+    : (log.actorName || "").trim() || (log.actorEmail || "").trim() || "A teammate";
   const project = (log.projectName || "").trim();
   const meta = log.metadata && typeof log.metadata === "object" ? log.metadata : {};
   const forProject = projectPhrase(project);
@@ -171,22 +154,14 @@ export function formatActivitySummary(log) {
 
     case "SUBSCRIPTION_UPGRADED":
       if (meta.adminGrant) {
-        return meta.plan
-          ? `${actor} granted the ${meta.plan} plan`
-          : `${actor} granted a plan`;
+        return meta.plan ? `${actor} granted the ${meta.plan} plan` : `${actor} granted a plan`;
       }
-      return meta.plan
-        ? `${actor} upgraded to ${meta.plan}`
-        : `${actor} upgraded the subscription`;
+      return meta.plan ? `${actor} upgraded to ${meta.plan}` : `${actor} upgraded the subscription`;
     case "SUBSCRIPTION_DOWNGRADED":
       if (meta.adminGrant) {
-        return meta.plan
-          ? `${actor} set the plan to ${meta.plan}`
-          : `${actor} changed the plan`;
+        return meta.plan ? `${actor} set the plan to ${meta.plan}` : `${actor} changed the plan`;
       }
-      return meta.plan
-        ? `${actor} switched to ${meta.plan}`
-        : `${actor} changed the subscription`;
+      return meta.plan ? `${actor} switched to ${meta.plan}` : `${actor} changed the subscription`;
     case "SUBSCRIPTION_CANCELLED":
       return `${actor} cancelled the subscription`;
     case "ADMIN_USER_UPDATED": {

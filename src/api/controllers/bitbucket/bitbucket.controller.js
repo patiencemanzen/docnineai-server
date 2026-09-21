@@ -1,7 +1,3 @@
-// =============================================================
-// Bitbucket OAuth Controller
-// =============================================================
-
 import * as bitbucketOAuthService from "../../services/bitbucket/bitbucket-oauth.service.js";
 import * as bitbucketService from "../../../services/bitbucket.service.js";
 import { User } from "../../../models/User.js";
@@ -11,11 +7,7 @@ import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 export async function oauthStart(req, res) {
   try {
     const url = bitbucketOAuthService.buildOAuthUrl(req.user.userId);
-    return ok(
-      res,
-      { url },
-      "Redirect to this URL to authorise Bitbucket access.",
-    );
+    return ok(res, { url }, "Redirect to this URL to authorise Bitbucket access.");
   } catch (err) {
     if (err.message?.includes("BITBUCKET")) {
       return fail(res, "BITBUCKET_NOT_CONFIGURED", err.message, 503);
@@ -64,7 +56,6 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
     const user = await User.findById(req.user.userId).select("+ bitbucketTokenEncrypted");
     if (!user || !user.bitbucketTokenEncrypted) {
       console.log("[bitbucket.controller] No Bitbucket token found for user", {
@@ -73,14 +64,9 @@ export async function listRepos(req, res) {
       return ok(res, { repos: [], hasNextPage: false });
     }
 
-    const token = await bitbucketOAuthService.decryptProvidersToken(
-      user.bitbucketTokenEncrypted,
-    );
+    const token = await bitbucketOAuthService.decryptProvidersToken(user.bitbucketTokenEncrypted);
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const perPage = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.perPage || "30", 10)),
-    );
+    const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage || "30", 10)));
 
     console.log("[bitbucket.controller] Fetching repos from Bitbucket service", {
       page,
@@ -131,7 +117,7 @@ export async function connectionStatus(req, res) {
     });
 
     const hasConnection = !!user.bitbucketTokenEncrypted;
-    
+
     if (!hasConnection) {
       console.warn("[Bitbucket Status] No token found for user", {
         userId: user._id,

@@ -1,15 +1,3 @@
-// =============================================================
-// Azure DevOps API client : mirrors github/gitlab.service.js
-//
-// Azure DevOps REST API: https://learn.microsoft.com/en-us/rest/api/azure/devops/
-//
-// Key differences:
-//  - Uses Personal Access Tokens (PAT) or OAuth
-//  - Repository identified by organization/project/repo
-//  - Base64 auth header for PAT (username is empty string)
-//  - Different file tree & content APIs
-// =============================================================
-
 import axios from "axios";
 
 const AZURE_API = "https://dev.azure.com";
@@ -18,8 +6,6 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-// ── Relevance-based file selection ────────────────────────────
 
 const HIGH_PRIORITY = [
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|go\.mod|pom\.xml|build\.gradle|Cargo\.toml|pyproject\.toml|setup\.py|composer\.json)$/i,
@@ -55,32 +41,19 @@ function selectRelevantFiles(files, cap) {
     .map(({ f }) => f);
 }
 
-// ── Internal helpers ──────────────────────────────────────────
-
 function azHeaders(accessToken) {
-  // OAuth tokens use Bearer auth
   return {
     Authorization: `Bearer ${accessToken}`,
     Accept: "application/json",
   };
 }
 
-// ── URL parsing ───────────────────────────────────────────────
-
-/**
- * Parse an Azure DevOps repo URL into { owner, repo, project }.
- * Formats:
- *  - https://dev.azure.com/org/project/_git/repo
- *  - git@ssh.dev.azure.com:v3/org/project/repo
- *  - org/project/repo (shorthand)
- */
 export function parseRepoUrl(url) {
   const s = String(url || "")
     .trim()
     .replace(/\.git$/, "")
     .replace(/\/$/, "");
 
-  // SSH format: git@ssh.dev.azure.com:v3/org/project/repo
   const ssh = s.match(/git@ssh\.dev\.azure\.com:v3\/([^/]+)\/([^/]+)\/([^/]+)/);
   if (ssh) {
     return {
@@ -90,7 +63,6 @@ export function parseRepoUrl(url) {
     };
   }
 
-  // HTTPS format: https://dev.azure.com/org/project/_git/repo
   const https = s.match(/dev\.azure\.com\/([^/]+)\/([^/]+)\/_git\/([^/?#]+)/);
   if (https) {
     return {
@@ -100,7 +72,6 @@ export function parseRepoUrl(url) {
     };
   }
 
-  // Shorthand: org/project/repo
   const short = s.match(/^([^/\s]+)\/([^/\s]+)\/([^/\s]+)$/);
   if (short) {
     return {
@@ -116,9 +87,6 @@ export function parseRepoUrl(url) {
   throw err;
 }
 
-// ── OAuth ─────────────────────────────────────────────────────
-
-/** Build the Azure DevOps OAuth authorization URL. */
 export function getOAuthUrl(state) {
   const scope = "vso.code vso.project";
   const params = new URLSearchParams({
@@ -127,14 +95,13 @@ export function getOAuthUrl(state) {
     state,
     redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
   });
-  // Scope appended separately so spaces encode as %20, not + (Azure rejects +)
+
   return (
     `https://app.vssps.visualstudio.com/oauth2/authorize?${params}` +
     `&scope=${encodeURIComponent(scope)}`
   );
 }
 
-/** Exchange OAuth authorization code for access token. */
 export async function exchangeCode(code) {
   const params = new URLSearchParams({
     client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
@@ -143,13 +110,13 @@ export async function exchangeCode(code) {
     assertion: code,
     redirect_uri: process.env.AZURE_DEVOPS_REDIRECT_URI,
   });
-  
+
   const { data } = await axios.post(
     "https://app.vssps.visualstudio.com/oauth2/token",
     params.toString(),
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
-  
+
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token || null,
@@ -157,9 +124,7 @@ export async function exchangeCode(code) {
   };
 }
 
-/** Fetch the authenticated Azure DevOps user profile. */
 export async function getAuthenticatedUser(accessToken) {
-  // Use VSTS profile API (works with OAuth tokens)
   const { data } = await axios.get(
     "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.0",
     { headers: azHeaders(accessToken) },
@@ -173,12 +138,10 @@ export async function getAuthenticatedUser(accessToken) {
   };
 }
 
-/** List repos the user has access to. */
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   try {
     console.log("[azure-devops.service] Fetching repositories", { page, perPage });
-    
-    // Azure DevOps requires org + project to list repos
+
     const skip = (page - 1) * perPage;
     const { data } = await axios.get(`${AZURE_API}/_apis/projects`, {
       headers: azHeaders(accessToken),
@@ -187,10 +150,9 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
 
     const projects = data.value || [];
     console.log("[azure-devops.service] Fetched projects", { projectCount: projects.length });
-    
+
     const repos = [];
 
-    // Fetch repos from each project
     for (const proj of projects) {
       try {
         const { data: projRepos } = await axios.get(
@@ -200,7 +162,7 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
             params: { "api-version": "7.0" },
           },
         );
-        
+
         const projReposArray = (projRepos.value || []).map((r) => ({
           id: r.id,
           name: r.name,
@@ -212,8 +174,10 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
           pushedDate: r.pushedDate,
           project: proj.name,
         }));
-        
-        console.log(`[azure-devops.service] Fetched repos from project ${proj.name}`, { repoCount: projReposArray.length });
+
+        console.log(`[azure-devops.service] Fetched repos from project ${proj.name}`, {
+          repoCount: projReposArray.length,
+        });
         repos.push(...projReposArray);
       } catch (err) {
         console.warn(`[azure-devops.service] Failed to fetch repos from project ${proj.name}`, {
@@ -236,8 +200,6 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   }
 }
 
-// ── Repo metadata ─────────────────────────────────────────────
-
 export async function getRepoMeta(org, project, repo, accessToken) {
   const { data } = await axios.get(
     `${AZURE_API}/${org}/${project}/_apis/git/repositories/${repo}`,
@@ -256,8 +218,6 @@ export async function getRepoMeta(org, project, repo, accessToken) {
   };
 }
 
-// ── Commit SHA resolution ─────────────────────────────────────
-
 export async function getCommitSha(org, project, repo, branch, accessToken) {
   const { data } = await axios.get(
     `${AZURE_API}/${org}/${project}/_apis/git/repositories/${repo}/refs`,
@@ -275,15 +235,7 @@ export async function getCommitSha(org, project, repo, branch, accessToken) {
   return ref.objectId;
 }
 
-// ── File tree with blob SHAs ──────────────────────────────────
-
-export async function getFileTreeWithSha(
-  org,
-  project,
-  repo,
-  branch,
-  accessToken,
-) {
+export async function getFileTreeWithSha(org, project, repo, branch, accessToken) {
   const all = [];
   let skip = 0;
 
@@ -320,38 +272,14 @@ export async function getFileTreeWithSha(
     }));
 }
 
-/** File tree without SHAs. */
 export async function getFileTree(org, project, repo, branch, accessToken) {
-  const items = await getFileTreeWithSha(
-    org,
-    project,
-    repo,
-    branch,
-    accessToken,
-  );
+  const items = await getFileTreeWithSha(org, project, repo, branch, accessToken);
   return items.map((i) => ({ path: i.path, size: i.size }));
 }
 
-// ── Compute file diff ────────────────────────────────────────
-
-export async function computeFileDiff(
-  org,
-  project,
-  repo,
-  branch,
-  storedManifest,
-  accessToken,
-) {
-  const currentTree = await getFileTreeWithSha(
-    org,
-    project,
-    repo,
-    branch,
-    accessToken,
-  );
-  const eligible = currentTree.filter(
-    (f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024,
-  );
+export async function computeFileDiff(org, project, repo, branch, storedManifest, accessToken) {
+  const currentTree = await getFileTreeWithSha(org, project, repo, branch, accessToken);
+  const eligible = currentTree.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024);
 
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
   const currentMap = new Map(eligible.map((f) => [f.path, f]));
@@ -381,15 +309,7 @@ export async function computeFileDiff(
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
 
-// ── Individual file content ───────────────────────────────────
-
-export async function getFileContent(
-  org,
-  project,
-  repo,
-  filePath,
-  accessToken,
-) {
+export async function getFileContent(org, project, repo, filePath, accessToken) {
   try {
     const { data } = await axios.get(
       `${AZURE_API}/${org}/${project}/_apis/git/repositories/${repo}/items`,
@@ -409,16 +329,7 @@ export async function getFileContent(
   }
 }
 
-// ── Batch-fetch file contents ────────────────────────────────
-
-export async function fetchFileContents(
-  org,
-  project,
-  repo,
-  filePaths,
-  onProgress,
-  accessToken,
-) {
+export async function fetchFileContents(org, project, repo, filePaths, onProgress, accessToken) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
@@ -434,50 +345,28 @@ export async function fetchFileContents(
   return files;
 }
 
-// ── Full repo fetch ──────────────────────────────────────────
-
 export async function fetchRepoFiles(repoUrl, accessToken) {
   const { owner, project, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, project, repo, accessToken);
-  const allFiles = await getFileTree(
-    owner,
-    project,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, project, repo, meta.defaultBranch, accessToken);
 
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),
     MAX_FILES,
   );
 
-  console.log(
-    `📂 Fetching ${eligible.length} files from ${owner}/${project}/${repo}…`,
-  );
+  console.log(`📂 Fetching ${eligible.length} files from ${owner}/${project}/${repo}…`);
 
   const files = [];
   for (const file of eligible) {
-    const content = await getFileContent(
-      owner,
-      project,
-      repo,
-      file.path,
-      accessToken,
-    );
+    const content = await getFileContent(owner, project, repo, file.path, accessToken);
     if (content.trim()) files.push({ path: file.path, content });
   }
 
   return { meta, files, owner, project, repo };
 }
 
-// ── Full repo fetch with progress ────────────────────────────
-
-export async function fetchRepoFilesWithProgress(
-  repoUrl,
-  onProgress,
-  accessToken,
-) {
+export async function fetchRepoFilesWithProgress(repoUrl, onProgress, accessToken) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
@@ -487,13 +376,7 @@ export async function fetchRepoFilesWithProgress(
   const meta = await getRepoMeta(owner, project, repo, accessToken);
 
   notify(`Reading file tree on branch "${meta.defaultBranch}"…`);
-  const allFiles = await getFileTree(
-    owner,
-    project,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, project, repo, meta.defaultBranch, accessToken);
 
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),
@@ -504,13 +387,7 @@ export async function fetchRepoFilesWithProgress(
 
   const files = [];
   for (const [i, file] of eligible.entries()) {
-    const content = await getFileContent(
-      owner,
-      project,
-      repo,
-      file.path,
-      accessToken,
-    );
+    const content = await getFileContent(owner, project, repo, file.path, accessToken);
     if (content.trim()) files.push({ path: file.path, content });
     if ((i + 1) % 20 === 0 || i === eligible.length - 1) {
       notify(`Downloaded ${i + 1} / ${eligible.length} files…`);

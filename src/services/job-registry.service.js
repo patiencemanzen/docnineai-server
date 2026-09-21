@@ -1,26 +1,6 @@
-// ===================================================================
-// Job Registry : in-memory job store + Redis persistence layer.
-//
-// Architecture:
-//   jobs Map    = per-instance cache for fast synchronous SSE delivery.
-//   streams Map = active SSE connections : in-memory always (non-transferable).
-//   Redis       = cross-instance source of truth.  Survives cold starts and
-//                 is visible to every Vercel instance serving the same app.
-//
-// Redis data model (all keys TTL'd to 24 h):
-//   job:{id}         Hash  { status, startTime, lastHeartbeat, vercelTimeout, resultJson }
-//   job:{id}:events  List  [ ...JSON strings ]  : append-only event stream
-//   vercel-timeouts  Set   { jobId, … }          : timeout registry
-//
-// Graceful degradation:
-//   If redis is not set (or Redis is down), all Redis ops are no-ops
-//   and the service falls back to pure in-memory behaviour.
-// ===================================================================
-
 import { getRedis, isRedisAvailable } from "../config/redis.js";
 
-// ── Key helpers ───────────────────────────────────────────────
-const JOB_TTL = 86_400; // seconds : 24 h auto-expiry on all job keys
+const JOB_TTL = 86_400;
 
 const K = {
   job: (id) => `job:${id}`,
@@ -28,46 +8,19 @@ const K = {
   vercelTimeouts: "vercel-timeouts",
 };
 
-// ── In-memory stores ──────────────────────────────────────────
-
-/**
- * jobs Map : jobId → { status, events[], result, startTime, lastHeartbeat, vercelTimeout }
- * Per-instance cache. Redis is the authoritative cross-instance store.
- */
 export const jobs = new Map();
 
-/**
- * streams Map : jobId → Set<express.Response>
- * Active SSE client connections. Cannot be stored outside this process.
- */
 export const streams = new Map();
 
-/**
- * In-memory set of Vercel-timeout'd job IDs for the current instance.
- * Populated lazily when Redis confirms a jobId is in the remote set.
- */
 export const vercelTimeoutJobs = new Set();
 
-// ── Redis fire-and-forget helper ──────────────────────────────
-// Redis writes never block SSE delivery. Errors are swallowed here
-// because a Redis hiccup must never crash the pipeline.
 function _rWrite(fn) {
   if (!isRedisAvailable()) return;
   Promise.resolve()
     .then(() => fn(getRedis()))
-    .catch((err) =>
-      console.warn(
-        "[job-registry:redis] Write error (non-fatal):",
-        err.message,
-      ),
-    );
+    .catch((err) => console.warn("[job-registry:redis] Write error (non-fatal):", err.message));
 }
 
-// ── Public API ────────────────────────────────────────────────
-
-/**
- * Register a new job and initialise its in-memory and Redis state.
- */
 export function registerJob(jobId) {
   const now = Date.now();
   console.log(`[job-registry] Registering job ${jobId}`);
@@ -82,9 +35,7 @@ export function registerJob(jobId) {
   });
   streams.set(jobId, new Set());
 
-  console.log(
-    `[job-registry] Job ${jobId} registered · total jobs: ${jobs.size}`,
-  );
+  console.log(`[job-registry] Job ${jobId} registered · total jobs: ${jobs.size}`);
 
   _rWrite(async (r) => {
     const pipe = r.pipeline();
@@ -94,15 +45,12 @@ export function registerJob(jobId) {
       lastHeartbeat: String(now),
       vercelTimeout: "0",
     });
-    pipe.del(K.events(jobId)); // clear any stale events from a prior run
+    pipe.del(K.events(jobId));
     pipe.expire(K.job(jobId), JOB_TTL);
     await pipe.exec();
   });
 }
 
-/**
- * Broadcast a progress event to all active SSE clients and persist to Redis.
- */
 export function pushEvent(jobId, event) {
   const job = jobs.get(jobId);
   if (!job) return;
@@ -110,17 +58,13 @@ export function pushEvent(jobId, event) {
   job.events.push(event);
   job.lastHeartbeat = Date.now();
 
-  // Synchronous SSE delivery : must not await anything here.
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of streams.get(jobId) || new Set()) {
     try {
       client.write(payload);
-    } catch {
-      /* disconnected */
-    }
+    } catch {}
   }
 
-  // Async Redis persistence (fire-and-forget).
   _rWrite(async (r) => {
     const now = Date.now();
     const pipe = r.pipeline();
@@ -132,9 +76,6 @@ export function pushEvent(jobId, event) {
   });
 }
 
-/**
- * Mark the job as finished, notify all SSE clients, and persist final state.
- */
 export function finishJob(jobId, result) {
   const job = jobs.get(jobId);
   if (job) {
@@ -160,9 +101,6 @@ export function finishJob(jobId, result) {
   });
 }
 
-/**
- * Mark a job as errored from an uncaught exception.
- */
 export function failJob(jobId, err) {
   const job = jobs.get(jobId);
   if (job) {
@@ -188,10 +126,6 @@ export function failJob(jobId, err) {
   });
 }
 
-/**
- * Mark a job as Vercel-timed-out. The pipeline may still be running in
- * another invocation : don't set status=error yet. Notify and close SSE clients.
- */
 export function flagVercelTimeout(jobId) {
   const job = jobs.get(jobId);
   if (job) {
@@ -226,14 +160,7 @@ export function flagVercelTimeout(jobId) {
   });
 }
 
-/**
- * Register a synthetic error job for state lost on server restart.
- * Connecting SSE clients will receive the buffered error event immediately.
- */
-export function recoverLostJob(
-  jobId,
-  message = "Pipeline interrupted by server restart.",
-) {
+export function recoverLostJob(jobId, message = "Pipeline interrupted by server restart.") {
   const errorEvent = {
     step: "error",
     status: "error",
@@ -248,23 +175,10 @@ export function recoverLostJob(
     lastHeartbeat: Date.now(),
     vercelTimeout: false,
   });
-  // No streams slot : any connecting client sees the buffered error immediately.
 }
 
-// ── Redis-backed recovery (async) ─────────────────────────────
-
-/**
- * Hydrate an in-memory job from Redis.
- * Called when an SSE client connects to a "running" project but this instance
- * has no matching job in memory (cold start, cross-instance, Vercel scale-out).
- *
- * Returns the hydrated job object, or null if Redis has no record.
- *
- * @param {string} jobId
- * @returns {Promise<object|null>}
- */
 export async function hydrateJobFromRedis(jobId) {
-  if (jobs.has(jobId)) return jobs.get(jobId); // local cache hit : no-op
+  if (jobs.has(jobId)) return jobs.get(jobId);
 
   if (!isRedisAvailable()) return null;
 
@@ -276,9 +190,7 @@ export async function hydrateJobFromRedis(jobId) {
     ]);
 
     if (!meta || !meta.status) {
-      console.log(
-        `[job-registry] hydrateJobFromRedis: no Redis record for ${jobId}`,
-      );
+      console.log(`[job-registry] hydrateJobFromRedis: no Redis record for ${jobId}`);
       return null;
     }
 
@@ -300,9 +212,7 @@ export async function hydrateJobFromRedis(jobId) {
       startTime: Number(meta.startTime) || now,
       lastHeartbeat: Number(meta.lastHeartbeat) || now,
       vercelTimeout:
-        meta.vercelTimeout && meta.vercelTimeout !== "0"
-          ? Number(meta.vercelTimeout)
-          : false,
+        meta.vercelTimeout && meta.vercelTimeout !== "0" ? Number(meta.vercelTimeout) : false,
     };
 
     jobs.set(jobId, job);
@@ -314,22 +224,11 @@ export async function hydrateJobFromRedis(jobId) {
     );
     return job;
   } catch (err) {
-    console.warn(
-      `[job-registry:redis] Hydrate failed for ${jobId}:`,
-      err.message,
-    );
+    console.warn(`[job-registry:redis] Hydrate failed for ${jobId}:`, err.message);
     return null;
   }
 }
 
-/**
- * Fallback: hydrate from MongoDB events when Redis has no record.
- * Used by streamProject after hydrateJobFromRedis returns null.
- *
- * @param {string}   jobId
- * @param {object[]} dbEvents : project.events from MongoDB
- * @returns {object}
- */
 export function hydrateJobFromDb(jobId, dbEvents = []) {
   if (jobs.has(jobId)) return jobs.get(jobId);
   const now = Date.now();
@@ -343,20 +242,10 @@ export function hydrateJobFromDb(jobId, dbEvents = []) {
   };
   jobs.set(jobId, job);
   if (!streams.has(jobId)) streams.set(jobId, new Set());
-  console.log(
-    `[job-registry] Hydrated job ${jobId} from DB (${job.events.length} events)`,
-  );
+  console.log(`[job-registry] Hydrated job ${jobId} from DB (${job.events.length} events)`);
   return job;
 }
 
-/**
- * Check whether a job has been flagged as Vercel-timed-out.
- * Checks local Set first (fast), then Redis (cross-instance).
- * Populates local Set cache so subsequent calls are synchronous.
- *
- * @param {string} jobId
- * @returns {Promise<boolean>}
- */
 export async function isVercelTimedOut(jobId) {
   if (vercelTimeoutJobs.has(jobId)) return true;
 
@@ -365,22 +254,17 @@ export async function isVercelTimedOut(jobId) {
   try {
     const r = getRedis();
     const isMember = await r.sismember(K.vercelTimeouts, jobId);
-    if (isMember) vercelTimeoutJobs.add(jobId); // populate local cache
+    if (isMember) vercelTimeoutJobs.add(jobId);
     return !!isMember;
   } catch {
     return false;
   }
 }
 
-/**
- * Check which running jobs haven't sent a heartbeat recently.
- * Used by recoverOrphanedJobs for monitoring.
- * @returns {{ staleJobs: string[], soonStaleJobs: string[] }}
- */
 export function getStaleJobs() {
   const now = Date.now();
-  const STALE_THRESHOLD = 25_000 * 5; // no heartbeat for 2+ min
-  const CONCERNING_THRESHOLD = 120_000; // warn if running > 2 min
+  const STALE_THRESHOLD = 25_000 * 5;
+  const CONCERNING_THRESHOLD = 120_000;
 
   const staleJobs = [];
   const soonStaleJobs = [];
@@ -396,11 +280,6 @@ export function getStaleJobs() {
   return { staleJobs, soonStaleJobs };
 }
 
-/**
- * Retrieve summary info about a job for monitoring (dashboard use).
- * @param {string} jobId
- * @returns {object | null} Job info with uptime, lifetime, etc.
- */
 export function getJobInfo(jobId) {
   const job = jobs.get(jobId);
   if (!job) return null;
@@ -417,10 +296,6 @@ export function getJobInfo(jobId) {
   };
 }
 
-/**
- * Export snapshot of all jobs for monitoring and recovery.
- * @returns {Array<object>} Array of job info
- */
 export function getAllJobs() {
   return Array.from(jobs.entries()).map(([jobId, job]) => ({
     jobId,

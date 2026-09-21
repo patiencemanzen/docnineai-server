@@ -1,14 +1,8 @@
-// ===================================================================
-// Controllers are thin: call service → format response.
-// All business logic lives in auth.service.js.
-// ===================================================================
-
 import * as authService from "../../services/auth/auth.service.js";
 import * as cliAuthService from "../../services/auth/cli-auth.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { getRefreshCookieOpts, denylistToken } from "../../../utils/jwt.util.js";
 
-// ── POST /auth/signup ─────────────────────────────────────────
 export async function signup(req, res) {
   const { name, email, password, agreeToTerms } = req.body;
   try {
@@ -18,22 +12,14 @@ export async function signup(req, res) {
       password,
       agreeToTerms,
     });
-    return ok(
-      res,
-      { user },
-      "Account created. Check your email to verify.",
-      201,
-    );
+    return ok(res, { user }, "Account created. Check your email to verify.", 201);
   } catch (err) {
-    if (err.code === "EMAIL_TAKEN")
-      return fail(res, err.code, err.message, err.status);
-    if (err.code === "T_AND_C_REQUIRED")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "EMAIL_TAKEN") return fail(res, err.code, err.message, err.status);
+    if (err.code === "T_AND_C_REQUIRED") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "signup");
   }
 }
 
-// ── POST /auth/login ──────────────────────────────────────────
 export async function login(req, res) {
   const { email, password } = req.body;
   try {
@@ -44,19 +30,17 @@ export async function login(req, res) {
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return ok(res, { user, accessToken }, "Login successful");
   } catch (err) {
-    if (err.code === "INVALID_CREDENTIALS")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "INVALID_CREDENTIALS") return fail(res, err.code, err.message, err.status);
     if (err.code === "EMAIL_NOT_VERIFIED" || err.code === "USE_OAUTH_PROVIDER")
       return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "login");
   }
 }
 
-// ── POST /auth/logout ─────────────────────────────────────────
 export async function logout(req, res) {
   try {
     await authService.logout(req.user.userId);
-    // Clear the cookie with the same options it was set with (except maxAge→0)
+
     res.clearCookie("refreshToken", { ...getRefreshCookieOpts(), maxAge: 0 });
     return ok(res, null, "Logged out successfully.");
   } catch (err) {
@@ -64,43 +48,33 @@ export async function logout(req, res) {
   }
 }
 
-// ── POST /auth/cli/logout ─────────────────────────────────────
 export async function cliLogout(req, res) {
   try {
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
-    // Denylist the access token so it cannot be reused even before natural expiry
+
     if (token && !token.startsWith("docnine_")) {
       await denylistToken(token);
     }
     return ok(res, null, "Logged out successfully.");
   } catch (err) {
-    // Non-fatal: still return success so CLI clears local credentials
     return ok(res, null, "Logged out.");
   }
 }
 
-// ── POST /auth/refresh ────────────────────────────────────────
 export async function refresh(req, res) {
   const token = req.cookies?.refreshToken;
   try {
-    const { user, accessToken, refreshToken } =
-      await authService.refreshSession(token);
+    const { user, accessToken, refreshToken } = await authService.refreshSession(token);
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return ok(res, { user, accessToken }, "Token refreshed successfully.");
   } catch (err) {
-    const KNOWN = [
-      "NO_REFRESH_TOKEN",
-      "INVALID_REFRESH_TOKEN",
-      "REFRESH_TOKEN_REUSED",
-    ];
-    if (KNOWN.includes(err.code))
-      return fail(res, err.code, err.message, err.status);
+    const KNOWN = ["NO_REFRESH_TOKEN", "INVALID_REFRESH_TOKEN", "REFRESH_TOKEN_REUSED"];
+    if (KNOWN.includes(err.code)) return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "refresh");
   }
 }
 
-// ── POST /auth/verify-email ───────────────────────────────────
 export async function verifyEmail(req, res) {
   const { token } = req.body;
   try {
@@ -113,48 +87,37 @@ export async function verifyEmail(req, res) {
   }
 }
 
-// ── POST /auth/forgot-password ────────────────────────────────
 export async function forgotPassword(req, res) {
   const { email } = req.body;
   try {
-    // Always 200 : prevents email enumeration
     await authService.forgotPassword(email);
-    return ok(
-      res,
-      null,
-      "If that email is registered, a reset link has been sent.",
-    );
+    return ok(res, null, "If that email is registered, a reset link has been sent.");
   } catch (err) {
     return serverError(res, err, "forgotPassword");
   }
 }
 
-// ── POST /auth/reset-password ─────────────────────────────────
 export async function resetPassword(req, res) {
   const { token, password } = req.body;
   try {
     await authService.resetPassword({ token, password });
     return ok(res, null, "Password reset successfully. Please log in again.");
   } catch (err) {
-    if (err.code === "INVALID_RESET_TOKEN")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "INVALID_RESET_TOKEN") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "resetPassword");
   }
 }
 
-// ── GET /auth/me ──────────────────────────────────────────────
 export async function getMe(req, res) {
   try {
     const user = await authService.getMe(req.user.userId);
     return ok(res, { user });
   } catch (err) {
-    if (err.code === "USER_NOT_FOUND")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "USER_NOT_FOUND") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "getMe");
   }
 }
 
-// ── PATCH /auth/profile ───────────────────────────────────────
 export async function updateProfile(req, res) {
   const { name, email } = req.body;
   try {
@@ -170,7 +133,6 @@ export async function updateProfile(req, res) {
   }
 }
 
-// ── POST /auth/change-password ────────────────────────────────
 export async function changePassword(req, res) {
   const { currentPassword, newPassword } = req.body;
   try {
@@ -178,7 +140,7 @@ export async function changePassword(req, res) {
       currentPassword,
       newPassword,
     });
-    // Clear the refresh cookie : user must log in again with the new password.
+
     res.clearCookie("refreshToken", { ...getRefreshCookieOpts(), maxAge: 0 });
     return ok(res, null, "Password changed successfully. Please log in again.");
   } catch (err) {
@@ -188,28 +150,22 @@ export async function changePassword(req, res) {
   }
 }
 
-// ── GET /auth/github (popup) ──────────────────────────────────
-// Deprecated: the SPA fetches GET /github/oauth/start with a Bearer
-// token and opens the returned URL. JWT must not appear in query strings.
 export function githubPopup(_req, res) {
   return res
     .status(410)
     .send("This popup entrypoint is gone. Open the OAuth URL from GET /github/oauth/start.");
 }
 
-// ── GET /auth/github/start ────────────────────────────────────
 export function githubLoginStart(req, res) {
   try {
     const url = authService.getGithubLoginUrl();
     return res.redirect(url);
   } catch (err) {
-    if (err.code === "GITHUB_LOGIN_NOT_CONFIGURED")
-      return fail(res, err.code, err.message, 503);
+    if (err.code === "GITHUB_LOGIN_NOT_CONFIGURED") return fail(res, err.code, err.message, 503);
     return serverError(res, err, "githubLoginStart");
   }
 }
 
-// ── GET /auth/github/callback ─────────────────────────────────
 export async function githubLoginCallback(req, res) {
   const { code, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || "";
@@ -219,8 +175,7 @@ export async function githubLoginCallback(req, res) {
   }
 
   try {
-    const { refreshToken } =
-      await authService.githubSocialLogin(code);
+    const { refreshToken } = await authService.githubSocialLogin(code);
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return res.redirect(`${frontendUrl}/auth/callback`);
   } catch (err) {
@@ -236,40 +191,34 @@ export async function githubLoginCallback(req, res) {
   }
 }
 
-// ── GET /auth/gitlab (popup) ──────────────────────────────────
 export function gitlabPopup(_req, res) {
   return res
     .status(410)
     .send("This popup entrypoint is gone. Open the OAuth URL from GET /gitlab/oauth/start.");
 }
 
-// ── GET /auth/bitbucket (popup) ────────────────────────────────
 export function bitbucketPopup(_req, res) {
   return res
     .status(410)
     .send("This popup entrypoint is gone. Open the OAuth URL from GET /bitbucket/oauth/start.");
 }
 
-// ── GET /auth/azure (popup) ────────────────────────────────────
 export function azurePopup(_req, res) {
   return res
     .status(410)
     .send("This popup entrypoint is gone. Open the OAuth URL from GET /azure/oauth/start.");
 }
 
-// ── GET /auth/google/start ────────────────────────────────────
 export function googleLoginStart(req, res) {
   try {
     const url = authService.getGoogleLoginUrl();
     return res.redirect(url);
   } catch (err) {
-    if (err.code === "GOOGLE_LOGIN_NOT_CONFIGURED")
-      return fail(res, err.code, err.message, 503);
+    if (err.code === "GOOGLE_LOGIN_NOT_CONFIGURED") return fail(res, err.code, err.message, 503);
     return serverError(res, err, "googleLoginStart");
   }
 }
 
-// ── GET /auth/google/callback ─────────────────────────────────
 export async function googleLoginCallback(req, res) {
   const { code, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -279,8 +228,7 @@ export async function googleLoginCallback(req, res) {
   }
 
   try {
-    const { refreshToken } =
-      await authService.googleSocialLogin(code);
+    const { refreshToken } = await authService.googleSocialLogin(code);
     res.cookie("refreshToken", refreshToken, getRefreshCookieOpts());
     return res.redirect(`${frontendUrl}/auth/callback`);
   } catch (err) {
@@ -296,8 +244,6 @@ export async function googleLoginCallback(req, res) {
   }
 }
 
-// ── GET /auth/google-docs/callback ───────────────────────────
-// Called after user grants Google Drive / Docs access via project export flow
 export async function googleDocsCallback(req, res) {
   const { code, state, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -310,7 +256,6 @@ export async function googleDocsCallback(req, res) {
     const { handleGoogleDocsCallback, verifySignedState } =
       await import("../../../services/googleDocs.service.js");
 
-    // Verify HMAC-signed state to prevent CSRF account-linking attacks
     const userId = verifySignedState(state);
     if (!userId) {
       return res.redirect(`${frontendUrl}/settings?googleDocs=error`);
@@ -324,7 +269,6 @@ export async function googleDocsCallback(req, res) {
   }
 }
 
-// ── GET /auth/google-docs/status ──────────────────────────────
 export async function googleDocsStatusForUser(req, res) {
   try {
     const { getGoogleDocsConnectionStatus } =
@@ -336,11 +280,9 @@ export async function googleDocsStatusForUser(req, res) {
   }
 }
 
-// ── GET /auth/google-docs/start ───────────────────────────────
 export async function googleDocsStart(req, res) {
   try {
-    const { getGoogleDocsOAuthUrl } =
-      await import("../../../services/googleDocs.service.js");
+    const { getGoogleDocsOAuthUrl } = await import("../../../services/googleDocs.service.js");
     const url = getGoogleDocsOAuthUrl(req.user.userId);
     return ok(res, { url }, "Redirect to Google to grant Drive/Docs access.");
   } catch (err) {
@@ -350,11 +292,9 @@ export async function googleDocsStart(req, res) {
   }
 }
 
-// ── DELETE /auth/google-docs ──────────────────────────────────
 export async function googleDocsDisconnectForUser(req, res) {
   try {
-    const { disconnectGoogleDocs } =
-      await import("../../../services/googleDocs.service.js");
+    const { disconnectGoogleDocs } = await import("../../../services/googleDocs.service.js");
     await disconnectGoogleDocs(req.user.userId);
     return ok(res, null, "Google Drive disconnected.");
   } catch (err) {
@@ -362,20 +302,13 @@ export async function googleDocsDisconnectForUser(req, res) {
   }
 }
 
-// ── POST /auth/notion/connect ─────────────────────────────────
 export async function notionConnect(req, res) {
   const { apiKey, parentPageId, workspaceName } = req.body;
   if (!apiKey || !parentPageId) {
-    return fail(
-      res,
-      "VALIDATION_ERROR",
-      "apiKey and parentPageId are required.",
-      400,
-    );
+    return fail(res, "VALIDATION_ERROR", "apiKey and parentPageId are required.", 400);
   }
   try {
-    const { saveNotionSettings } =
-      await import("../../../services/notion.service.js");
+    const { saveNotionSettings } = await import("../../../services/notion.service.js");
     const status = await saveNotionSettings({
       userId: req.user.userId,
       apiKey,
@@ -388,11 +321,9 @@ export async function notionConnect(req, res) {
   }
 }
 
-// ── GET /auth/notion/status ───────────────────────────────────
 export async function notionStatus(req, res) {
   try {
-    const { getNotionStatus } =
-      await import("../../../services/notion.service.js");
+    const { getNotionStatus } = await import("../../../services/notion.service.js");
     const status = await getNotionStatus(req.user.userId);
     return ok(res, status);
   } catch (err) {
@@ -400,11 +331,9 @@ export async function notionStatus(req, res) {
   }
 }
 
-// ── DELETE /auth/notion ───────────────────────────────────────
 export async function notionDisconnect(req, res) {
   try {
-    const { disconnectNotion } =
-      await import("../../../services/notion.service.js");
+    const { disconnectNotion } = await import("../../../services/notion.service.js");
     await disconnectNotion(req.user.userId);
     return ok(res, null, "Notion disconnected.");
   } catch (err) {
@@ -412,12 +341,9 @@ export async function notionDisconnect(req, res) {
   }
 }
 
-// ── GET /auth/webhook/status ──────────────────────────────────
 function getApiBaseUrl(req) {
   return (
-    req.headers["x-api-base-url"] ||
-    process.env.APP_URL ||
-    `${req.protocol}://${req.get("host")}`
+    req.headers["x-api-base-url"] || process.env.APP_URL || `${req.protocol}://${req.get("host")}`
   );
 }
 
@@ -430,36 +356,24 @@ export async function webhookStatus(req, res) {
   }
 }
 
-// ── POST /auth/webhook/init ───────────────────────────────────
-// Initialize or get webhook settings for a user
 export async function initWebhook(req, res) {
   try {
-    const settings = await authService.getOrInitializeWebhook(
-      req.user.userId,
-      getApiBaseUrl(req),
-    );
+    const settings = await authService.getOrInitializeWebhook(req.user.userId, getApiBaseUrl(req));
     return ok(res, settings, "Webhook initialized successfully.");
   } catch (err) {
     return serverError(res, err, "initWebhook");
   }
 }
 
-// ── POST /auth/webhook/rotate ─────────────────────────────────
-// Rotate the webhook secret
 export async function rotateWebhookSecret(req, res) {
   try {
-    const settings = await authService.rotateWebhookSecret(
-      req.user.userId,
-      getApiBaseUrl(req),
-    );
+    const settings = await authService.rotateWebhookSecret(req.user.userId, getApiBaseUrl(req));
     return ok(res, settings, "Webhook secret rotated successfully.");
   } catch (err) {
     return serverError(res, err, "rotateWebhookSecret");
   }
 }
 
-// ── PATCH /auth/webhook ───────────────────────────────────────
-// Enable/disable webhooks
 export async function updateWebhookSettings(req, res) {
   const { webhookEnabled } = req.body;
   if (typeof webhookEnabled !== "boolean") {
@@ -477,8 +391,6 @@ export async function updateWebhookSettings(req, res) {
   }
 }
 
-// CLI auth flow
-// POST /auth/cli/init
 export async function cliInit(req, res) {
   try {
     const out = await cliAuthService.initCliSession({
@@ -492,7 +404,6 @@ export async function cliInit(req, res) {
   }
 }
 
-// GET /auth/cli/poll/:sessionId
 export async function cliPoll(req, res) {
   try {
     const result = await cliAuthService.pollCliSession(req.params.sessionId);
@@ -502,7 +413,6 @@ export async function cliPoll(req, res) {
   }
 }
 
-// POST /auth/cli/approve
 export async function cliApprove(req, res) {
   const { sessionId } = req.body || {};
   const refreshToken = req.cookies?.refreshToken;
@@ -522,7 +432,6 @@ export async function cliApprove(req, res) {
   }
 }
 
-// POST /auth/cli/cancel
 export async function cliCancel(req, res) {
   const { sessionId } = req.body || {};
   try {

@@ -1,21 +1,7 @@
-// ===================================================================
-// Thin HTTP layer : calls github.service.js, formats responses.
-// ===================================================================
-
-import * as githubService from "../../services/github/github.service.js";
+import * as githubService from "../../services/github/github-oauth.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
 
-// ── GET /github/oauth/start ───────────────────────────────────
-// Returns the GitHub authorization URL as JSON.
-//
-// WHY NOT res.redirect():
-//   This endpoint is called via the browser's fetch() API with a Bearer
-//   token in the Authorization header. A redirect response to
-//   github.com would be followed by fetch(), which would then make a
-//   CORS-blocked request to GitHub : the browser never navigates away.
-//   Instead, we return the URL in JSON and let the client do:
-//     window.location.href = data.url
 export async function oauthStart(req, res) {
   try {
     const url = githubService.buildOAuthUrl(req.user.userId);
@@ -28,13 +14,6 @@ export async function oauthStart(req, res) {
   }
 }
 
-// ── GET /github/oauth/callback ────────────────────────────────
-// GitHub redirects the browser here after the user grants permission.
-// This is a BROWSER navigation, not a fetch() call : no Bearer token.
-// User identity comes from the signed `state` JWT set in oauthStart.
-//
-// On success/failure, redirect the popup to the SPA's /github/oauth/complete
-// page, which postMessages the result to the parent window and closes itself.
 export async function oauthCallback(req, res) {
   const { code, state, error: oauthError } = req.query;
 
@@ -74,16 +53,12 @@ export async function oauthCallback(req, res) {
   }
 }
 
-// ── GET /github/repos ─────────────────────────────────────────
 export async function listRepos(req, res) {
   const page = Math.max(1, parseInt(req.query.page || "1", 10));
-  const perPage = Math.min(
-    100,
-    Math.max(1, parseInt(req.query.perPage || "30", 10)),
-  );
-  const type = req.query.type || "all"; // all | owner | member | public | private
-  const sort = req.query.sort || "updated"; // created | updated | pushed | full_name
-  const org = req.query.org || null; // if set, fetch from /orgs/{org}/repos
+  const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage || "30", 10)));
+  const type = req.query.type || "all";
+  const sort = req.query.sort || "updated";
+  const org = req.query.org || null;
 
   try {
     console.log("[github.controller] Fetching repos from GitHub service", {
@@ -116,23 +91,21 @@ export async function listRepos(req, res) {
       error_status: err.response?.status,
       user_id: req.user.userId,
     });
-    if (err.code === "GITHUB_NOT_CONNECTED")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "GITHUB_NOT_CONNECTED") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "listRepos");
   }
 }
-// ── GET /github/orgs ──────────────────────────────────────
+
 export async function listOrgs(req, res) {
   try {
     const orgs = await githubService.getUserOrgs(req.user.userId);
     return ok(res, { orgs });
   } catch (err) {
-    if (err.code === "GITHUB_NOT_CONNECTED")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "GITHUB_NOT_CONNECTED") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "listOrgs");
   }
 }
-// ── GET /github/status ────────────────────────────────────────
+
 export async function connectionStatus(req, res) {
   try {
     const status = await githubService.getConnectionStatus(req.user.userId);
@@ -143,7 +116,6 @@ export async function connectionStatus(req, res) {
   }
 }
 
-// ── DELETE /github/disconnect ─────────────────────────────────
 export async function disconnect(req, res) {
   try {
     await githubService.disconnectGitHub(req.user.userId);

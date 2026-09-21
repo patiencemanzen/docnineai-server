@@ -1,14 +1,5 @@
-// ===================================================================
-// Purpose-built rate limiters for sensitive routes.
-// Uses express-rate-limit (already in package.json).
-//
-// Separate limiters per route category so one doesn't pollute another.
-// All return consistent JSON on block (no HTML).
-// ===================================================================
-
 import rateLimit from "express-rate-limit";
 
-/** Shared error response handler : keeps response shape consistent */
 const onLimitReached = (req, res) => {
   res.status(429).json({
     success: false,
@@ -20,23 +11,15 @@ const onLimitReached = (req, res) => {
   });
 };
 
-/**
- * Strict limiter for login / forgot-password.
- * 10 attempts per 15 minutes per IP.
- */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   handler: onLimitReached,
-  skipSuccessfulRequests: true, // only count failed attempts
+  skipSuccessfulRequests: true,
 });
 
-/**
- * Limiter for signup and email verification.
- * 20 per hour per IP : generous enough for normal use.
- */
 export const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
@@ -45,10 +28,6 @@ export const signupLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-/**
- * API-wide limiter : catch-all for authenticated routes.
- * 300 requests per 5 minutes per IP.
- */
 export const apiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 300,
@@ -57,10 +36,6 @@ export const apiLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-/**
- * Token refresh limiter : prevent brute-force refresh-token rotation.
- * 20 per 15 minutes per IP.
- */
 export const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -69,10 +44,6 @@ export const refreshLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-/**
- * Email verification limiter : prevent OTP/token brute-force.
- * 5 attempts per 15 minutes per IP.
- */
 export const verifyEmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -81,10 +52,6 @@ export const verifyEmailLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-/**
- * CLI session poll/cancel limiter : prevent session-ID brute-force discovery.
- * 30 requests per 5 minutes per IP.
- */
 export const cliPollLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 30,
@@ -93,10 +60,6 @@ export const cliPollLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-/**
- * Portal password limiter : prevent online password guessing on password-protected portals.
- * 10 attempts per 15 minutes, keyed by IP + portal slug.
- */
 export const portalAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,

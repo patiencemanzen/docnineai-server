@@ -1,22 +1,6 @@
-// ===================================================================
-// Mongoose connection : connect once, reuse everywhere.
-//
-// FIX: MONGODB_URI check is now INSIDE connectDB(), not at module
-// load time. In ESM, top-level module code runs before dotenv.config()
-// fires in index.js, so env vars from .env are invisible at load time.
-// Moving checks inside functions means they run at call time, after
-// dotenv.config() has populated process.env.
-// ===================================================================
-
 import dns from "node:dns";
 import mongoose from "mongoose";
 
-/**
- * mongodb+srv:// needs a DNS SRV lookup. On Windows, Node often uses the
- * stub resolver at 127.0.0.1, which refuses SRV (querySrv ECONNREFUSED)
- * even when Atlas is up and PowerShell DNS works. Point Node at public
- * resolvers only in that case so Atlas can connect.
- */
 function ensureSrvDnsWorks(uri) {
   if (!uri.startsWith("mongodb+srv://")) return;
   const servers = dns.getServers();
@@ -25,25 +9,20 @@ function ensureSrvDnsWorks(uri) {
   );
   if (!onlyLoopback) return;
   dns.setServers(["8.8.8.8", "1.1.1.1"]);
-  console.warn(
-    "[Database] Node DNS was 127.0.0.1 (SRV lookups refused). Using 8.8.8.8 for Atlas.",
-  );
+  console.warn("[Database] Node DNS was 127.0.0.1 (SRV lookups refused). Using 8.8.8.8 for Atlas.");
 }
 
-// Cached connection promise : reused across hot invocations on Vercel
 let _connectionPromise = null;
 
 export async function connectDB() {
   const URI = process.env.MONGODB_URI;
-  
+
   if (!URI) {
     throw new Error("MONGODB_URI is required in environment variables.\n");
   }
 
-  // Already fully connected : reuse
   if (mongoose.connection.readyState === 1) return;
 
-  // Already connecting : wait for the same promise (handles concurrent requests)
   if (_connectionPromise) return _connectionPromise;
 
   _connectionPromise = _connect(URI).finally(() => {
@@ -56,10 +35,6 @@ export async function connectDB() {
 async function _connect(URI) {
   ensureSrvDnsWorks(URI);
 
-  // bufferCommands:false makes Mongoose throw immediately if a query is
-  // executed before the connection is ready, instead of buffering for
-  // serverSelectionTimeoutMS (10s). This surfaces the real error fast
-  // instead of timing out silently with "buffering timed out after 10000ms".
   mongoose.set("bufferCommands", false);
 
   await mongoose.connect(URI, {
@@ -69,8 +44,6 @@ async function _connect(URI) {
     minPoolSize: 1,
   });
 
-  // Wait for the connection to be fully open before proceeding.
-  // connection.db and connection.host are populated.
   if (mongoose.connection.readyState !== 1) {
     await new Promise((resolve, reject) => {
       mongoose.connection.once("open", resolve);
@@ -83,25 +56,17 @@ async function _connect(URI) {
   await migrateIndexes();
 }
 
-// ── Index migration ───────────────────────────────────────────
-// Drops the project_search text index if it was created without
-// language_override, preventing "language override unsupported: TypeScript".
 async function migrateIndexes() {
   try {
-    // connection.db can be undefined on serverless if accessed too early.
-    // Wait up to 3s for it to become available.
     let db = mongoose.connection.db;
     if (!db) {
       await new Promise((resolve, reject) => {
-        const deadline = setTimeout(
-          () => reject(new Error("db not ready after 3s")),
-          3000,
-        );
+        const deadline = setTimeout(() => reject(new Error("db not ready after 3s")), 3000);
         mongoose.connection.once("connected", () => {
           clearTimeout(deadline);
           resolve();
         });
-        // If already in connected state the event won't fire : check again
+
         if (mongoose.connection.readyState === 1) {
           clearTimeout(deadline);
           resolve();
@@ -120,42 +85,29 @@ async function migrateIndexes() {
     const textIdx = indexes.find((idx) => idx.name === "project_search");
 
     if (!textIdx) {
-      // Not yet created : Mongoose will create it correctly on first use
       return;
     }
 
     if (textIdx.language_override === "search_language") {
-      // Already fixed : nothing to do
       return;
     }
 
-    console.log(
-      "🔧 Dropping stale project_search index (missing language_override)…",
-    );
+    console.log("🔧 Dropping stale project_search index (missing language_override)…");
     await collection.dropIndex("project_search");
-    console.log(
-      "Stale index dropped : will be recreated with language_override",
-    );
+    console.log("Stale index dropped : will be recreated with language_override");
 
     const { Project } = await import("../models/Project.js");
     await Project.ensureIndexes();
     console.log("✅ project_search index recreated");
   } catch (err) {
-    // Non-fatal : server keeps running, index will be fixed on next deploy
     console.warn("Index migration skipped:", err.message);
   }
 }
 
-mongoose.connection.on("disconnected", () =>
-  console.warn("[Database] Database disconnected"),
-);
+mongoose.connection.on("disconnected", () => console.warn("[Database] Database disconnected"));
 
-mongoose.connection.on("reconnected", () =>
-  console.log("[Database] Database reconnected"),
-);
+mongoose.connection.on("reconnected", () => console.log("[Database] Database reconnected"));
 
-mongoose.connection.on("error", (err) =>
-  console.error("[Database] Database error:", err.message),
-);
+mongoose.connection.on("error", (err) => console.error("[Database] Database error:", err.message));
 
 export default mongoose;
