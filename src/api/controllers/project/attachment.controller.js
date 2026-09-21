@@ -1,11 +1,9 @@
-
 import { Attachment } from "../../../models/Attachment.js";
 import { User } from "../../../models/User.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { getShareRole } from "../../services/projects/share.service.js";
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
-
 
 const INLINE_MIME_TYPES = new Set([
   "application/pdf",
@@ -24,22 +22,18 @@ function domainError(msg, code, status = 400) {
   return e;
 }
 
-
 async function assertReadAccess(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
   return role;
 }
 
-
 async function assertWriteAccess(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
-  if (role === "viewer")
-    throw domainError("Viewers cannot modify attachments.", "FORBIDDEN", 403);
+  if (role === "viewer") throw domainError("Viewers cannot modify attachments.", "FORBIDDEN", 403);
   return role;
 }
-
 
 export async function listAttachments(req, res) {
   try {
@@ -51,13 +45,11 @@ export async function listAttachments(req, res) {
 
     return ok(res, { attachments });
   } catch (err) {
-    if (err.code === "PROJECT_NOT_FOUND")
-      return fail(res, err.code, err.message, 404);
+    if (err.code === "PROJECT_NOT_FOUND") return fail(res, err.code, err.message, 404);
     if (err.code === "FORBIDDEN") return fail(res, err.code, err.message, 403);
     return serverError(res, err, "listAttachments");
   }
 }
-
 
 export async function uploadAttachment(req, res) {
   try {
@@ -81,7 +73,6 @@ export async function uploadAttachment(req, res) {
       );
     }
 
-
     const user = await User.findById(req.user.userId).select("name email");
     const uploaderName = user?.name || user?.email || "Unknown";
 
@@ -96,17 +87,14 @@ export async function uploadAttachment(req, res) {
       data: req.file.buffer,
     });
 
-
     const { data: _omit, ...meta } = attachment.toObject();
     return ok(res, { attachment: meta }, "File uploaded.", 201);
   } catch (err) {
-    if (err.code === "PROJECT_NOT_FOUND")
-      return fail(res, err.code, err.message, 404);
+    if (err.code === "PROJECT_NOT_FOUND") return fail(res, err.code, err.message, 404);
     if (err.code === "FORBIDDEN") return fail(res, err.code, err.message, 403);
     return serverError(res, err, "uploadAttachment");
   }
 }
-
 
 export async function downloadAttachment(req, res) {
   try {
@@ -121,32 +109,21 @@ export async function downloadAttachment(req, res) {
       return fail(res, "ATTACHMENT_NOT_FOUND", "Attachment not found.", 404);
     }
 
-    const inline = INLINE_MIME_TYPES.has(attachment.mimeType)
-      ? "inline"
-      : "attachment";
+    const inline = INLINE_MIME_TYPES.has(attachment.mimeType) ? "inline" : "attachment";
 
-
-    const encoded = encodeURIComponent(attachment.fileName).replace(
-      /'/g,
-      "%27",
-    );
+    const encoded = encodeURIComponent(attachment.fileName).replace(/'/g, "%27");
 
     res.setHeader("Content-Type", attachment.mimeType);
-    res.setHeader(
-      "Content-Disposition",
-      `${inline}; filename*=UTF-8''${encoded}`,
-    );
+    res.setHeader("Content-Disposition", `${inline}; filename*=UTF-8''${encoded}`);
     res.setHeader("Content-Length", attachment.size);
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(attachment.data);
   } catch (err) {
-    if (err.code === "PROJECT_NOT_FOUND")
-      return fail(res, err.code, err.message, 404);
+    if (err.code === "PROJECT_NOT_FOUND") return fail(res, err.code, err.message, 404);
     if (err.code === "FORBIDDEN") return fail(res, err.code, err.message, 403);
     return serverError(res, err, "downloadAttachment");
   }
 }
-
 
 export async function updateAttachment(req, res) {
   try {
@@ -154,12 +131,7 @@ export async function updateAttachment(req, res) {
 
     const { description } = req.body;
     if (typeof description !== "string") {
-      return fail(
-        res,
-        "VALIDATION_ERROR",
-        "description must be a string.",
-        422,
-      );
+      return fail(res, "VALIDATION_ERROR", "description must be a string.", 422);
     }
 
     const attachment = await Attachment.findOneAndUpdate(
@@ -174,13 +146,11 @@ export async function updateAttachment(req, res) {
 
     return ok(res, { attachment }, "Description updated.");
   } catch (err) {
-    if (err.code === "PROJECT_NOT_FOUND")
-      return fail(res, err.code, err.message, 404);
+    if (err.code === "PROJECT_NOT_FOUND") return fail(res, err.code, err.message, 404);
     if (err.code === "FORBIDDEN") return fail(res, err.code, err.message, 403);
     return serverError(res, err, "updateAttachment");
   }
 }
-
 
 export async function deleteAttachment(req, res) {
   try {
@@ -197,8 +167,7 @@ export async function deleteAttachment(req, res) {
 
     return ok(res, null, "Attachment deleted.");
   } catch (err) {
-    if (err.code === "PROJECT_NOT_FOUND")
-      return fail(res, err.code, err.message, 404);
+    if (err.code === "PROJECT_NOT_FOUND") return fail(res, err.code, err.message, 404);
     if (err.code === "FORBIDDEN") return fail(res, err.code, err.message, 403);
     return serverError(res, err, "deleteAttachment");
   }

@@ -1,11 +1,9 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
 const AttachmentSchema = new Schema(
   {
-
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -19,14 +17,11 @@ const AttachmentSchema = new Schema(
     },
     uploaderName: { type: String, default: "Unknown" },
 
-
     fileName: { type: String, required: true, trim: true },
     mimeType: { type: String, required: true },
     size: { type: Number, required: true },
 
-
     description: { type: String, default: "", trim: true },
-
 
     data: { type: Buffer, required: true, select: false },
   },

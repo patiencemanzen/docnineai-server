@@ -1,10 +1,8 @@
-
 import axios from "axios";
 import crypto from "crypto";
 import { SlackIntegration } from "../models/SlackIntegration.js";
 
 const SLACK_API_BASE = "https://slack.com/api";
-
 
 class SlackClient {
   constructor(botToken) {
@@ -19,7 +17,6 @@ class SlackClient {
     });
   }
 
-  
   async call(method, payload = {}) {
     try {
       const response = await this.client.post(`/${method}`, payload);
@@ -33,7 +30,6 @@ class SlackClient {
     }
   }
 
-  
   async postMessage(channelId, { text, blocks, threadTs = null }) {
     return this.call("chat.postMessage", {
       channel: channelId,
@@ -43,7 +39,6 @@ class SlackClient {
     });
   }
 
-  
   async updateMessage(channelId, ts, { text, blocks }) {
     return this.call("chat.update", {
       channel: channelId,
@@ -53,7 +48,6 @@ class SlackClient {
     });
   }
 
-  
   async openModal(triggerId, { title, blocks, submit }) {
     return this.call("views.open", {
       trigger_id: triggerId,
@@ -67,19 +61,14 @@ class SlackClient {
     });
   }
 
-  
   async getUserInfo(userId) {
     return this.call("users.info", { user: userId });
   }
 
-  
   async getChannelInfo(channelId) {
     return this.call("conversations.info", { channel: channelId });
   }
 }
-
-
-
 
 export function buildAnswerBlocks(answer, fileReferences = []) {
   const blocks = [
@@ -121,7 +110,6 @@ export function buildAnswerBlocks(answer, fileReferences = []) {
 
   return blocks;
 }
-
 
 export function buildSecurityAuditBlocks(audit) {
   const { score, grade, counts, findings } = audit;
@@ -165,7 +153,6 @@ export function buildSecurityAuditBlocks(audit) {
     },
   ];
 
-
   if (findings.length > 0) {
     const topFindings = findings.slice(0, 5);
     blocks.push({
@@ -174,9 +161,7 @@ export function buildSecurityAuditBlocks(audit) {
         type: "mrkdwn",
         text:
           "*Top Findings:*\n" +
-          topFindings
-            .map((f) => `• ${f.severity}: ${f.title} - ${f.description}`)
-            .join("\n"),
+          topFindings.map((f) => `• ${f.severity}: ${f.title} - ${f.description}`).join("\n"),
       },
     });
   }
@@ -193,7 +178,6 @@ export function buildSecurityAuditBlocks(audit) {
 
   return blocks;
 }
-
 
 export function buildSecurityAlertBlocks(alerts, grade, score) {
   const iconMap = {
@@ -233,7 +217,6 @@ export function buildSecurityAlertBlocks(alerts, grade, score) {
 
   return blocks;
 }
-
 
 export function buildDiffBlocks(changes) {
   const blocks = [
@@ -279,9 +262,6 @@ export function buildDiffBlocks(changes) {
   return blocks;
 }
 
-
-
-
 export async function getSlackIntegration(projectId, userId) {
   const integration = await SlackIntegration.findOne({
     projectId,
@@ -296,31 +276,24 @@ export async function getSlackIntegration(projectId, userId) {
   return integration;
 }
 
-
 export async function getSlackClient(projectId, userId) {
   const integration = await getSlackIntegration(projectId, userId);
   const botToken = await integration.getDecryptedToken();
   return new SlackClient(botToken);
 }
 
-
 export async function sendSecurityAlert(projectId, userId, auditData) {
   try {
     const integration = await getSlackIntegration(projectId, userId);
 
     if (!integration.alertChannelId) {
-      console.warn(
-        `[slack] Alert channel not configured for project ${projectId}`,
-      );
+      console.warn(`[slack] Alert channel not configured for project ${projectId}`);
       return;
     }
 
     const client = await getSlackClient(projectId, userId);
 
-
-    const critical = auditData.findings.filter(
-      (f) => f.severity === "CRITICAL",
-    );
+    const critical = auditData.findings.filter((f) => f.severity === "CRITICAL");
     const high = auditData.findings.filter((f) => f.severity === "HIGH");
 
     const allAlerts = [...critical, ...high];
@@ -329,14 +302,9 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
       return;
     }
 
-    const blocks = buildSecurityAlertBlocks(
-      allAlerts,
-      auditData.grade,
-      auditData.score,
-    );
+    const blocks = buildSecurityAlertBlocks(allAlerts, auditData.grade, auditData.score);
 
     const text = `Security Alert: ${critical.length} CRITICAL, ${high.length} HIGH findings detected`;
-
 
     const payload = {
       text,
@@ -355,7 +323,6 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
 
     await client.postMessage(integration.alertChannelId, payload);
 
-
     await integration.recordEvent(
       "alert_sent",
       `Alert sent: ${critical.length} CRITICAL, ${high.length} HIGH`,
@@ -365,31 +332,19 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
       `[slack] Alert sent to ${integration.alertChannelName} (${integration.workspaceName})`,
     );
   } catch (err) {
-    console.error(
-      `[slack] Failed to send security alert for project ${projectId}:`,
-      err.message,
-    );
+    console.error(`[slack] Failed to send security alert for project ${projectId}:`, err.message);
   }
 }
 
-
-export async function sendSlashCommandResponse(
-  projectId,
-  userId,
-  respondUrl,
-  response,
-) {
+export async function sendSlashCommandResponse(projectId, userId, respondUrl, response) {
   try {
     await axios.post(respondUrl, response, {
       timeout: 5000,
     });
   } catch (err) {
-    console.error(
-      `[slack] Failed to send slash command response: ${err.message}`,
-    );
+    console.error(`[slack] Failed to send slash command response: ${err.message}`);
   }
 }
-
 
 export function verifySlackSignature(req, signingSecret) {
   const timestamp = req.headers["x-slack-request-timestamp"];
@@ -399,12 +354,10 @@ export function verifySlackSignature(req, signingSecret) {
     return false;
   }
 
-
   const requestTime = Math.floor(Date.now() / 1000);
   if (Math.abs(requestTime - parseInt(timestamp)) > 300) {
     return false;
   }
-
 
   const rawBody = req.rawBody || JSON.stringify(req.body || {});
   const baseString = `v0:${timestamp}:${rawBody}`;

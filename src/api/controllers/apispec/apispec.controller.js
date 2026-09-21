@@ -1,8 +1,5 @@
-
 import * as svc from "../../services/apispec/apispec.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-
-
 
 const KNOWN_CODES = new Set([
   "PROJECT_NOT_FOUND",
@@ -28,8 +25,6 @@ function dispatch(res, err, context) {
   return serverError(res, err, context);
 }
 
-
-
 export async function getSpec(req, res) {
   try {
     const spec = await svc.getSpec(req.params.id, req.user.userId);
@@ -39,12 +34,9 @@ export async function getSpec(req, res) {
   }
 }
 
-
-
 export async function importSpec(req, res) {
   try {
     const { method, url, raw, autoSync } = req.body ?? {};
-
 
     let content;
     if (req.file) {
@@ -66,8 +58,6 @@ export async function importSpec(req, res) {
   }
 }
 
-
-
 export async function syncSpec(req, res) {
   try {
     const spec = await svc.syncSpec(req.params.id, req.user.userId);
@@ -76,8 +66,6 @@ export async function syncSpec(req, res) {
     return dispatch(res, err, "syncSpec");
   }
 }
-
-
 
 export async function deleteSpec(req, res) {
   try {
@@ -88,13 +76,10 @@ export async function deleteSpec(req, res) {
   }
 }
 
-
-
 export async function updateEndpointNote(req, res) {
   try {
     const { endpointId, note } = req.body ?? {};
-    if (!endpointId)
-      return fail(res, "BAD_REQUEST", "endpointId is required.", 400);
+    if (!endpointId) return fail(res, "BAD_REQUEST", "endpointId is required.", 400);
 
     const spec = await svc.updateEndpointNote(
       req.params.id,
@@ -108,12 +93,9 @@ export async function updateEndpointNote(req, res) {
   }
 }
 
-
-
 export async function tryRequest(req, res) {
   try {
-    const { method, baseUrl, path, headers, queryParams, body } =
-      req.body ?? {};
+    const { method, baseUrl, path, headers, queryParams, body } = req.body ?? {};
     const result = await svc.tryRequest(req.params.id, req.user.userId, {
       method,
       baseUrl,

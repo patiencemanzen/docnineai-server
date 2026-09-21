@@ -1,4 +1,3 @@
-
 import Redis from "ioredis";
 
 let _client = null;
@@ -6,14 +5,12 @@ let _ready = false;
 
 if (process.env.REDIS_URL) {
   try {
-
     let redisUrl = process.env.REDIS_URL.replace(/^["']|["']$/g, "");
 
     if (!/^rediss?:\/\//i.test(redisUrl)) {
       redisUrl = `redis://${redisUrl}`;
     }
     _client = new Redis(redisUrl, {
-
       maxRetriesPerRequest: 1,
 
       enableReadyCheck: false,
@@ -37,7 +34,6 @@ if (process.env.REDIS_URL) {
     });
 
     _client.on("error", (err) => {
-
       if (!_client._lastErrCode || _client._lastErrCode !== err.code) {
         console.warn("[redis] Connection error (non-fatal):", err.message);
         _client._lastErrCode = err.code;
@@ -62,11 +58,9 @@ if (process.env.REDIS_URL) {
   );
 }
 
-
 export function getRedis() {
   return _client;
 }
-
 
 export function isRedisAvailable() {
   return _ready && _client !== null;

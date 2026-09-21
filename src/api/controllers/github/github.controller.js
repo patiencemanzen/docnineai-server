@@ -1,8 +1,6 @@
-
 import * as githubService from "../../services/github/github-oauth.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { sendOAuthPopupResult } from "../../../utils/oauth-popup.util.js";
-
 
 export async function oauthStart(req, res) {
   try {
@@ -15,7 +13,6 @@ export async function oauthStart(req, res) {
     return serverError(res, err, "oauthStart");
   }
 }
-
 
 export async function oauthCallback(req, res) {
   const { code, state, error: oauthError } = req.query;
@@ -56,13 +53,9 @@ export async function oauthCallback(req, res) {
   }
 }
 
-
 export async function listRepos(req, res) {
   const page = Math.max(1, parseInt(req.query.page || "1", 10));
-  const perPage = Math.min(
-    100,
-    Math.max(1, parseInt(req.query.perPage || "30", 10)),
-  );
+  const perPage = Math.min(100, Math.max(1, parseInt(req.query.perPage || "30", 10)));
   const type = req.query.type || "all";
   const sort = req.query.sort || "updated";
   const org = req.query.org || null;
@@ -98,8 +91,7 @@ export async function listRepos(req, res) {
       error_status: err.response?.status,
       user_id: req.user.userId,
     });
-    if (err.code === "GITHUB_NOT_CONNECTED")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "GITHUB_NOT_CONNECTED") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "listRepos");
   }
 }
@@ -109,8 +101,7 @@ export async function listOrgs(req, res) {
     const orgs = await githubService.getUserOrgs(req.user.userId);
     return ok(res, { orgs });
   } catch (err) {
-    if (err.code === "GITHUB_NOT_CONNECTED")
-      return fail(res, err.code, err.message, err.status);
+    if (err.code === "GITHUB_NOT_CONNECTED") return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "listOrgs");
   }
 }
@@ -124,7 +115,6 @@ export async function connectionStatus(req, res) {
     return serverError(res, err, "connectionStatus");
   }
 }
-
 
 export async function disconnect(req, res) {
   try {

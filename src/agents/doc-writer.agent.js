@@ -110,7 +110,6 @@ function buildReadmeContext({
   securitySummary,
   keyFiles,
 }) {
-
   meta = meta || {};
   techStack = techStack || [];
   endpoints = endpoints || [];
@@ -137,10 +136,7 @@ function buildReadmeContext({
   }));
 
   const structureSummary = Object.fromEntries(
-    Object.entries(structure || {}).map(([role, files]) => [
-      role,
-      files.length,
-    ]),
+    Object.entries(structure || {}).map(([role, files]) => [role, files.length]),
   );
 
   const inferredFeatures = [
@@ -191,7 +187,6 @@ function buildInternalContext({
   keyFiles,
   testFrameworks,
 }) {
-
   const componentsByType = {};
   for (const c of components || []) {
     if (!componentsByType[c.type]) componentsByType[c.type] = [];
@@ -218,10 +213,7 @@ function buildInternalContext({
   }));
 
   const structureSummary = Object.fromEntries(
-    Object.entries(structure || {}).map(([role, files]) => [
-      role,
-      files.length,
-    ]),
+    Object.entries(structure || {}).map(([role, files]) => [role, files.length]),
   );
 
   const authEndpoints = (endpoints || [])
@@ -251,7 +243,6 @@ function buildInternalContext({
 }
 
 function buildComponentRefContext(components) {
-
   const grouped = {};
   const typeOrder = [
     "service",
@@ -301,8 +292,7 @@ function buildComponentRefContext(components) {
 }
 
 export function buildApiReference(endpoints) {
-  if (!endpoints?.length)
-    return "# API Reference\n\nNo API endpoints detected.\n";
+  if (!endpoints?.length) return "# API Reference\n\nNo API endpoints detected.\n";
 
   let md = "# API Reference\n\n";
 
@@ -323,11 +313,7 @@ export function buildApiReference(endpoints) {
 
   const grouped = {};
   for (const ep of endpoints) {
-    const tag =
-      ep.tags?.[0] ||
-      ep.path?.split("/")?.[2] ||
-      ep.path?.split("/")?.[1] ||
-      "root";
+    const tag = ep.tags?.[0] || ep.path?.split("/")?.[2] || ep.path?.split("/")?.[1] || "root";
     if (!grouped[tag]) grouped[tag] = [];
     grouped[tag].push(ep);
   }
@@ -352,8 +338,7 @@ export function buildApiReference(endpoints) {
       const authType = ep.auth?.type || (authRequired ? "required" : "none");
       const authRoles = ep.auth?.roles || [];
       md += `**Authentication:** ${authRequired ? `✅ Required : \`${authType}\`` : "❌ Public"}`;
-      if (authRoles.length)
-        md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
+      if (authRoles.length) md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
       md += "\n\n";
 
       if (ep.middleware?.length) {
@@ -414,8 +399,7 @@ export function buildSchemaDocs(models, relationships) {
   let md = "# Data Models\n\n";
 
   md += `> **${models.length} models detected**`;
-  if (relationships?.length)
-    md += ` · **${relationships.length} relationships**`;
+  if (relationships?.length) md += ` · **${relationships.length} relationships**`;
   md += "\n\n";
 
   md += "## Models\n\n";
@@ -441,9 +425,7 @@ export function buildSchemaDocs(models, relationships) {
     if (model.indexes?.length) {
       md += `### Indexes\n\n| Name | Fields | Unique |\n|------|--------|--------|\n`;
       model.indexes.forEach((idx) => {
-        const fields = Array.isArray(idx.fields)
-          ? idx.fields.join(", ")
-          : idx.fields;
+        const fields = Array.isArray(idx.fields) ? idx.fields.join(", ") : idx.fields;
         md += `| \`${idx.name || ":"}\` | \`${fields}\` | ${idx.unique ? "✅" : "❌"} |\n`;
       });
       md += "\n";
@@ -478,8 +460,7 @@ export function buildSchemaDocs(models, relationships) {
 }
 
 export function buildComponentIndex(components) {
-  if (!components?.length)
-    return "# Component Index\n\nNo components documented.\n";
+  if (!components?.length) return "# Component Index\n\nNo components documented.\n";
 
   let md = "# Component Index\n\n";
   md += `> **${components.length} components** across ${[...new Set(components.map((c) => c.layer))].join(", ")} layers\n\n`;
@@ -525,9 +506,7 @@ export function buildComponentIndex(components) {
         const deprecated = c.deprecated ? " ⚠️" : "";
         const async_ = c.async ? "✅" : "❌";
         const complexity =
-          { low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High" }[
-          c.complexity
-          ] || ":";
+          { low: "🟢 Low", medium: "🟡 Medium", high: "🔴 High" }[c.complexity] || ":";
         md += `| \`${c.name}\`${deprecated} | \`${c.file}\` | ${c.layer || ":"} | ${async_} | ${complexity} | ${c.description ? c.description.slice(0, 80) + (c.description.length > 80 ? "…" : "") : ":"} |\n`;
       });
     md += "\n";
@@ -537,9 +516,7 @@ export function buildComponentIndex(components) {
 }
 
 function validateMarkdown(raw, docName) {
-  console.log(
-    `[validateMarkdown] Validating ${docName}: raw length=${raw?.length || 0}`,
-  );
+  console.log(`[validateMarkdown] Validating ${docName}: raw length=${raw?.length || 0}`);
 
   if (!raw || typeof raw !== "string") {
     const msg = `${docName}: LLM returned empty or non-string output (type=${typeof raw})`;
@@ -563,18 +540,11 @@ function validateMarkdown(raw, docName) {
     throw new Error(msg);
   }
 
-  console.log(
-    `[validateMarkdown:success] ${docName} passed validation (${trimmed.length} chars)`,
-  );
+  console.log(`[validateMarkdown:success] ${docName} passed validation (${trimmed.length} chars)`);
   return trimmed;
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  temperature = 0.15,
-  retries = 2,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, temperature = 0.15, retries = 2 }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       console.log(
@@ -590,15 +560,11 @@ async function llmCallWithRetry({
         `[llmCallWithRetry:error] Attempt ${attempt}/${retries}: ${err.name}: ${err.message}`,
       );
       if (attempt === retries) {
-        console.error(
-          `[llmCallWithRetry:exhausted] Retries exhausted. Throwing final error.`,
-        );
+        console.error(`[llmCallWithRetry:exhausted] Retries exhausted. Throwing final error.`);
         throw err;
       }
       const backoffMs = 600 * attempt;
-      console.log(
-        `[llmCallWithRetry:backoff] Waiting ${backoffMs}ms before retry…`,
-      );
+      console.log(`[llmCallWithRetry:backoff] Waiting ${backoffMs}ms before retry…`);
       await new Promise((r) => setTimeout(r, backoffMs));
     }
   }
@@ -654,8 +620,17 @@ export async function docWriterAgent({
     notify("Writing README.md…", "fast mode : 1 LLM call within Vercel budget");
     try {
       const readmeCtx = buildReadmeContext({
-        meta, techStack, endpoints, models, components, structure, owner, repo,
-        architectureHint, securitySummary, keyFiles,
+        meta,
+        techStack,
+        endpoints,
+        models,
+        components,
+        structure,
+        owner,
+        repo,
+        architectureHint,
+        securitySummary,
+        keyFiles,
       });
       const raw = await llmCallWithRetry({
         systemPrompt: README_SYSTEM_PROMPT,
@@ -668,20 +643,30 @@ export async function docWriterAgent({
       docs.readme = buildFallbackReadme({ meta, owner, repo, techStack, endpoints });
       notify("⚠ README.md generation failed : using fallback", err.message);
     }
-    docs.internalDocs = "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode : regenerate without Vercel timeout constraints.\n";
+    docs.internalDocs =
+      "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode : regenerate without Vercel timeout constraints.\n";
     docs.componentRef = buildComponentIndex(components || []);
-
   } else {
-
     notify("Writing README.md and internal docs…", "parallel LLM generation");
 
     const readmePromise = (async () => {
       try {
         const readmeCtx = buildReadmeContext({
-          meta, techStack, endpoints, models, components, structure, owner, repo,
-          architectureHint, securitySummary, keyFiles,
+          meta,
+          techStack,
+          endpoints,
+          models,
+          components,
+          structure,
+          owner,
+          repo,
+          architectureHint,
+          securitySummary,
+          keyFiles,
         });
-        console.log(`[doc-writer:readme] Prepared context: ${readmeCtx.length} chars (~${Math.ceil(readmeCtx.length / 4)} tokens)`);
+        console.log(
+          `[doc-writer:readme] Prepared context: ${readmeCtx.length} chars (~${Math.ceil(readmeCtx.length / 4)} tokens)`,
+        );
         const raw = await llmCallWithRetry({
           systemPrompt: README_SYSTEM_PROMPT,
           userContent: `Generate a complete README.md for this project:\n\n${readmeCtx}`,
@@ -691,15 +676,27 @@ export async function docWriterAgent({
         return { doc: validateMarkdown(raw, "README.md") };
       } catch (err) {
         console.error(`[doc-writer:readme] Failed:`, err);
-        return { doc: buildFallbackReadme({ meta, owner, repo, techStack, endpoints }), error: err };
+        return {
+          doc: buildFallbackReadme({ meta, owner, repo, techStack, endpoints }),
+          error: err,
+        };
       }
     })();
 
     const internalPromise = (async () => {
       try {
         const internalCtx = buildInternalContext({
-          structure, components, relationships, entryPoints, techStack, endpoints,
-          architectureHint, layerMap, flagsSummary, keyFiles, testFrameworks,
+          structure,
+          components,
+          relationships,
+          entryPoints,
+          techStack,
+          endpoints,
+          architectureHint,
+          layerMap,
+          flagsSummary,
+          keyFiles,
+          testFrameworks,
         });
         const raw = await llmCallWithRetry({
           systemPrompt: INTERNAL_SYSTEM_PROMPT,
@@ -736,7 +733,10 @@ export async function docWriterAgent({
         chunks.push(components.slice(i, i + chunkSize));
       }
 
-      notify("Writing component reference…", `${components.length} components · ${chunks.length} chunk${chunks.length > 1 ? "s" : ""}`);
+      notify(
+        "Writing component reference…",
+        `${components.length} components · ${chunks.length} chunk${chunks.length > 1 ? "s" : ""}`,
+      );
 
       const compChunks = [];
       for (let i = 0; i < chunks.length; i++) {
@@ -755,9 +755,8 @@ export async function docWriterAgent({
         }
       }
 
-      docs.componentRef = chunks.length > 1
-        ? `# Component Reference\n\n${compChunks.join("\n\n")}`
-        : compChunks[0];
+      docs.componentRef =
+        chunks.length > 1 ? `# Component Reference\n\n${compChunks.join("\n\n")}` : compChunks[0];
     } else {
       docs.componentRef = "# Component Reference\n\nNo components documented.\n";
     }
@@ -771,10 +770,7 @@ export async function docWriterAgent({
     apiReference: lineCount(docs.apiReference),
     schemaDocs: lineCount(docs.schemaDocs),
     componentIndex: lineCount(docs.componentIndex),
-    totalLines: Object.values(docs).reduce(
-      (acc, d) => acc + (d || "").split("\n").length,
-      0,
-    ),
+    totalLines: Object.values(docs).reduce((acc, d) => acc + (d || "").split("\n").length, 0),
     errors: errors.length,
   };
 

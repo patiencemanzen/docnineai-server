@@ -1,4 +1,3 @@
-
 import { randomUUID } from "crypto";
 import { Project } from "../../../models/Project.js";
 import { PlanUsage } from "../../../models/PlanUsage.js";
@@ -6,7 +5,6 @@ import * as zipService from "../../../services/zip-upload.service.js";
 import * as projectService from "../../services/projects/project.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { registerJob } from "../../../services/job-registry.service.js";
-
 
 export async function uploadZipProject(req, res) {
   try {
@@ -16,16 +14,13 @@ export async function uploadZipProject(req, res) {
 
     const { buffer, originalname } = req.file;
 
-
     const { files, meta } = zipService.extractZipFiles(buffer, originalname);
 
     if (files.length === 0) {
       return fail(res, "EMPTY_ZIP", "No source files found in ZIP", 400);
     }
 
-
     const projectMeta = zipService.inferProjectMetadata(files);
-
 
     const project = new Project({
       userId: req.user.userId,
@@ -68,14 +63,11 @@ export async function uploadZipProject(req, res) {
       },
     });
 
-
     await project.save();
-
 
     if (!req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
     }
-
 
     const jobId = randomUUID();
     project.jobId = jobId;
@@ -84,12 +76,9 @@ export async function uploadZipProject(req, res) {
 
     registerJob(jobId);
 
-
     projectService
       .runZipPipeline({ project, jobId })
-      .catch((err) =>
-        console.error(`❌ ZIP Pipeline crash [${jobId}]:`, err.message),
-      );
+      .catch((err) => console.error(`❌ ZIP Pipeline crash [${jobId}]:`, err.message));
 
     return ok(
       res,
@@ -113,7 +102,6 @@ export async function uploadZipProject(req, res) {
       202,
     );
   } catch (err) {
-
     if (req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
     }
@@ -124,7 +112,6 @@ export async function uploadZipProject(req, res) {
   }
 }
 
-
 export async function validateZipUpload(req, res) {
   try {
     if (!req.file) {
@@ -133,14 +120,12 @@ export async function validateZipUpload(req, res) {
 
     const { buffer, originalname } = req.file;
 
-
     const { files, meta } = zipService.extractZipFiles(buffer, originalname);
     const projectMeta = zipService.inferProjectMetadata(files);
 
     return ok(res, {
       valid: files.length > 0,
-      message:
-        files.length > 0 ? "ZIP is valid" : "No valid files found in ZIP",
+      message: files.length > 0 ? "ZIP is valid" : "No valid files found in ZIP",
       stats: {
         files: files.length,
         totalSize: meta.totalSize,

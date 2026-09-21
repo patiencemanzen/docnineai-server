@@ -1,6 +1,4 @@
-
 import { getRedis, isRedisAvailable } from "../config/redis.js";
-
 
 const JOB_TTL = 86_400;
 
@@ -10,32 +8,18 @@ const K = {
   vercelTimeouts: "vercel-timeouts",
 };
 
-
-
-
 export const jobs = new Map();
-
 
 export const streams = new Map();
 
-
 export const vercelTimeoutJobs = new Set();
-
 
 function _rWrite(fn) {
   if (!isRedisAvailable()) return;
   Promise.resolve()
     .then(() => fn(getRedis()))
-    .catch((err) =>
-      console.warn(
-        "[job-registry:redis] Write error (non-fatal):",
-        err.message,
-      ),
-    );
+    .catch((err) => console.warn("[job-registry:redis] Write error (non-fatal):", err.message));
 }
-
-
-
 
 export function registerJob(jobId) {
   const now = Date.now();
@@ -51,9 +35,7 @@ export function registerJob(jobId) {
   });
   streams.set(jobId, new Set());
 
-  console.log(
-    `[job-registry] Job ${jobId} registered · total jobs: ${jobs.size}`,
-  );
+  console.log(`[job-registry] Job ${jobId} registered · total jobs: ${jobs.size}`);
 
   _rWrite(async (r) => {
     const pipe = r.pipeline();
@@ -69,7 +51,6 @@ export function registerJob(jobId) {
   });
 }
 
-
 export function pushEvent(jobId, event) {
   const job = jobs.get(jobId);
   if (!job) return;
@@ -77,16 +58,12 @@ export function pushEvent(jobId, event) {
   job.events.push(event);
   job.lastHeartbeat = Date.now();
 
-
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of streams.get(jobId) || new Set()) {
     try {
       client.write(payload);
-    } catch {
-      
-    }
+    } catch {}
   }
-
 
   _rWrite(async (r) => {
     const now = Date.now();
@@ -98,7 +75,6 @@ export function pushEvent(jobId, event) {
     await pipe.exec();
   });
 }
-
 
 export function finishJob(jobId, result) {
   const job = jobs.get(jobId);
@@ -125,7 +101,6 @@ export function finishJob(jobId, result) {
   });
 }
 
-
 export function failJob(jobId, err) {
   const job = jobs.get(jobId);
   if (job) {
@@ -150,7 +125,6 @@ export function failJob(jobId, err) {
     });
   });
 }
-
 
 export function flagVercelTimeout(jobId) {
   const job = jobs.get(jobId);
@@ -186,11 +160,7 @@ export function flagVercelTimeout(jobId) {
   });
 }
 
-
-export function recoverLostJob(
-  jobId,
-  message = "Pipeline interrupted by server restart.",
-) {
+export function recoverLostJob(jobId, message = "Pipeline interrupted by server restart.") {
   const errorEvent = {
     step: "error",
     status: "error",
@@ -205,11 +175,7 @@ export function recoverLostJob(
     lastHeartbeat: Date.now(),
     vercelTimeout: false,
   });
-
 }
-
-
-
 
 export async function hydrateJobFromRedis(jobId) {
   if (jobs.has(jobId)) return jobs.get(jobId);
@@ -224,9 +190,7 @@ export async function hydrateJobFromRedis(jobId) {
     ]);
 
     if (!meta || !meta.status) {
-      console.log(
-        `[job-registry] hydrateJobFromRedis: no Redis record for ${jobId}`,
-      );
+      console.log(`[job-registry] hydrateJobFromRedis: no Redis record for ${jobId}`);
       return null;
     }
 
@@ -248,9 +212,7 @@ export async function hydrateJobFromRedis(jobId) {
       startTime: Number(meta.startTime) || now,
       lastHeartbeat: Number(meta.lastHeartbeat) || now,
       vercelTimeout:
-        meta.vercelTimeout && meta.vercelTimeout !== "0"
-          ? Number(meta.vercelTimeout)
-          : false,
+        meta.vercelTimeout && meta.vercelTimeout !== "0" ? Number(meta.vercelTimeout) : false,
     };
 
     jobs.set(jobId, job);
@@ -262,14 +224,10 @@ export async function hydrateJobFromRedis(jobId) {
     );
     return job;
   } catch (err) {
-    console.warn(
-      `[job-registry:redis] Hydrate failed for ${jobId}:`,
-      err.message,
-    );
+    console.warn(`[job-registry:redis] Hydrate failed for ${jobId}:`, err.message);
     return null;
   }
 }
-
 
 export function hydrateJobFromDb(jobId, dbEvents = []) {
   if (jobs.has(jobId)) return jobs.get(jobId);
@@ -284,12 +242,9 @@ export function hydrateJobFromDb(jobId, dbEvents = []) {
   };
   jobs.set(jobId, job);
   if (!streams.has(jobId)) streams.set(jobId, new Set());
-  console.log(
-    `[job-registry] Hydrated job ${jobId} from DB (${job.events.length} events)`,
-  );
+  console.log(`[job-registry] Hydrated job ${jobId} from DB (${job.events.length} events)`);
   return job;
 }
-
 
 export async function isVercelTimedOut(jobId) {
   if (vercelTimeoutJobs.has(jobId)) return true;
@@ -305,7 +260,6 @@ export async function isVercelTimedOut(jobId) {
     return false;
   }
 }
-
 
 export function getStaleJobs() {
   const now = Date.now();
@@ -326,7 +280,6 @@ export function getStaleJobs() {
   return { staleJobs, soonStaleJobs };
 }
 
-
 export function getJobInfo(jobId) {
   const job = jobs.get(jobId);
   if (!job) return null;
@@ -342,7 +295,6 @@ export function getJobInfo(jobId) {
     hasResult: !!job.result,
   };
 }
-
 
 export function getAllJobs() {
   return Array.from(jobs.entries()).map(([jobId, job]) => ({

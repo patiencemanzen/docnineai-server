@@ -1,15 +1,10 @@
-
 import cron from "node-cron";
 import { Subscription } from "../models/Subscription.js";
 import { PaymentMethod } from "../models/PaymentMethod.js";
 import { PlanUsage } from "../models/PlanUsage.js";
 import { User } from "../models/User.js";
 import { processDunning } from "./dunning.service.js";
-import {
-  renewSubscription,
-  applyScheduledDowngrade,
-  downgradeToFree,
-} from "./billing.service.js";
+import { renewSubscription, applyScheduledDowngrade, downgradeToFree } from "./billing.service.js";
 import {
   sendTrialExpiryReminderEmail,
   sendTrialExpiredEmail,
@@ -18,12 +13,10 @@ import {
 
 let _started = false;
 
-
 export function startBillingCron() {
   if (_started) return;
   _started = true;
   console.log("-- Billing cron jobs starting…");
-
 
   const DAILY = "0 0 * * *";
 
@@ -37,15 +30,12 @@ export function startBillingCron() {
   console.log("-- Billing cron jobs registered (daily @ 00:00 UTC)");
 }
 
-
-
 async function runCheckTrialExpiry() {
   console.log("[cron] check_trial_expiry starting");
   try {
     const now = new Date();
     const tomorrow = addDays(now, 1);
     const threeDaysFromNow = addDays(now, 3);
-
 
     const remind3 = await Subscription.find({
       status: "trialing",
@@ -67,7 +57,6 @@ async function runCheckTrialExpiry() {
       }
     }
 
-
     const remind1 = await Subscription.find({
       status: "trialing",
       trialEndsAt: { $gte: tomorrow, $lt: addDays(tomorrow, 1) },
@@ -84,7 +73,6 @@ async function runCheckTrialExpiry() {
         });
       }
     }
-
 
     const expired = await Subscription.find({
       status: "trialing",
@@ -113,7 +101,6 @@ async function runCheckSubscriptionRenewals() {
     const endOfToday = new Date(now);
     endOfToday.setHours(23, 59, 59, 999);
 
-
     const due = await Subscription.find({
       status: "active",
       cancelAtPeriodEnd: false,
@@ -121,17 +108,13 @@ async function runCheckSubscriptionRenewals() {
       plan: { $ne: "free" },
     });
 
-    console.log(
-      `[cron] check_subscription_renewals: ${due.length} renewals due`,
-    );
+    console.log(`[cron] check_subscription_renewals: ${due.length} renewals due`);
 
     for (const sub of due) {
       try {
         await renewSubscription(sub._id.toString());
       } catch (err) {
-        console.error(
-          `[cron] renewal failed for sub ${sub._id}: ${err.message}`,
-        );
+        console.error(`[cron] renewal failed for sub ${sub._id}: ${err.message}`);
       }
     }
   } catch (err) {
@@ -153,12 +136,10 @@ async function runProcessScheduledDowngrades() {
   try {
     const now = new Date();
 
-
     const cancellations = await Subscription.find({
       cancelAtPeriodEnd: true,
       currentPeriodEnd: { $lte: now },
     });
-
 
     const pendingDowngrades = await Subscription.find({
       pendingPlan: { $ne: null },
@@ -169,16 +150,12 @@ async function runProcessScheduledDowngrades() {
 
     const unique = [...new Map(all.map((s) => [s._id.toString(), s])).values()];
 
-    console.log(
-      `[cron] process_scheduled_downgrades: ${unique.length} to process`,
-    );
+    console.log(`[cron] process_scheduled_downgrades: ${unique.length} to process`);
     for (const sub of unique) {
       try {
         await applyScheduledDowngrade(sub._id.toString());
       } catch (err) {
-        console.error(
-          `[cron] downgrade failed for sub ${sub._id}: ${err.message}`,
-        );
+        console.error(`[cron] downgrade failed for sub ${sub._id}: ${err.message}`);
       }
     }
   } catch (err) {
@@ -221,9 +198,7 @@ async function runFlagExpiringCards() {
       "card.expYear": nextMonthYear,
     });
 
-    console.log(
-      `[cron] flag_expiring_cards: ${expiring.length} cards expiring next month`,
-    );
+    console.log(`[cron] flag_expiring_cards: ${expiring.length} cards expiring next month`);
 
     for (const pm of expiring) {
       const user = await User.findById(pm.userId).select("name email");
@@ -242,8 +217,6 @@ async function runFlagExpiringCards() {
     console.error("[cron] flag_expiring_cards error:", err.message);
   }
 }
-
-
 
 function addDays(date, days) {
   const d = new Date(date);

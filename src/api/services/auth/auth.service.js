@@ -1,21 +1,11 @@
-
 import { User } from "../../../models/User.js";
 import { randomBytes } from "crypto";
-import {
-  signAccessToken,
-  signRefreshToken,
-  verifyRefreshToken,
-} from "../../../utils/jwt.util.js";
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../../utils/jwt.util.js";
 import { hashToken, generateSecureToken } from "../../../utils/crypto.util.js";
-import {
-  sendVerificationEmail,
-  sendPasswordResetEmail,
-} from "../../../config/email.js";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../../../config/email.js";
 import { generateGitHubActionsWorkflow } from "../../../services/webhook.service.js";
 
-
 export async function signup({ name, email, password, agreeToTerms = false }) {
-
   if (!agreeToTerms) {
     const err = new Error("You must agree to the Terms of Service and Privacy Policy.");
     err.code = "T_AND_C_REQUIRED";
@@ -30,7 +20,6 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
     throw err;
   }
 
-
   const rawToken = generateSecureToken();
   const hashedToken = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -44,7 +33,6 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
     webhookSecret: randomBytes(32).toString("hex"),
   });
 
-
   sendVerificationEmail({ to: email, token: rawToken, name }).catch((err) =>
     console.error("Failed to send verification email:", err.message),
   );
@@ -52,11 +40,8 @@ export async function signup({ name, email, password, agreeToTerms = false }) {
   return { user };
 }
 
-
 export async function login({ email, password }) {
-
   const user = await User.findOne({ email }).select("+password");
-
 
   const invalidErr = () => {
     const e = new Error("Incorrect email or password.");
@@ -95,15 +80,9 @@ export async function login({ email, password }) {
   return { user, accessToken, refreshToken };
 }
 
-
-
-
 export async function logout(userId) {
   await User.findByIdAndUpdate(userId, { $unset: { refreshTokenHash: 1 } });
 }
-
-
-
 
 export async function refreshSession(rawRefreshToken) {
   if (!rawRefreshToken) {
@@ -113,19 +92,15 @@ export async function refreshSession(rawRefreshToken) {
     throw err;
   }
 
-
   let payload;
   try {
     payload = verifyRefreshToken(rawRefreshToken);
   } catch {
-    const err = new Error(
-      "Refresh token is invalid or has expired. Please log in again.",
-    );
+    const err = new Error("Refresh token is invalid or has expired. Please log in again.");
     err.code = "INVALID_REFRESH_TOKEN";
     err.status = 401;
     throw err;
   }
-
 
   const user = await User.findById(payload.sub).select("+refreshTokenHash");
 
@@ -133,26 +108,19 @@ export async function refreshSession(rawRefreshToken) {
   const incomingHash = hashToken(rawRefreshToken);
 
   if (!user || storedHash !== incomingHash) {
-
     if (user) {
       user.refreshTokenHash = undefined;
       await user.save();
     }
-    const err = new Error(
-      "Refresh token has already been used or revoked. Please log in again.",
-    );
+    const err = new Error("Refresh token has already been used or revoked. Please log in again.");
     err.code = "REFRESH_TOKEN_REUSED";
     err.status = 401;
     throw err;
   }
 
-
   const { accessToken, refreshToken } = await issueTokens(user);
   return { user, accessToken, refreshToken };
 }
-
-
-
 
 export async function verifyEmail(rawToken) {
   const hashedToken = hashToken(rawToken);
@@ -177,9 +145,6 @@ export async function verifyEmail(rawToken) {
   return user;
 }
 
-
-
-
 export async function forgotPassword(email) {
   const user = await User.findOne({ email });
   if (!user) return;
@@ -192,14 +157,10 @@ export async function forgotPassword(email) {
   user.passwordResetExpires = expiresAt;
   await user.save();
 
-  sendPasswordResetEmail({ to: email, token: rawToken, name: user.name }).catch(
-    (err) =>
-      console.error("⚠️  Failed to send password-reset email:", err.message),
+  sendPasswordResetEmail({ to: email, token: rawToken, name: user.name }).catch((err) =>
+    console.error("⚠️  Failed to send password-reset email:", err.message),
   );
 }
-
-
-
 
 export async function resetPassword({ token, password }) {
   const hashedToken = hashToken(token);
@@ -224,9 +185,6 @@ export async function resetPassword({ token, password }) {
 
   return user;
 }
-
-
-
 
 export async function updateProfile(userId, { name, email }) {
   const user = await User.findById(userId);
@@ -254,16 +212,13 @@ export async function updateProfile(userId, { name, email }) {
     const rawToken = generateSecureToken();
     user.emailVerificationToken = hashToken(rawToken);
     user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    sendVerificationEmail({ to: email, token: rawToken, name: user.name }).catch(
-      (err) => console.error("Failed to send verification email:", err.message),
+    sendVerificationEmail({ to: email, token: rawToken, name: user.name }).catch((err) =>
+      console.error("Failed to send verification email:", err.message),
     );
   }
   await user.save();
   return user;
 }
-
-
-
 
 export async function changePassword(userId, { currentPassword, newPassword }) {
   const user = await User.findById(userId).select("+password");
@@ -288,9 +243,6 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
   return user;
 }
 
-
-
-
 export async function getMe(userId) {
   const user = await User.findById(userId);
   if (!user) {
@@ -301,7 +253,6 @@ export async function getMe(userId) {
   }
   return user;
 }
-
 
 function attachOAuthIdentity(user, { idField, idValue, usernameField, usernameValue }) {
   if (user[idField] && String(user[idField]) !== String(idValue)) {
@@ -329,9 +280,6 @@ function attachOAuthIdentity(user, { idField, idValue, usernameField, usernameVa
   return changed;
 }
 
-
-
-
 export async function githubSocialLogin(code) {
   const { GITHUB_LOGIN_CLIENT_ID, GITHUB_LOGIN_CLIENT_SECRET } = process.env;
   if (!GITHUB_LOGIN_CLIENT_ID || !GITHUB_LOGIN_CLIENT_SECRET) {
@@ -345,7 +293,6 @@ export async function githubSocialLogin(code) {
 
   const { default: axios } = await import("axios");
 
-
   const tokenRes = await axios.post(
     "https://github.com/login/oauth/access_token",
     {
@@ -358,9 +305,7 @@ export async function githubSocialLogin(code) {
 
   const githubAccessToken = tokenRes.data.access_token;
   if (!githubAccessToken) {
-    const err = new Error(
-      "GitHub did not return an access token. The code may have expired.",
-    );
+    const err = new Error("GitHub did not return an access token. The code may have expired.");
     err.code = "GITHUB_CODE_INVALID";
     err.status = 400;
     throw err;
@@ -368,26 +313,20 @@ export async function githubSocialLogin(code) {
 
   const ghHeaders = { Authorization: `Bearer ${githubAccessToken}` };
 
-
   const [userRes, emailsRes] = await Promise.all([
     axios.get("https://api.github.com/user", { headers: ghHeaders }),
     axios.get("https://api.github.com/user/emails", { headers: ghHeaders }),
   ]);
 
   const ghUser = userRes.data;
-  const primaryEmail = emailsRes.data.find(
-    (e) => e.primary && e.verified,
-  )?.email;
+  const primaryEmail = emailsRes.data.find((e) => e.primary && e.verified)?.email;
 
   if (!primaryEmail) {
-    const err = new Error(
-      "No verified primary email found on your GitHub account.",
-    );
+    const err = new Error("No verified primary email found on your GitHub account.");
     err.code = "GITHUB_NO_EMAIL";
     err.status = 400;
     throw err;
   }
-
 
   let user = await User.findOne({
     $or: [{ githubId: String(ghUser.id) }, { email: primaryEmail }],
@@ -417,21 +356,11 @@ export async function githubSocialLogin(code) {
   return { user, accessToken, refreshToken };
 }
 
-
-
-
 export async function googleSocialLogin(code) {
-  const {
-    GOOGLE_LOGIN_CLIENT_ID,
-    GOOGLE_LOGIN_CLIENT_SECRET,
-    GOOGLE_LOGIN_REDIRECT_URI,
-  } = process.env;
+  const { GOOGLE_LOGIN_CLIENT_ID, GOOGLE_LOGIN_CLIENT_SECRET, GOOGLE_LOGIN_REDIRECT_URI } =
+    process.env;
 
-  if (
-    !GOOGLE_LOGIN_CLIENT_ID ||
-    !GOOGLE_LOGIN_CLIENT_SECRET ||
-    !GOOGLE_LOGIN_REDIRECT_URI
-  ) {
+  if (!GOOGLE_LOGIN_CLIENT_ID || !GOOGLE_LOGIN_CLIENT_SECRET || !GOOGLE_LOGIN_REDIRECT_URI) {
     const err = new Error(
       "Google Login requires GOOGLE_LOGIN_CLIENT_ID, GOOGLE_LOGIN_CLIENT_SECRET, " +
         "and GOOGLE_LOGIN_REDIRECT_URI.",
@@ -489,8 +418,6 @@ export async function googleSocialLogin(code) {
   return { user, accessToken, refreshToken };
 }
 
-
-
 export function getGithubLoginUrl() {
   const { GITHUB_LOGIN_CLIENT_ID, GITHUB_LOGIN_REDIRECT_URI } = process.env;
   if (!GITHUB_LOGIN_CLIENT_ID) {
@@ -502,9 +429,7 @@ export function getGithubLoginUrl() {
   const params = new URLSearchParams({
     client_id: GITHUB_LOGIN_CLIENT_ID,
     scope: "read:user user:email",
-    ...(GITHUB_LOGIN_REDIRECT_URI
-      ? { redirect_uri: GITHUB_LOGIN_REDIRECT_URI }
-      : {}),
+    ...(GITHUB_LOGIN_REDIRECT_URI ? { redirect_uri: GITHUB_LOGIN_REDIRECT_URI } : {}),
   });
   return `https://github.com/login/oauth/authorize?${params}`;
 }
@@ -528,9 +453,6 @@ export function getGoogleLoginUrl() {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-
-
-
 async function issueTokens(user) {
   const accessToken = signAccessToken({
     userId: user._id.toString(),
@@ -544,9 +466,6 @@ async function issueTokens(user) {
 
   return { accessToken, refreshToken };
 }
-
-
-
 
 function resolveApiBaseUrl(apiBaseUrl) {
   return (
@@ -583,7 +502,6 @@ export async function getWebhookStatus(userId) {
   };
 }
 
-
 export async function getOrInitializeWebhook(userId, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
@@ -596,7 +514,6 @@ export async function getOrInitializeWebhook(userId, apiBaseUrl) {
   return buildWebhookSettings(user, apiBaseUrl);
 }
 
-
 export async function rotateWebhookSecret(userId, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
@@ -607,12 +524,7 @@ export async function rotateWebhookSecret(userId, apiBaseUrl) {
   return buildWebhookSettings(user, apiBaseUrl);
 }
 
-
-export async function updateWebhookSettings(
-  userId,
-  webhookEnabled,
-  apiBaseUrl,
-) {
+export async function updateWebhookSettings(userId, webhookEnabled, apiBaseUrl) {
   const user = await User.findById(userId).select("+webhookSecret");
   if (!user) throw new Error("User not found");
 

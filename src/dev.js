@@ -4,7 +4,7 @@ import app from "./app.js";
 const PORT = process.env.PORT || 4000;
 
 async function start() {
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`DocNine running on port ${PORT}`);
   });
 }

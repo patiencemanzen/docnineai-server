@@ -1,5 +1,3 @@
-
-
 import ActivityLog, {
   ACTIVITY_ACTIONS,
   CATEGORY_MAP,
@@ -7,15 +5,10 @@ import ActivityLog, {
 } from "../models/ActivityLog.js";
 import { User } from "../models/User.js";
 import { Project } from "../models/Project.js";
-import {
-  formatActivitySummary,
-  SESSION_NOISE_ACTIONS,
-} from "./activity-copy.js";
+import { formatActivitySummary, SESSION_NOISE_ACTIONS } from "./activity-copy.js";
 
 const ACTION_SET = new Set(Object.values(ACTIVITY_ACTIONS));
 const NOISE_SET = new Set(SESSION_NOISE_ACTIONS);
-
-
 
 async function _write(opts) {
   try {
@@ -60,7 +53,7 @@ async function _write(opts) {
     }
 
     const category = CATEGORY_MAP[action] ?? "system";
-    const severity  = SEVERITY_MAP[action]  ?? "info";
+    const severity = SEVERITY_MAP[action] ?? "info";
 
     const ipAddress = ip ?? (req ? _extractIp(req) : "");
     const userAgent = ua ?? (req ? (req.headers?.["user-agent"] ?? "") : "");
@@ -80,9 +73,9 @@ async function _write(opts) {
       action,
       category,
       severity,
-      projectId:    projectId  || undefined,
+      projectId: projectId || undefined,
       projectName,
-      resourceId:   resourceId  || "",
+      resourceId: resourceId || "",
       resourceType: resourceType || "",
       metadata,
       summary,
@@ -90,7 +83,6 @@ async function _write(opts) {
       userAgent,
     });
   } catch (err) {
-
     console.error("[ActivityLog] write error:", err?.message ?? err);
   }
 }
@@ -105,53 +97,42 @@ async function _writeBatch(entries) {
 }
 
 function _extractIp(req) {
-  return (
-    req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    ""
-  );
+  return req.headers?.["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket?.remoteAddress || "";
 }
 
-
-
 const _agentBuffer = new Map();
-
-
-
 
 export function log(opts) {
   setImmediate(() => _write(opts));
 }
 
-
 export function bufferAgentEvent(jobId, entry) {
   if (!jobId || !entry?.action) return;
 
-  const action   = entry.action;
+  const action = entry.action;
   const category = CATEGORY_MAP[action] ?? "pipeline";
-  const severity  = SEVERITY_MAP[action]  ?? "info";
+  const severity = SEVERITY_MAP[action] ?? "info";
 
   const doc = {
-    userId:       entry.userId,
-    actorName:    entry.actorName  ?? "",
-    actorEmail:   entry.actorEmail ?? "",
+    userId: entry.userId,
+    actorName: entry.actorName ?? "",
+    actorEmail: entry.actorEmail ?? "",
     action,
     category,
     severity,
-    projectId:    entry.projectId    || undefined,
-    projectName:  entry.projectName  ?? "",
-    resourceId:   entry.resourceId   ?? "",
+    projectId: entry.projectId || undefined,
+    projectName: entry.projectName ?? "",
+    resourceId: entry.resourceId ?? "",
     resourceType: entry.resourceType ?? "",
-    metadata:     entry.metadata     ?? {},
-    ipAddress:    "",
-    userAgent:    "",
-    createdAt:    new Date(),
+    metadata: entry.metadata ?? {},
+    ipAddress: "",
+    userAgent: "",
+    createdAt: new Date(),
   };
 
   if (!_agentBuffer.has(jobId)) _agentBuffer.set(jobId, []);
   _agentBuffer.get(jobId).push(doc);
 }
-
 
 export function flushAgentBatch(jobId) {
   const entries = _agentBuffer.get(jobId);

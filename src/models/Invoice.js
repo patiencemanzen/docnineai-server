@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -15,7 +14,6 @@ const InvoiceLineSchema = new Schema(
 
 const InvoiceSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -28,12 +26,10 @@ const InvoiceSchema = new Schema(
       default: null,
     },
 
-
     invoiceNumber: {
       type: String,
       unique: true,
     },
-
 
     amount: {
       type: Number,
@@ -45,12 +41,10 @@ const InvoiceSchema = new Schema(
       uppercase: true,
     },
 
-
     lineItems: {
       type: [InvoiceLineSchema],
       default: [],
     },
-
 
     status: {
       type: String,
@@ -59,22 +53,18 @@ const InvoiceSchema = new Schema(
       index: true,
     },
 
-
     description: {
       type: String,
       required: true,
     },
-
 
     paymentMethodSnapshot: {
       type: String,
       default: null,
     },
 
-
     flutterwaveRef: { type: String, default: null },
     flutterwaveTxId: { type: Number, default: null },
-
 
     planId: { type: String, default: null },
     billingCycle: { type: String, default: null },
@@ -86,17 +76,23 @@ const InvoiceSchema = new Schema(
     periodStart: { type: Date, default: null },
     periodEnd: { type: Date, default: null },
 
-
     customerName: { type: String, default: null },
     customerEmail: { type: String, default: null },
 
     vatNumber: { type: String, default: null },
     companyName: { type: String, default: null },
 
-
     type: {
       type: String,
-      enum: ["checkout", "renewal", "upgrade", "downgrade", "team_seat_adjustment", "seat_addition", "refund"],
+      enum: [
+        "checkout",
+        "renewal",
+        "upgrade",
+        "downgrade",
+        "team_seat_adjustment",
+        "seat_addition",
+        "refund",
+      ],
       default: "checkout",
     },
 
@@ -117,13 +113,11 @@ const InvoiceSchema = new Schema(
   },
 );
 
-
 InvoiceSchema.pre("save", async function (next) {
   if (this.invoiceNumber) return next();
-  
+
   const now = new Date();
   const prefix = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}-DOC9`;
-  
 
   const count = await mongoose.model("Invoice").countDocuments({
     invoiceNumber: new RegExp(`^${prefix}-`),

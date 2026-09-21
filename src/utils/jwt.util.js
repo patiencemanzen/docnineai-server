@@ -1,11 +1,7 @@
-
 import jwt from "jsonwebtoken";
 
 const ACCESS_TTL = "2d";
 const REFRESH_TTL = "14d";
-
-
-
 
 function getSecrets() {
   const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
@@ -18,9 +14,6 @@ function getSecrets() {
   return { ACCESS_SECRET, REFRESH_SECRET };
 }
 
-
-
-
 export function signAccessToken(payload, options = {}) {
   const { ACCESS_SECRET } = getSecrets();
   const expiresIn = options.expiresIn || ACCESS_TTL;
@@ -31,7 +24,6 @@ export function signAccessToken(payload, options = {}) {
   );
 }
 
-
 export function signRefreshToken(payload) {
   const { REFRESH_SECRET } = getSecrets();
   return jwt.sign({ sub: payload.userId }, REFRESH_SECRET, {
@@ -40,18 +32,15 @@ export function signRefreshToken(payload) {
   });
 }
 
-
 export function verifyAccessToken(token) {
   const { ACCESS_SECRET } = getSecrets();
   return jwt.verify(token, ACCESS_SECRET, { algorithms: ["HS256"] });
 }
 
-
 export function verifyRefreshToken(token) {
   const { REFRESH_SECRET } = getSecrets();
   return jwt.verify(token, REFRESH_SECRET, { algorithms: ["HS256"] });
 }
-
 
 export function getRefreshCookieOpts() {
   const isProd = process.env.NODE_ENV === "production";
@@ -64,17 +53,13 @@ export function getRefreshCookieOpts() {
   };
 }
 
-
-
-
 import { createHash } from "crypto";
 import { getRedis, isRedisAvailable } from "../config/redis.js";
-
 
 if (process.env.NODE_ENV === "production" && !process.env.REDIS_URL) {
   console.warn(
     "[jwt] WARNING: REDIS_URL is not set. Token revocation (logout/CLI logout) " +
-    "is NOT enforced server-side. Set REDIS_URL in production.",
+      "is NOT enforced server-side. Set REDIS_URL in production.",
   );
 }
 
@@ -85,21 +70,19 @@ function tokenKey(token) {
   return `${DENYLIST_PREFIX}${hash}`;
 }
 
-
 export async function denylistToken(token) {
   if (!isRedisAvailable()) return;
   try {
     const { ACCESS_SECRET } = getSecrets();
     const payload = jwt.decode(token);
-    const ttlSeconds = payload?.exp ? Math.max(0, payload.exp - Math.floor(Date.now() / 1000)) : 172800;
+    const ttlSeconds = payload?.exp
+      ? Math.max(0, payload.exp - Math.floor(Date.now() / 1000))
+      : 172800;
     if (ttlSeconds > 0) {
       await getRedis().set(tokenKey(token), "1", "EX", ttlSeconds);
     }
-  } catch {
-
-  }
+  } catch {}
 }
-
 
 export async function isTokenDenylisted(token) {
   if (!isRedisAvailable()) return false;

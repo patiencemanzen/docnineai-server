@@ -1,9 +1,7 @@
-
 import nodemailer from "nodemailer";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const FROM = process.env.EMAIL_FROM || "Docnine <noreply@docnineai.com>";
-
 
 let _transporter = null;
 
@@ -11,7 +9,6 @@ function getTransporter() {
   if (_transporter) return _transporter;
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
-
 
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     _transporter = {
@@ -36,9 +33,6 @@ function getTransporter() {
   return _transporter;
 }
 
-
-
-
 export async function sendVerificationEmail({ to, token, name }) {
   const link = `${FRONTEND_URL}/verify?token=${token}`;
   await getTransporter().sendMail({
@@ -51,12 +45,10 @@ export async function sendVerificationEmail({ to, token, name }) {
       body: `<p>Hi <strong>${name}</strong>,</p><p>Click the button below to verify your email address. This link expires in <strong>24 hours</strong>.</p>`,
       ctaText: "Verify Email",
       ctaUrl: link,
-      footer:
-        "If you didn't create a Docnine account, you can ignore this email.",
+      footer: "If you didn't create a Docnine account, you can ignore this email.",
     }),
   });
 }
-
 
 export async function sendPasswordResetEmail({ to, token, name }) {
   const link = `${FRONTEND_URL}/reset-password?token=${token}`;
@@ -76,14 +68,7 @@ export async function sendPasswordResetEmail({ to, token, name }) {
   });
 }
 
-
-export async function sendProjectInviteEmail({
-  to,
-  inviterName,
-  projectName,
-  role,
-  token,
-}) {
+export async function sendProjectInviteEmail({ to, inviterName, projectName, role, token }) {
   const link = `${FRONTEND_URL}/share/accept/${token}`;
   const roleLabel = role === "editor" ? "Editor" : "Viewer";
   await getTransporter().sendMail({
@@ -101,14 +86,7 @@ export async function sendProjectInviteEmail({
   });
 }
 
-
-
-export async function sendTrialStartedEmail({
-  to,
-  name,
-  planName,
-  trialEndsAt,
-}) {
+export async function sendTrialStartedEmail({ to, name, planName, trialEndsAt }) {
   const billingUrl = `${FRONTEND_URL}/billing`;
   const endDate = new Date(trialEndsAt).toLocaleDateString("en-US", {
     year: "numeric",
@@ -174,12 +152,7 @@ export async function sendTrialExpiredEmail({ to, name }) {
   });
 }
 
-export async function sendSubscriptionActivatedEmail({
-  to,
-  name,
-  planName,
-  nextRenewalDate,
-}) {
+export async function sendSubscriptionActivatedEmail({ to, name, planName, nextRenewalDate }) {
   const billingUrl = `${FRONTEND_URL}/billing`;
   const renewDate = new Date(nextRenewalDate).toLocaleDateString("en-US", {
     year: "numeric",
@@ -230,12 +203,7 @@ export async function sendPaymentReceiptEmail({
   });
 }
 
-export async function sendPlanUpgradedEmail({
-  to,
-  name,
-  newPlanName,
-  nextRenewalDate,
-}) {
+export async function sendPlanUpgradedEmail({ to, name, newPlanName, nextRenewalDate }) {
   const billingUrl = `${FRONTEND_URL}/billing`;
   const renewDate = new Date(nextRenewalDate).toLocaleDateString("en-US", {
     year: "numeric",
@@ -285,12 +253,7 @@ export async function sendPlanDowngradeScheduledEmail({
   });
 }
 
-export async function sendCancellationConfirmEmail({
-  to,
-  name,
-  planName,
-  accessUntil,
-}) {
+export async function sendCancellationConfirmEmail({ to, name, planName, accessUntil }) {
   const billingUrl = `${FRONTEND_URL}/billing`;
   const untilDate = new Date(accessUntil).toLocaleDateString("en-US", {
     year: "numeric",
@@ -312,12 +275,7 @@ export async function sendCancellationConfirmEmail({
   });
 }
 
-export async function sendPaymentFailedEmail({
-  to,
-  name,
-  planName,
-  billingUrl,
-}) {
+export async function sendPaymentFailedEmail({ to, name, planName, billingUrl }) {
   await getTransporter().sendMail({
     from: FROM,
     to,
@@ -344,18 +302,12 @@ export async function sendPaymentUpdateReminderEmail({ to, name, billingUrl }) {
       body: `<p>Hi <strong>${name}</strong>,</p><p>We still haven't been able to process your payment. Please update your payment method as soon as possible. We'll retry again automatically, but your access may be affected if this isn't resolved soon.</p>`,
       ctaText: "Update Payment Method",
       ctaUrl: billingUrl,
-      footer:
-        "Your account is still fully accessible during this grace period.",
+      footer: "Your account is still fully accessible during this grace period.",
     }),
   });
 }
 
-export async function sendDowngradeWarningEmail({
-  to,
-  name,
-  daysLeft,
-  billingUrl,
-}) {
+export async function sendDowngradeWarningEmail({ to, name, daysLeft, billingUrl }) {
   await getTransporter().sendMail({
     from: FROM,
     to,
@@ -366,8 +318,7 @@ export async function sendDowngradeWarningEmail({
       body: `<p>Hi <strong>${name}</strong>,</p><p>We've been unable to process your payment. If this isn't resolved in the next <strong>${daysLeft} days</strong>, your account will be moved to the <strong>Free plan</strong>.</p><p>Your projects and documents are safe : only premium features will be locked.</p>`,
       ctaText: "Update Payment Method Now",
       ctaUrl: billingUrl,
-      footer:
-        "We're sorry for the inconvenience. Please contact support if you need help.",
+      footer: "We're sorry for the inconvenience. Please contact support if you need help.",
     }),
   });
 }
@@ -411,7 +362,6 @@ export async function sendCardExpiryWarningEmail({
     }),
   });
 }
-
 
 function emailTemplate({ title, body, ctaText, ctaUrl, footer }) {
   return `<!DOCTYPE html>

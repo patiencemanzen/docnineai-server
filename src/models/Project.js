@@ -1,9 +1,6 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
-
-
 
 const SecurityFindingSchema = new Schema(
   {
@@ -33,8 +30,6 @@ const SecuritySchema = new Schema(
   { _id: false },
 );
 
-
-
 const StatsSchema = new Schema(
   {
     filesAnalysed: { type: Number, default: 0 },
@@ -49,8 +44,6 @@ const StatsSchema = new Schema(
   { _id: false },
 );
 
-
-
 const OutputSchema = new Schema(
   {
     readme: { type: String, default: "" },
@@ -62,8 +55,6 @@ const OutputSchema = new Schema(
   { _id: false },
 );
 
-
-
 const EditedSectionSchema = new Schema(
   {
     section: { type: String, required: true },
@@ -74,8 +65,6 @@ const EditedSectionSchema = new Schema(
   { _id: false },
 );
 
-
-
 const FileManifestEntrySchema = new Schema(
   {
     path: { type: String, required: true },
@@ -85,11 +74,8 @@ const FileManifestEntrySchema = new Schema(
   { _id: false },
 );
 
-
-
 const AgentOutputsSchema = new Schema(
   {
-
     endpoints: { type: [Schema.Types.Mixed], default: [] },
 
     models: { type: [Schema.Types.Mixed], default: [] },
@@ -105,11 +91,8 @@ const AgentOutputsSchema = new Schema(
   { _id: false },
 );
 
-
-
 const ProjectSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -117,11 +100,9 @@ const ProjectSchema = new Schema(
       index: true,
     },
 
-
     repoUrl: { type: String, required: true, trim: true },
     repoOwner: { type: String, required: true, trim: true },
     repoName: { type: String, required: true, trim: true },
-
 
     jobId: {
       type: String,
@@ -138,7 +119,6 @@ const ProjectSchema = new Schema(
 
     errorMessage: String,
 
-
     meta: {
       name: String,
       description: String,
@@ -151,28 +131,22 @@ const ProjectSchema = new Schema(
 
     techStack: [String],
 
-
     stats: { type: StatsSchema, default: () => ({}) },
     security: { type: SecuritySchema, default: () => ({}) },
 
-
     output: { type: OutputSchema, default: () => ({}) },
-
 
     editedOutput: {
       type: OutputSchema,
       default: () => ({}),
     },
 
-
     editedSections: {
       type: [EditedSectionSchema],
       default: [],
     },
 
-
     lastDocumentedCommit: { type: String, default: null },
-
 
     fileManifest: {
       type: [FileManifestEntrySchema],
@@ -180,19 +154,15 @@ const ProjectSchema = new Schema(
       select: false,
     },
 
-
     agentOutputs: {
       type: AgentOutputsSchema,
       default: () => ({}),
       select: false,
     },
 
-
     chatSessionId: String,
 
-
     archivedAt: Date,
-
 
     events: {
       type: [Schema.Types.Mixed],
@@ -205,12 +175,10 @@ const ProjectSchema = new Schema(
       default: "github",
     },
 
-
     providerToken: {
       type: String,
       select: false,
     },
-
 
     sourceType: {
       type: String,
@@ -218,13 +186,11 @@ const ProjectSchema = new Schema(
       default: "github",
     },
 
-
     zipMetadata: {
       type: Schema.Types.Mixed,
       default: () => ({}),
       select: false,
     },
-
 
     customTabs: {
       type: [
@@ -243,7 +209,6 @@ const ProjectSchema = new Schema(
       default: [],
     },
 
-
     editedCustomTabs: {
       type: [
         {
@@ -261,24 +226,15 @@ const ProjectSchema = new Schema(
   },
 );
 
-
 ProjectSchema.index({ repoOwner: 1, repoName: 1 }, { name: "project_repo_lookup" });
-
 
 ProjectSchema.index(
   { repoName: "text", repoOwner: "text", "meta.description": "text" },
   { name: "project_search", language_override: "search_language" },
 );
 
-
 ProjectSchema.virtual("effectiveOutput").get(function () {
-  const sections = [
-    "readme",
-    "internalDocs",
-    "apiReference",
-    "schemaDocs",
-    "securityReport",
-  ];
+  const sections = ["readme", "internalDocs", "apiReference", "schemaDocs", "securityReport"];
   const merged = {};
   for (const s of sections) {
     merged[s] = this.editedOutput?.[s] || this.output?.[s] || "";

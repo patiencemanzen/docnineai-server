@@ -1,4 +1,3 @@
-
 import { validateWebhookToken } from "../../services/gitlab.service.js";
 
 const CODE_FILE =
@@ -6,9 +5,6 @@ const CODE_FILE =
 
 const MANIFEST_FILE =
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|Pipfile|go\.mod|go\.sum|Cargo\.toml|pom\.xml|build\.gradle|composer\.json|Gemfile)$/i;
-
-
-
 
 function shouldReDocument(payload) {
   const { ref, project: repo, commits = [], after, object_kind } = payload;
@@ -22,7 +18,6 @@ function shouldReDocument(payload) {
     return { should: false, reason: "not_default_branch", ref, defaultBranch };
   }
 
-
   if (after === "0000000000000000000000000000000000000000") {
     return { should: false, reason: "branch_deleted" };
   }
@@ -31,16 +26,15 @@ function shouldReDocument(payload) {
     return { should: false, reason: "no_commits" };
   }
 
-
   const pathMap = new Map();
   for (const commit of commits) {
-    for (const p of commit.added    || []) pathMap.set(p, { path: p, status: "added"    });
+    for (const p of commit.added || []) pathMap.set(p, { path: p, status: "added" });
     for (const p of commit.modified || []) pathMap.set(p, { path: p, status: "modified" });
-    for (const p of commit.removed  || []) pathMap.set(p, { path: p, status: "removed"  });
+    for (const p of commit.removed || []) pathMap.set(p, { path: p, status: "removed" });
   }
 
   const changedFiles = [...pathMap.values()];
-  const codeFiles    = changedFiles.filter((f) => CODE_FILE.test(f.path));
+  const codeFiles = changedFiles.filter((f) => CODE_FILE.test(f.path));
 
   if (!codeFiles.length) {
     return { should: false, reason: "no_code_changes", totalChanged: changedFiles.length };
@@ -49,38 +43,34 @@ function shouldReDocument(payload) {
   const needsFullRun = changedFiles.some((f) => MANIFEST_FILE.test(f.path.split("/").pop()));
 
   return {
-    should:        true,
-    reason:        "code_changed",
+    should: true,
+    reason: "code_changed",
     changedFiles,
     codeFiles,
     needsFullRun,
-    repoUrl:       repo?.web_url || repo?.git_http_url,
-    repoFullName:  repo?.path_with_namespace,
-    pusher:        payload.user_name || payload.user_username,
-    branch:        defaultBranch,
-    headCommit:    after,
-    commitCount:   commits.length,
+    repoUrl: repo?.web_url || repo?.git_http_url,
+    repoFullName: repo?.path_with_namespace,
+    pusher: payload.user_name || payload.user_username,
+    branch: defaultBranch,
+    headCommit: after,
+    commitCount: commits.length,
   };
 }
 
-
-
-
 async function findProjectForWebhook({ repoFullName, incomingToken }) {
   const { Project } = await import("../../models/Project.js");
-
 
   const [owner, ...rest] = repoFullName.split("/");
   const repoName = rest.join("/");
 
   const ownerRx = new RegExp(`^${owner.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
-  const repoRx  = new RegExp(`^${repoName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+  const repoRx = new RegExp(`^${repoName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
 
   const candidates = await Project.find({
     repoOwner: ownerRx,
-    repoName:  repoRx,
-    provider:  "gitlab",
-    status:    { $ne: "archived" },
+    repoName: repoRx,
+    provider: "gitlab",
+    status: { $ne: "archived" },
   })
     .select("_id userId repoUrl repoOwner repoName status webhookSecret webhookEnabled updatedAt")
     .sort({ updatedAt: -1 })
@@ -98,8 +88,6 @@ async function findProjectForWebhook({ repoFullName, incomingToken }) {
   return { kind: "invalid_token" };
 }
 
-
-
 export async function handleGitLabWebhook({ payload, token }) {
   let parsed;
   try {
@@ -109,10 +97,7 @@ export async function handleGitLabWebhook({ payload, token }) {
     return { status: 400, body: { error: `Invalid JSON: ${err.message}` } };
   }
 
-
-  const repoFullName =
-    parsed?.project?.path_with_namespace ||
-    parsed?.repository?.full_path;
+  const repoFullName = parsed?.project?.path_with_namespace || parsed?.repository?.full_path;
 
   if (!repoFullName) {
     return {
@@ -138,7 +123,6 @@ export async function handleGitLabWebhook({ payload, token }) {
 
   const { project } = match;
 
-
   if (parsed.object_kind === "system" || parsed.event_name === "project_hooks") {
     return { status: 200, body: { message: "Pong! GitLab webhook configured correctly." } };
   }
@@ -153,7 +137,7 @@ export async function handleGitLabWebhook({ payload, token }) {
     return { status: 202, body: { message: "Pipeline already running", projectId: project._id } };
   }
   if (project.status === "archived") {
-    return { status: 202, body: { message: "Project is archived",      projectId: project._id } };
+    return { status: 202, body: { message: "Project is archived", projectId: project._id } };
   }
   if (project.status !== "done" && project.status !== "error") {
     return {
@@ -166,22 +150,22 @@ export async function handleGitLabWebhook({ payload, token }) {
 
   try {
     const result = await syncProject({
-      projectId:           project._id.toString(),
-      userId:              project.userId.toString(),
-      forceFullRun:        check.needsFullRun,
+      projectId: project._id.toString(),
+      userId: project.userId.toString(),
+      forceFullRun: check.needsFullRun,
       webhookChangedFiles: check.changedFiles,
     });
 
     return {
       status: 202,
       body: {
-        message:      "Sync triggered",
-        projectId:    project._id,
-        jobId:        result.project?.jobId,
+        message: "Sync triggered",
+        projectId: project._id,
+        jobId: result.project?.jobId,
         repoFullName,
-        branch:       check.branch,
-        headCommit:   check.headCommit?.slice(0, 8),
-        codeFiles:    check.codeFiles.length,
+        branch: check.branch,
+        headCommit: check.headCommit?.slice(0, 8),
+        codeFiles: check.codeFiles.length,
         needsFullRun: check.needsFullRun,
       },
     };
@@ -194,15 +178,10 @@ export async function handleGitLabWebhook({ payload, token }) {
   }
 }
 
-
-
 export async function gitlabWebhookHandler(req, res) {
   const token = req.headers["x-gitlab-token"];
 
-
-  const raw   = Buffer.isBuffer(req.body)
-    ? req.body.toString("utf8")
-    : JSON.stringify(req.body);
+  const raw = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : JSON.stringify(req.body);
 
   const result = await handleGitLabWebhook({ payload: raw, token });
   res.status(result.status).json(result.body);

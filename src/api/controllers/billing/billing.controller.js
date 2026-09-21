@@ -1,4 +1,3 @@
-
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { PLANS, getPlan } from "../../../config/plans.js";
 import {
@@ -26,15 +25,10 @@ import {
   buildPaymentMethodSnapshot,
   extractChargeToken,
 } from "../../../services/flutterwave.service.js";
-import {
-  upsertPaymentMethod,
-  activateFromPayment,
-} from "../../../services/billing.service.js";
-
+import { upsertPaymentMethod, activateFromPayment } from "../../../services/billing.service.js";
 
 export async function getPlans(req, res) {
   try {
-
     const plans = Object.values(PLANS).map((p) => ({
       id: p.id,
       name: p.name,
@@ -44,9 +38,7 @@ export async function getPlans(req, res) {
         annual: p.prices.annual / 100,
         annualTotal: p.prices.annualTotal ? p.prices.annualTotal / 100 : null,
         savingsPercent:
-          p.prices.monthly > 0
-            ? Math.round((1 - p.prices.annual / p.prices.monthly) * 100)
-            : 0,
+          p.prices.monthly > 0 ? Math.round((1 - p.prices.annual / p.prices.monthly) * 100) : 0,
       },
       limits: p.limits,
       features: p.features,
@@ -56,7 +48,6 @@ export async function getPlans(req, res) {
     return serverError(res, err, "getPlans");
   }
 }
-
 
 export async function getSubscription(req, res) {
   try {
@@ -100,12 +91,9 @@ export async function getSubscription(req, res) {
   }
 }
 
-
-
 export async function getTeamSeatsDetails(req, res) {
   try {
     const sub = await getOrCreateSubscription(req.user.userId);
-
 
     if (sub.plan !== "team") {
       return fail(
@@ -116,15 +104,10 @@ export async function getTeamSeatsDetails(req, res) {
       );
     }
 
-
     const currentSeats = await countTeamBillableSeats(req.user.userId);
 
-
-    const projects = await Project.find({ userId: req.user.userId })
-      .select("_id")
-      .lean();
+    const projects = await Project.find({ userId: req.user.userId }).select("_id").lean();
     const projectIds = projects.map((p) => p._id);
-
 
     const shares = await ProjectShare.find(
       { projectId: { $in: projectIds }, status: "accepted" },
@@ -132,7 +115,6 @@ export async function getTeamSeatsDetails(req, res) {
     )
       .populate("inviteeUserId", "name email")
       .lean();
-
 
     const uniqueCollaborators = {};
     for (const share of shares) {
@@ -153,10 +135,8 @@ export async function getTeamSeatsDetails(req, res) {
 
     const collaboratorList = Object.values(uniqueCollaborators);
 
-
     const TEAM_RATE_PER_USER = 12.0;
     const monthlyRate = currentSeats * TEAM_RATE_PER_USER;
-
 
     const daysRemaining = Math.max(
       0,
@@ -167,8 +147,7 @@ export async function getTeamSeatsDetails(req, res) {
     );
     const proratedDaily =
       daysRemaining > 0
-        ? Math.round((monthlyRate * 100 * daysRemaining) / totalDaysInCycle) /
-          100
+        ? Math.round((monthlyRate * 100 * daysRemaining) / totalDaysInCycle) / 100
         : 0;
 
     return ok(
@@ -184,17 +163,14 @@ export async function getTeamSeatsDetails(req, res) {
           collaborators: collaboratorList,
           totalSeats: currentSeats,
 
-
           billingCycle: sub.billingCycle || "monthly",
           monthlyRate: monthlyRate.toFixed(2),
           ratePerUser: TEAM_RATE_PER_USER.toFixed(2),
-
 
           periodStart: sub.currentPeriodStart,
           periodEnd: sub.currentPeriodEnd,
           daysRemaining,
           proratedDaily: proratedDaily.toFixed(2),
-
 
           seatBreakdown: {
             owner: 1,
@@ -210,7 +186,6 @@ export async function getTeamSeatsDetails(req, res) {
   }
 }
 
-
 export async function checkout(req, res) {
   try {
     const { planId, cycle, seats = 1 } = req.body;
@@ -219,14 +194,8 @@ export async function checkout(req, res) {
       return fail(res, "INVALID_PLAN", "Invalid plan selected", 400);
     }
     if (!["monthly", "annual"].includes(cycle)) {
-      return fail(
-        res,
-        "INVALID_CYCLE",
-        "Billing cycle must be monthly or annual",
-        400,
-      );
+      return fail(res, "INVALID_CYCLE", "Billing cycle must be monthly or annual", 400);
     }
-
 
     const preferTrial = req.body.startTrial !== false;
 
@@ -238,17 +207,11 @@ export async function checkout(req, res) {
       preferTrial,
     });
 
-    return ok(
-      res,
-      result,
-      result.type === "trial" ? "Trial started" : "Checkout initiated",
-      200,
-    );
+    return ok(res, result, result.type === "trial" ? "Trial started" : "Checkout initiated", 200);
   } catch (err) {
     return serverError(res, err, "checkout");
   }
 }
-
 
 export async function verifyPayment(req, res) {
   try {
@@ -265,12 +228,7 @@ export async function verifyPayment(req, res) {
     }
 
     if (fwTx?.status !== "successful") {
-      return fail(
-        res,
-        "PAYMENT_UNSUCCESSFUL",
-        "Payment was not successful",
-        402,
-      );
+      return fail(res, "PAYMENT_UNSUCCESSFUL", "Payment was not successful", 402);
     }
 
     const owned = await Invoice.findOne({
@@ -289,7 +247,6 @@ export async function verifyPayment(req, res) {
     return serverError(res, err, "verifyPayment");
   }
 }
-
 
 export async function changePlanHandler(req, res) {
   try {
@@ -312,16 +269,11 @@ export async function changePlanHandler(req, res) {
   }
 }
 
-
 export async function cancelHandler(req, res) {
   try {
     const { reason } = req.body;
     const result = await cancelSubscription(req.user.userId, reason);
-    return ok(
-      res,
-      result,
-      "Subscription cancelled. Access continues until period end.",
-    );
+    return ok(res, result, "Subscription cancelled. Access continues until period end.");
   } catch (err) {
     if (err.message === "No active subscription to cancel") {
       return fail(res, "NO_ACTIVE_SUBSCRIPTION", err.message, 400);
@@ -329,7 +281,6 @@ export async function cancelHandler(req, res) {
     return serverError(res, err, "cancel");
   }
 }
-
 
 export async function pauseHandler(req, res) {
   try {
@@ -344,18 +295,11 @@ export async function pauseHandler(req, res) {
   }
 }
 
-
 export async function addSeatsHandler(req, res) {
   try {
     const { seats } = req.body;
     const n = parseInt(seats, 10);
-    if (!n || n < 1)
-      return fail(
-        res,
-        "INVALID_SEATS",
-        "seats must be a positive integer",
-        400,
-      );
+    if (!n || n < 1) return fail(res, "INVALID_SEATS", "seats must be a positive integer", 400);
     const result = await addSeats(req.user.userId, n);
     return ok(res, result, "Seats added");
   } catch (err) {
@@ -363,10 +307,8 @@ export async function addSeatsHandler(req, res) {
   }
 }
 
-
 export async function getPaymentMethods(req, res) {
   try {
-
     const methods = await PaymentMethod.find({
       userId: req.user.userId,
       deletedAt: null,
@@ -376,7 +318,6 @@ export async function getPaymentMethods(req, res) {
     return serverError(res, err, "getPaymentMethods");
   }
 }
-
 
 export async function deletePaymentMethod(req, res) {
   try {
@@ -395,10 +336,8 @@ export async function deletePaymentMethod(req, res) {
   }
 }
 
-
 export async function setDefaultPaymentMethod(req, res) {
   try {
-
     await PaymentMethod.updateMany(
       { userId: req.user.userId, deletedAt: null },
       { $set: { isDefault: false } },
@@ -415,7 +354,6 @@ export async function setDefaultPaymentMethod(req, res) {
   }
 }
 
-
 export async function getBillingHistoryHandler(req, res) {
   try {
     const page = parseInt(req.query.page, 10) || 1;
@@ -427,23 +365,17 @@ export async function getBillingHistoryHandler(req, res) {
   }
 }
 
-
 export async function downloadInvoicePdf(req, res) {
   try {
     const pdfBuffer = await generateInvoicePdf(req.params.id, req.user.userId);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="invoice-${req.params.id}.pdf"`,
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="invoice-${req.params.id}.pdf"`);
     return res.end(pdfBuffer);
   } catch (err) {
-    if (err.status === 404)
-      return fail(res, "NOT_FOUND", "Invoice not found", 404);
+    if (err.status === 404) return fail(res, "NOT_FOUND", "Invoice not found", 404);
     return serverError(res, err, "downloadInvoicePdf");
   }
 }
-
 
 export async function updateInvoiceDetails(req, res) {
   try {

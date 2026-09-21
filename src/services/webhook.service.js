@@ -7,14 +7,10 @@ const MANIFEST_FILE =
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|Pipfile|Pipfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|pom\.xml|build\.gradle|composer\.json|Gemfile|Gemfile\.lock)$/i;
 
 export function validateWebhookSignature(rawPayload, signature, secret) {
-
   if (!secret) return false;
   if (!signature || typeof signature !== "string") return false;
 
-  const computed = `sha256=${crypto
-    .createHmac("sha256", secret)
-    .update(rawPayload)
-    .digest("hex")}`;
+  const computed = `sha256=${crypto.createHmac("sha256", secret).update(rawPayload).digest("hex")}`;
 
   const a = Buffer.from(signature);
   const b = Buffer.from(computed);
@@ -42,12 +38,9 @@ export function shouldReDocument(pushPayload) {
   const pathMap = new Map();
 
   for (const commit of commits) {
-    for (const p of commit.added || [])
-      pathMap.set(p, { path: p, status: "added" });
-    for (const p of commit.modified || [])
-      pathMap.set(p, { path: p, status: "modified" });
-    for (const p of commit.removed || [])
-      pathMap.set(p, { path: p, status: "removed" });
+    for (const p of commit.added || []) pathMap.set(p, { path: p, status: "added" });
+    for (const p of commit.modified || []) pathMap.set(p, { path: p, status: "modified" });
+    for (const p of commit.removed || []) pathMap.set(p, { path: p, status: "removed" });
   }
 
   const changedFiles = [...pathMap.values()];
@@ -61,9 +54,7 @@ export function shouldReDocument(pushPayload) {
     };
   }
 
-  const needsFullRun = changedFiles.some((f) =>
-    MANIFEST_FILE.test(f.path.split("/").pop()),
-  );
+  const needsFullRun = changedFiles.some((f) => MANIFEST_FILE.test(f.path.split("/").pop()));
 
   return {
     should: true,
@@ -158,11 +149,7 @@ function getRepoIdentityFromPayload(payload) {
   return null;
 }
 
-async function findProjectAndUserForWebhook({
-  rawPayload,
-  signature,
-  repoIdentity,
-}) {
+async function findProjectAndUserForWebhook({ rawPayload, signature, repoIdentity }) {
   const { Project } = await import("../models/Project.js");
   const { User } = await import("../models/User.js");
 
@@ -195,29 +182,20 @@ async function findProjectAndUserForWebhook({
 
   for (const userId of userOrder) {
     if (!userCache.has(userId)) {
-      const user = await User.findById(userId).select(
-        "+webhookSecret webhookEnabled",
-      );
+      const user = await User.findById(userId).select("+webhookSecret webhookEnabled");
       userCache.set(userId, user || null);
     }
 
     const user = userCache.get(userId);
     if (!user?.webhookSecret) continue;
 
-    const valid = validateWebhookSignature(
-      rawPayload,
-      signature || "",
-      user.webhookSecret,
-    );
+    const valid = validateWebhookSignature(rawPayload, signature || "", user.webhookSecret);
 
     if (!valid) continue;
 
-    const userProjects = candidates.filter(
-      (p) => p.userId.toString() === userId,
-    );
+    const userProjects = candidates.filter((p) => p.userId.toString() === userId);
     const project =
-      userProjects.find((p) => p.status === "done" || p.status === "error") ||
-      userProjects[0];
+      userProjects.find((p) => p.status === "done" || p.status === "error") || userProjects[0];
 
     return { kind: "match", project, user };
   }
@@ -235,14 +213,11 @@ async function updateUserWebhookStatus({ userId, status }) {
       },
     });
   } catch (err) {
-    console.error(
-      `[webhook] Failed to update user webhook status (${userId}): ${err.message}`,
-    );
+    console.error(`[webhook] Failed to update user webhook status (${userId}): ${err.message}`);
   }
 }
 
 export async function handleWebhook({ payload, signature, githubEvent = "" }) {
-
   const eventLower = githubEvent.toLowerCase();
   if (eventLower && eventLower !== "push" && eventLower !== "ping") {
     return {
@@ -266,8 +241,7 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
     return {
       status: 400,
       body: {
-        error:
-          "Invalid payload format. Ensure raw body middleware is applied to this route.",
+        error: "Invalid payload format. Ensure raw body middleware is applied to this route.",
       },
     };
   }
@@ -304,17 +278,14 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
     return {
       status: 200,
       body: {
-        message:
-          "No project registered for this repository. Create one via the dashboard first.",
+        message: "No project registered for this repository. Create one via the dashboard first.",
         repoUrl: repoIdentity.repoUrl,
       },
     };
   }
 
   if (match.kind === "invalid_signature") {
-    console.warn(
-      `[webhook] Signature validation failed for ${repoIdentity.fullName}`,
-    );
+    console.warn(`[webhook] Signature validation failed for ${repoIdentity.fullName}`);
     return { status: 401, body: { error: "Invalid webhook signature" } };
   }
 
@@ -322,9 +293,7 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
   const user = match.user;
 
   if (!user.webhookEnabled) {
-    console.log(
-      `[webhook] Skipped for user ${user._id}: account webhooks are disabled`,
-    );
+    console.log(`[webhook] Skipped for user ${user._id}: account webhooks are disabled`);
     await updateUserWebhookStatus({ userId: user._id, status: "skipped" });
     return {
       status: 200,
@@ -419,9 +388,7 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
       },
     };
   } catch (err) {
-    console.error(
-      `[webhook] Failed to trigger sync for project ${project._id}: ${err.message}`,
-    );
+    console.error(`[webhook] Failed to trigger sync for project ${project._id}: ${err.message}`);
     await updateUserWebhookStatus({ userId: user._id, status: "failed" });
     return {
       status: 500,
@@ -434,10 +401,7 @@ export async function handleWebhook({ payload, signature, githubEvent = "" }) {
 }
 
 export function generateGitHubActionsWorkflow(apiBaseUrl) {
-  const base = (apiBaseUrl || "https://your-docnine-instance.com").replace(
-    /\/$/,
-    "",
-  );
+  const base = (apiBaseUrl || "https://your-docnine-instance.com").replace(/\/$/, "");
 
   return `# .github/workflows/document.yml
 # Auto-generated by Docnine
@@ -543,4 +507,3 @@ jobs:
           fi
 `;
 }
-

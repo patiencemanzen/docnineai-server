@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import { randomBytes } from "crypto";
 import { SlackIntegration } from "../../../models/SlackIntegration.js";
@@ -18,22 +17,19 @@ const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 const APP_URL = process.env.APP_URL || "";
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 
-
 export async function setCustomSlackCredentials(req, res) {
   try {
     const { projectId } = req.params;
     const { slackClientId, slackClientSecret, slackSigningSecret } = req.body;
-
 
     if (!slackClientId || !slackClientSecret || !slackSigningSecret) {
       return fail(
         res,
         "MISSING_CREDENTIALS",
         "Client ID, Client Secret, and Signing Secret are required",
-        400
+        400,
       );
     }
-
 
     const { Project } = await import("../../../models/Project.js");
     const project = await Project.findById(projectId);
@@ -44,14 +40,8 @@ export async function setCustomSlackCredentials(req, res) {
     const userIdStr = req.user.userId.toString();
     const projectOwnerStr = project.userId?.toString();
     if (projectOwnerStr !== userIdStr) {
-      return fail(
-        res,
-        "UNAUTHORIZED",
-        "Only project owners can set custom Slack credentials",
-        403
-      );
+      return fail(res, "UNAUTHORIZED", "Only project owners can set custom Slack credentials", 403);
     }
-
 
     let integration = await SlackIntegration.findOne({
       projectId,
@@ -65,19 +55,14 @@ export async function setCustomSlackCredentials(req, res) {
       });
     }
 
-
     integration.slackClientId = slackClientId;
     integration.slackClientSecret = slackClientSecret;
     integration.slackSigningSecret = slackSigningSecret;
     integration.isCustomApp = true;
 
-
     await integration.save();
 
-    await integration.recordEvent(
-      "credentials_set",
-      "Custom Slack app credentials saved"
-    );
+    await integration.recordEvent("credentials_set", "Custom Slack app credentials saved");
 
     return ok(
       res,
@@ -88,19 +73,15 @@ export async function setCustomSlackCredentials(req, res) {
         signingSecretLast4: slackSigningSecret.slice(-4),
       },
       "Custom Slack credentials saved successfully",
-      201
+      201,
     );
   } catch (err) {
     return serverError(res, err, "setCustomSlackCredentials");
   }
 }
 
-
-
-
 async function getOAuthCredentials(integration) {
   if (integration?.isCustomApp) {
-
     const clientId = await integration.getDecryptedClientId();
     const clientSecret = await integration.getDecryptedClientSecret();
     return { clientId, clientSecret, isCustom: true };
@@ -112,7 +93,6 @@ async function getOAuthCredentials(integration) {
     isCustom: false,
   };
 }
-
 
 async function getSigningSecret(integration) {
   if (integration?.isCustomApp) {
@@ -128,7 +108,6 @@ export async function initiateSlackOAuth(req, res) {
       return fail(res, "MISSING_PROJECT", "Project ID is required", 400);
     }
 
-
     const { Project } = await import("../../../models/Project.js");
     const project = await Project.findById(projectId);
     if (!project) {
@@ -142,10 +121,9 @@ export async function initiateSlackOAuth(req, res) {
         res,
         "UNAUTHORIZED",
         "You do not own this project. Only project owners can connect Slack.",
-        403
+        403,
       );
     }
-
 
     let integration = await SlackIntegration.findOne({
       projectId,
@@ -159,11 +137,9 @@ export async function initiateSlackOAuth(req, res) {
       });
     }
 
-
     const state = randomBytes(32).toString("hex");
     integration.oauthState = state;
     await integration.save();
-
 
     const { clientId, isCustom } = await getOAuthCredentials(integration);
 
@@ -174,18 +150,14 @@ export async function initiateSlackOAuth(req, res) {
         isCustom
           ? "Custom Slack credentials not configured. Please set them first."
           : "Slack app not configured on the server",
-        500
+        500,
       );
     }
-
 
     const oauthUrl = new URL("https://slack.com/oauth/v2/authorize");
     oauthUrl.searchParams.append("client_id", clientId);
     oauthUrl.searchParams.append("scope", "chat:write,commands,users:read");
-    oauthUrl.searchParams.append(
-      "redirect_uri",
-      `${APP_URL}/slack/oauth/callback`
-    );
+    oauthUrl.searchParams.append("redirect_uri", `${APP_URL}/slack/oauth/callback`);
     oauthUrl.searchParams.append("state", state);
     oauthUrl.searchParams.append("user_scope", "");
 
@@ -193,13 +165,12 @@ export async function initiateSlackOAuth(req, res) {
       res,
       { authUrl: oauthUrl.toString(), isCustomApp: isCustom },
       "OAuth URL generated",
-      201
+      201,
     );
   } catch (err) {
     return serverError(res, err, "initiateSlackOAuth");
   }
 }
-
 
 export async function handleSlackCallback(req, res) {
   let integration = null;
@@ -214,18 +185,14 @@ export async function handleSlackCallback(req, res) {
       return fail(res, "MISSING_PARAMS", "Code and state are required", 400);
     }
 
-
     integration = await SlackIntegration.findOne({
       oauthState: state,
     });
     if (!integration) {
-
       return fail(res, "INVALID_STATE", "Invalid OAuth state", 403);
     }
 
-
     const { clientId, clientSecret, isCustom } = await getOAuthCredentials(integration);
-
 
     const tokenParams = new URLSearchParams({
       client_id: clientId,
@@ -244,9 +211,7 @@ export async function handleSlackCallback(req, res) {
     );
 
     if (!tokenResponse.data.ok) {
-      throw new Error(
-        `Slack token exchange failed: ${tokenResponse.data.error}`,
-      );
+      throw new Error(`Slack token exchange failed: ${tokenResponse.data.error}`);
     }
 
     const {
@@ -255,7 +220,6 @@ export async function handleSlackCallback(req, res) {
       bot_user_id,
       app_id,
     } = tokenResponse.data;
-
 
     integration.botAccessToken = access_token;
     integration.workspaceId = workspaceId;
@@ -267,10 +231,7 @@ export async function handleSlackCallback(req, res) {
     integration.oauthState = null;
 
     await integration.save();
-    await integration.recordEvent(
-      "installed",
-      `App installed in ${workspaceName}`,
-    );
+    await integration.recordEvent("installed", `App installed in ${workspaceName}`);
 
     NotificationService.create({
       userId: integration.userId,
@@ -279,7 +240,6 @@ export async function handleSlackCallback(req, res) {
       actionUrl: `/projects/${integration.projectId}/settings`,
       metadata: { workspaceName },
     });
-
 
     res.redirect(
       `${FRONTEND_URL}/projects/${integration.projectId}/settings?slack=success&workspace=${encodeURIComponent(workspaceName)}`,
@@ -297,9 +257,6 @@ export async function handleSlackCallback(req, res) {
   }
 }
 
-
-
-
 export async function handleSlashCommand(req, res) {
   try {
     const { team_id } = req.body;
@@ -308,18 +265,15 @@ export async function handleSlashCommand(req, res) {
       return res.status(400).json({ error: "Missing workspace ID" });
     }
 
-
     const integrationForSignature = await SlackIntegration.findOne({
       workspaceId: team_id,
       isActive: true,
     });
 
-
     let signingSecret = SLACK_SIGNING_SECRET;
     if (integrationForSignature?.isCustomApp) {
       signingSecret = await integrationForSignature.getDecryptedSigningSecret();
     }
-
 
     if (!verifySlackSignature(req, signingSecret)) {
       return res.status(403).json({ error: "Invalid signature" });
@@ -335,12 +289,10 @@ export async function handleSlashCommand(req, res) {
       });
     }
 
-
     res.json({
       response_type: "in_channel",
       text: "Processing your request...",
     });
-
 
     handleCommandAsync(
       integrationForSignature,
@@ -349,7 +301,7 @@ export async function handleSlashCommand(req, res) {
       response_url,
       trigger_id,
       user_id,
-      team_id
+      team_id,
     ).catch((err) => {
       console.error(`[slack] Command handler error: ${err.message}`);
     });
@@ -357,7 +309,6 @@ export async function handleSlashCommand(req, res) {
     return serverError(res, err, "handleSlashCommand");
   }
 }
-
 
 async function findIntegrationAndProjectOrThrow(workspaceId, projectId) {
   const { Project } = await import("../../../models/Project.js");
@@ -369,9 +320,7 @@ async function findIntegrationAndProjectOrThrow(workspaceId, projectId) {
   });
 
   if (!integration) {
-    const err = new Error(
-      "Slack integration not found or not active for this project."
-    );
+    const err = new Error("Slack integration not found or not active for this project.");
     err.statusCode = 404;
     throw err;
   }
@@ -389,7 +338,7 @@ async function findIntegrationAndProjectOrThrow(workspaceId, projectId) {
 
   if (integrationOwnerStr !== projectOwnerStr) {
     const err = new Error(
-      "Project ownership mismatch. This integration cannot access this project."
+      "Project ownership mismatch. This integration cannot access this project.",
     );
     err.statusCode = 403;
     throw err;
@@ -411,7 +360,6 @@ async function handleCommandAsync(
   const userId = integration.userId;
 
   try {
-
     try {
       await findIntegrationAndProjectOrThrow(team_id, projectId);
     } catch (err) {
@@ -422,16 +370,13 @@ async function handleCommandAsync(
       return;
     }
 
-
     const { getMcpService } = await import("../../../services/mcp.service.js");
     const mcp = await getMcpService({ userId });
 
-
     const trimmed = (text || "").trim();
     const spaceIdx = trimmed.indexOf(" ");
-    const subcommand = spaceIdx === -1
-      ? trimmed.toLowerCase()
-      : trimmed.slice(0, spaceIdx).toLowerCase();
+    const subcommand =
+      spaceIdx === -1 ? trimmed.toLowerCase() : trimmed.slice(0, spaceIdx).toLowerCase();
     const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
 
     let response;
@@ -507,7 +452,6 @@ async function handleCommandAsync(
           ],
         };
 
-
         if (audit.findings.length > 0) {
           const topFindings = audit.findings.slice(0, 5);
           response.blocks.push({
@@ -516,9 +460,7 @@ async function handleCommandAsync(
               type: "mrkdwn",
               text:
                 "*Top Findings:*\n" +
-                topFindings
-                  .map((f) => `• ${f.severity}: ${f.title}`)
-                  .join("\n"),
+                topFindings.map((f) => `• ${f.severity}: ${f.title}`).join("\n"),
             },
           });
         }
@@ -690,18 +632,13 @@ async function handleCommandAsync(
   }
 }
 
-
-
-
 export async function handleSlackEvent(req, res) {
   try {
     const { type, challenge, event, team_id } = req.body;
 
-
     let signingSecret = SLACK_SIGNING_SECRET;
 
     if (team_id) {
-
       const integration = await SlackIntegration.findOne({
         workspaceId: team_id,
         isActive: true,
@@ -712,23 +649,19 @@ export async function handleSlackEvent(req, res) {
       }
     }
 
-
     if (!verifySlackSignature(req, signingSecret)) {
       return res.status(403).json({ error: "Invalid signature" });
     }
 
-
     if (type === "url_verification") {
       return res.json({ challenge });
     }
-
 
     if (type === "event_callback") {
       handleEventAsync(event).catch((err) => {
         console.error(`[slack] Event handler error: ${err.message}`);
       });
     }
-
 
     res.json({});
   } catch (err) {
@@ -738,12 +671,8 @@ export async function handleSlackEvent(req, res) {
 }
 
 async function handleEventAsync(event) {
-
   console.log(`[slack] Event: ${event.type}`);
 }
-
-
-
 
 export async function getSlackConfig(req, res) {
   try {
@@ -761,18 +690,17 @@ export async function getSlackConfig(req, res) {
       !integration.workspaceName ||
       !integration.botTokenEncrypted
     ) {
-
       if (integration?.isCustomApp && integration?.slackClientIdEncrypted) {
         let clientIdLast4 = "";
         let signingSecretLast4 = "";
         try {
           const clientId = await integration.getDecryptedClientId();
           clientIdLast4 = clientId ? clientId.slice(-4) : "";
-        } catch {  }
+        } catch {}
         try {
           const signingSecret = await integration.getDecryptedSigningSecret();
           signingSecretLast4 = signingSecret ? signingSecret.slice(-4) : "";
-        } catch {  }
+        } catch {}
         return ok(res, {
           configured: false,
           pendingCustomApp: true,
@@ -802,7 +730,6 @@ export async function getSlackConfig(req, res) {
   }
 }
 
-
 export async function updateSlackConfig(req, res) {
   try {
     const { projectId } = req.params;
@@ -815,7 +742,6 @@ export async function updateSlackConfig(req, res) {
       enableLowAlerts,
       pingOnCritical,
     } = req.body;
-
 
     const update = {
       ...(alertChannelId !== undefined ? { alertChannelId } : {}),
@@ -836,7 +762,6 @@ export async function updateSlackConfig(req, res) {
     if (!integration) {
       return fail(res, "NOT_FOUND", "Slack integration not found", 404);
     }
-
 
     return ok(
       res,
@@ -860,7 +785,6 @@ export async function updateSlackConfig(req, res) {
     return serverError(res, err, "updateSlackConfig");
   }
 }
-
 
 export async function disconnectSlack(req, res) {
   try {

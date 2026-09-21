@@ -1,4 +1,3 @@
-
 import { getAdapter, createRepoAdapter } from "../adapters/provider.adapter.js";
 import { decrypt } from "../utils/crypto.util.js";
 
@@ -8,15 +7,9 @@ import { schemaAnalyserAgent } from "../agents/schema-analyser.agent.js";
 import { componentMapperAgent } from "../agents/component-mapper.agent.js";
 import { securityAuditorAgent } from "../agents/security-auditor.agent.js";
 
-import {
-  analyseChanges,
-  mergeAgentOutputs,
-  updateFileManifest,
-} from "./diff.service.js";
+import { analyseChanges, mergeAgentOutputs, updateFileManifest } from "./diff.service.js";
 
 import { DocumentVersion } from "../models/DocumentVersion.js";
-
-
 
 const TIMEOUTS = {
   fetch: 45_000,
@@ -28,9 +21,7 @@ const TIMEOUTS = {
   docs: 120_000,
 };
 
-
 const FULL_RUN_THRESHOLD = 80;
-
 
 const STATIC_SECTIONS = new Set([
   "apiReference",
@@ -40,14 +31,11 @@ const STATIC_SECTIONS = new Set([
   "componentIndex",
 ]);
 
-
 const LLM_SECTIONS = new Set(["readme", "internalDocs", "componentRef"]);
 
 const SEVERITY_WEIGHT = { CRITICAL: 25, HIGH: 15, MEDIUM: 7, LOW: 2 };
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🔵" };
-
-
 
 let _docWriterAgent = null;
 async function getDocWriter() {
@@ -57,27 +45,18 @@ async function getDocWriter() {
   return _docWriterAgent;
 }
 
-
 function resolveGit(project) {
   const provider = project.provider || "github";
   const git = getAdapter(provider);
-  const accessToken = project.providerToken
-    ? decrypt(project.providerToken)
-    : null;
+  const accessToken = project.providerToken ? decrypt(project.providerToken) : null;
   const ra = createRepoAdapter(provider, project.repoUrl);
   return { git, accessToken, ra };
 }
 
-
-
-
 async function withTimeout(fn, ms, label) {
   let handle;
   const timeoutPromise = new Promise((_, reject) => {
-    handle = setTimeout(
-      () => reject(new Error(`${label} timed out after ${ms / 1000}s`)),
-      ms,
-    );
+    handle = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
   });
   try {
     const result = await Promise.race([fn(), timeoutPromise]);
@@ -89,9 +68,6 @@ async function withTimeout(fn, ms, label) {
   }
 }
 
-
-
-
 async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const start = Date.now();
   emit(step, "running", `Running ${label}…`);
@@ -100,22 +76,15 @@ async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const duration = Date.now() - start;
 
   if (error) {
-    const reason = timedOut
-      ? `${label} timed out after ${timeout / 1000}s`
-      : error.message;
+    const reason = timedOut ? `${label} timed out after ${timeout / 1000}s` : error.message;
     emit(step, "error", `${label} failed : using fallback`, reason);
-    console.error(
-      `[sync:${step}:error] ${label}:`,
-      error.stack ?? error.message,
-    );
+    console.error(`[sync:${step}:error] ${label}:`, error.stack ?? error.message);
     return { ...fallback, _failed: true, _error: reason, _duration: duration };
   }
 
   emit(step, "done", `${label} complete`, `${(duration / 1000).toFixed(1)}s`);
   return { ...result, _duration: duration };
 }
-
-
 
 function parseOwnerRepo(project) {
   const provider = project.provider || "github";
@@ -137,14 +106,10 @@ function categoriseWebhookFiles(webhookFiles) {
   return { added, modified, removed };
 }
 
-
 function filterFilesForAgent(changedFiles, agentFileList, removedPathSet) {
   const pathSet = new Set(agentFileList.map((f) => f.path));
-  return changedFiles.filter(
-    (f) => pathSet.has(f.path) && !removedPathSet.has(f.path),
-  );
+  return changedFiles.filter((f) => pathSet.has(f.path) && !removedPathSet.has(f.path));
 }
-
 
 function mergeProjectMap(existingProjectMap, freshProjectMap, changedPathSet) {
   return [
@@ -171,17 +136,14 @@ function buildLayerMap(projectMap) {
 
 function hasValidStoredState(project) {
   return (
-    (project.agentOutputs?.projectMap?.length ?? 0) > 0 &&
-    (project.fileManifest?.length ?? 0) > 0
+    (project.agentOutputs?.projectMap?.length ?? 0) > 0 && (project.fileManifest?.length ?? 0) > 0
   );
 }
-
 
 function requiresFullRun(project, changedFileEntries, analysis, options) {
   if (options.forceFullRun) return "forceFullRun requested";
   if (!hasValidStoredState(project)) return "no stored baseline";
-  if (analysis.needsFullRun)
-    return analysis.fullRunReason ?? "manifest changed";
+  if (analysis.needsFullRun) return analysis.fullRunReason ?? "manifest changed";
   if (changedFileEntries.length > FULL_RUN_THRESHOLD)
     return `${changedFileEntries.length} files exceed threshold (${FULL_RUN_THRESHOLD})`;
   return null;
@@ -195,49 +157,26 @@ async function updateCommitSha(project, sha) {
   });
 }
 
-
-
 function recomputeSecurityScore(findings) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
   for (const f of findings ?? []) {
     counts[f.severity] = (counts[f.severity] ?? 0) + 1;
   }
-  const criticalDeduct =
-    Math.min(counts.CRITICAL, 3) * 25 + Math.max(0, counts.CRITICAL - 3) * 10;
-  const highDeduct =
-    Math.min(counts.HIGH, 5) * 15 + Math.max(0, counts.HIGH - 5) * 5;
-  const mediumDeduct =
-    Math.min(counts.MEDIUM, 8) * 7 + Math.max(0, counts.MEDIUM - 8) * 2;
+  const criticalDeduct = Math.min(counts.CRITICAL, 3) * 25 + Math.max(0, counts.CRITICAL - 3) * 10;
+  const highDeduct = Math.min(counts.HIGH, 5) * 15 + Math.max(0, counts.HIGH - 5) * 5;
+  const mediumDeduct = Math.min(counts.MEDIUM, 8) * 7 + Math.max(0, counts.MEDIUM - 8) * 2;
   const lowDeduct = counts.LOW * 2;
 
   const score = Math.max(
     0,
-    Math.min(
-      100,
-      100 - (criticalDeduct + highDeduct + mediumDeduct + lowDeduct),
-    ),
+    Math.min(100, 100 - (criticalDeduct + highDeduct + mediumDeduct + lowDeduct)),
   );
-  const grade =
-    score >= 90
-      ? "A"
-      : score >= 80
-        ? "B"
-        : score >= 65
-          ? "C"
-          : score >= 45
-            ? "D"
-            : "F";
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 45 ? "D" : "F";
 
   return { score, grade, counts };
 }
 
-function buildSecurityReport(
-  findings,
-  score,
-  grade,
-  counts,
-  categoryCounts = {},
-) {
+function buildSecurityReport(findings, score, grade, counts, categoryCounts = {}) {
   let md = `# Security Audit Report\n\n`;
   md += `## Summary\n\n| Metric | Value |\n|--------|-------|\n`;
   md += `| **Score** | ${score}/100 |\n| **Grade** | **${grade}** |\n`;
@@ -272,8 +211,7 @@ function buildSecurityReport(
       if (f.cwe) md += ` · **${f.cwe}**`;
       if (f.category) md += ` · ${f.category}`;
       md += "\n\n";
-      if (f.line)
-        md += `**Detected:**\n\`\`\`\n${f.line.replace(/`/g, "'")}\n\`\`\`\n\n`;
+      if (f.line) md += `**Detected:**\n\`\`\`\n${f.line.replace(/`/g, "'")}\n\`\`\`\n\n`;
       if (f.description) md += `**Description:** ${f.description}\n\n`;
       if (f.impact) md += `**Impact:** ${f.impact}\n\n`;
       md += `**Fix:** ${f.advice}\n\n---\n\n`;
@@ -307,8 +245,7 @@ function buildRemediationPlan(findings) {
 }
 
 function buildApiReference(endpoints) {
-  if (!endpoints?.length)
-    return "# API Reference\n\nNo API endpoints detected.\n";
+  if (!endpoints?.length) return "# API Reference\n\nNo API endpoints detected.\n";
 
   const authCount = endpoints.filter((e) => e.auth?.required || e.auth).length;
   const methodCount = endpoints.reduce((acc, e) => {
@@ -325,11 +262,7 @@ function buildApiReference(endpoints) {
 
   const grouped = {};
   for (const ep of endpoints) {
-    const tag =
-      ep.tags?.[0] ||
-      ep.path?.split("/")?.[2] ||
-      ep.path?.split("/")?.[1] ||
-      "root";
+    const tag = ep.tags?.[0] || ep.path?.split("/")?.[2] || ep.path?.split("/")?.[1] || "root";
     (grouped[tag] ??= []).push(ep);
   }
 
@@ -344,8 +277,7 @@ function buildApiReference(endpoints) {
       const authType = ep.auth?.type || (authRequired ? "required" : "none");
       const authRoles = ep.auth?.roles || [];
       md += `**Auth:** ${authRequired ? `✅ \`${authType}\`` : "❌ Public"}`;
-      if (authRoles.length)
-        md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
+      if (authRoles.length) md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
       md += "\n\n";
 
       if (ep.request?.params?.length) {
@@ -357,21 +289,17 @@ function buildApiReference(endpoints) {
         md += "\n";
       }
 
-      if (ep.request?.body_schema)
-        md += `**Body:** \`${ep.request.body_schema}\`\n\n`;
+      if (ep.request?.body_schema) md += `**Body:** \`${ep.request.body_schema}\`\n\n`;
 
       if (ep.response?.success) {
         md += `**Response \`${ep.response.success.status}\`:** ${ep.response.success.description || "Success"}`;
-        if (ep.response.success.schema)
-          md += ` · \`${ep.response.success.schema}\``;
+        if (ep.response.success.schema) md += ` · \`${ep.response.success.schema}\``;
         md += "\n\n";
       }
 
       if (ep.response?.errors?.length) {
         md += `**Errors:**\n\n| Status | Description |\n|--------|-------------|\n`;
-        ep.response.errors.forEach(
-          (e) => (md += `| \`${e.status}\` | ${e.description} |\n`),
-        );
+        ep.response.errors.forEach((e) => (md += `| \`${e.status}\` | ${e.description} |\n`));
         md += "\n";
       }
 
@@ -387,9 +315,7 @@ function buildSchemaDocs(models, relationships) {
 
   let md = "# Data Models\n\n";
   md += `> **${models.length} models** · **${relationships?.length ?? 0} relationships**\n\n`;
-  md +=
-    models.map((m) => `- [${m.name}](#${m.name.toLowerCase()})`).join("\n") +
-    "\n\n";
+  md += models.map((m) => `- [${m.name}](#${m.name.toLowerCase()})`).join("\n") + "\n\n";
 
   for (const m of models) {
     md += `## ${m.name}\n\n`;
@@ -417,9 +343,7 @@ function buildSchemaDocs(models, relationships) {
       md += "\n";
     }
 
-    const modelRels = (relationships ?? []).filter(
-      (r) => r.from === m.name || r.to === m.name,
-    );
+    const modelRels = (relationships ?? []).filter((r) => r.from === m.name || r.to === m.name);
     if (modelRels.length) {
       md += `### Relationships\n\n| Direction | Model | Type | Via |\n|-----------|-------|------|-----|\n`;
       modelRels.forEach((r) => {
@@ -436,8 +360,7 @@ function buildSchemaDocs(models, relationships) {
   if (relationships?.length) {
     md += `## Relationship Overview\n\n| From | Type | To | Via |\n|------|------|----|-----|\n`;
     relationships.forEach(
-      (r) =>
-        (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`),
+      (r) => (md += `| ${r.from} | \`${r.type}\` | ${r.to} | ${r.through || ":"} |\n`),
     );
   }
 
@@ -445,8 +368,7 @@ function buildSchemaDocs(models, relationships) {
 }
 
 function buildComponentIndex(components) {
-  if (!components?.length)
-    return "# Component Index\n\nNo components documented.\n";
+  if (!components?.length) return "# Component Index\n\nNo components documented.\n";
 
   const TYPE_ORDER = [
     "service",
@@ -483,8 +405,7 @@ function buildComponentIndex(components) {
       .sort((a, b) => a.name.localeCompare(b.name))
       .forEach((c) => {
         const dep = c.deprecated ? " ⚠️" : "";
-        const cplx =
-          { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || ":";
+        const cplx = { low: "🟢", medium: "🟡", high: "🔴" }[c.complexity] || ":";
         const desc = c.description
           ? c.description.slice(0, 70) + (c.description.length > 70 ? "…" : "")
           : ":";
@@ -494,7 +415,6 @@ function buildComponentIndex(components) {
   }
   return md;
 }
-
 
 function determineSectionsToRegenerate(agentsRun, analysis) {
   const sections = new Set(analysis.sectionsAffected ?? []);
@@ -522,7 +442,6 @@ function determineSectionsToRegenerate(agentsRun, analysis) {
   };
 }
 
-
 function buildMongoUpdate({
   newOutput,
   currentSha,
@@ -533,7 +452,6 @@ function buildMongoUpdate({
   totalDuration,
 }) {
   return {
-
     "output.readme": newOutput.readme,
     "output.internalDocs": newOutput.internalDocs,
     "output.apiReference": newOutput.apiReference,
@@ -564,13 +482,9 @@ function buildMongoUpdate({
   };
 }
 
-
-
-
 export async function incrementalSync(project, onProgress, options = {}) {
   const syncStart = Date.now();
   const syncErrors = [];
-
 
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
@@ -588,8 +502,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
   try {
     emit("sync", "running", "Starting incremental sync…", `${owner}/${repo}`);
 
-
-
     emit("sync:fetch", "running", "Resolving repo state and computing diff…");
     const fetchStart = Date.now();
 
@@ -604,12 +516,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       return { success: false, error: err.message, phase: "fetch" };
     }
 
-
-    if (
-      currentSha &&
-      currentSha === project.lastDocumentedCommit &&
-      !options.forceFullRun
-    ) {
+    if (currentSha && currentSha === project.lastDocumentedCommit && !options.forceFullRun) {
       emit(
         "sync",
         "done",
@@ -624,8 +531,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-
-
     let added = [],
       modified = [],
       removed = [],
@@ -638,14 +543,10 @@ export async function incrementalSync(project, onProgress, options = {}) {
         "running",
         `Using ${options.webhookChangedFiles.length} files from webhook`,
       );
-      ({ added, modified, removed } = categoriseWebhookFiles(
-        options.webhookChangedFiles,
-      ));
+      ({ added, modified, removed } = categoriseWebhookFiles(options.webhookChangedFiles));
       changedFileEntries = [...added, ...modified, ...removed];
 
-      currentTree = await ra
-        .getFileTreeWithSha(meta.defaultBranch, accessToken)
-        .catch(() => []);
+      currentTree = await ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => []);
     } else {
       try {
         const diffResult = await ra.computeFileDiff(
@@ -666,14 +567,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
           "Diff computation failed : falling back to full run",
           err.message,
         );
-        return fullSyncFallback(
-          project,
-          owner,
-          repo,
-          meta,
-          currentSha,
-          onProgress,
-        );
+        return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
       }
     }
 
@@ -683,7 +577,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${added.length} added · ${modified.length} modified · ${removed.length} removed`,
       `${changedFileEntries.length} total · ${((Date.now() - fetchStart) / 1000).toFixed(1)}s`,
     );
-
 
     if (changedFileEntries.length === 0) {
       await updateCommitSha(project, currentSha);
@@ -701,27 +594,13 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-
     const analysis = analyseChanges(changedFileEntries, project.fileManifest);
     const agentsNeeded = analysis.agentsNeeded;
 
-
-    const fullRunReason = requiresFullRun(
-      project,
-      changedFileEntries,
-      analysis,
-      options,
-    );
+    const fullRunReason = requiresFullRun(project, changedFileEntries, analysis, options);
     if (fullRunReason) {
       emit("sync:diff", "running", `Full re-run: ${fullRunReason}`);
-      return fullSyncFallback(
-        project,
-        owner,
-        repo,
-        meta,
-        currentSha,
-        onProgress,
-      );
+      return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
     }
 
     emit(
@@ -730,8 +609,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `Agents needed: ${[...agentsNeeded].join(", ") || "none"}`,
       `${changedFileEntries.filter((f) => f.status !== "removed").length} files to re-analyse`,
     );
-
-
 
     const removedPathSet = new Set(removed.map((r) => r.path));
 
@@ -745,11 +622,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ]),
     ].filter((p) => !removedPathSet.has(p));
 
-    emit(
-      "sync:fetch",
-      "running",
-      `Fetching ${changedPathsToFetch.length} changed files…`,
-    );
+    emit("sync:fetch", "running", `Fetching ${changedPathsToFetch.length} changed files…`);
 
     const { result: fetchResult, error: fetchErr } = await withTimeout(
       () =>
@@ -764,183 +637,147 @@ export async function incrementalSync(project, onProgress, options = {}) {
 
     if (fetchErr) {
       syncErrors.push({ phase: "fetch_files", error: fetchErr.message });
-      emit(
-        "sync:fetch",
-        "error",
-        "File fetch failed : falling back to full run",
-        fetchErr.message,
-      );
-      return fullSyncFallback(
-        project,
-        owner,
-        repo,
-        meta,
-        currentSha,
-        onProgress,
-      );
+      emit("sync:fetch", "error", "File fetch failed : falling back to full run", fetchErr.message);
+      return fullSyncFallback(project, owner, repo, meta, currentSha, onProgress);
     }
 
     const changedFiles = fetchResult ?? [];
     emit("sync:fetch", "done", `${changedFiles.length} files downloaded`);
 
-
     const existingProjectMap = project.agentOutputs?.projectMap ?? [];
     const changedPathSet = new Set(changedPathsToFetch);
 
+    const baselineProjectMap = mergeProjectMap(existingProjectMap, [], changedPathSet);
 
-    const baselineProjectMap = mergeProjectMap(
-      existingProjectMap,
-      [],
-      changedPathSet,
-    );
-
-    emit(
-      "sync:agents",
-      "running",
-      `Running ${agentsNeeded.size} agent(s) in parallel…`,
-    );
+    emit("sync:agents", "running", `Running ${agentsNeeded.size} agent(s) in parallel…`);
     const agentsStart = Date.now();
-
 
     const treePromise =
       currentTree.length === 0
         ? ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => [])
         : Promise.resolve(currentTree);
 
-    const [
-      scanResult,
-      apiResult,
-      schemaResult,
-      componentResult,
-      securityResult,
-    ] = await Promise.all([
+    const [scanResult, apiResult, schemaResult, componentResult, securityResult] =
+      await Promise.all([
+        agentsNeeded.has("repoScanner") && changedFiles.length > 0
+          ? runAgent({
+              label: "Repo Scanner",
+              step: "sync:scan",
+              timeout: TIMEOUTS.scan,
+              fallback: { projectMap: [] },
+              emit,
+              fn: () =>
+                repoScannerAgent({
+                  files: changedFiles,
+                  meta,
+                  emit: (msg, d) => emit("sync:scan", "running", msg, d),
+                }),
+            })
+          : Promise.resolve({ projectMap: [], _skipped: true }),
 
-      agentsNeeded.has("repoScanner") && changedFiles.length > 0
-        ? runAgent({
-            label: "Repo Scanner",
-            step: "sync:scan",
-            timeout: TIMEOUTS.scan,
-            fallback: { projectMap: [] },
-            emit,
-            fn: () =>
-              repoScannerAgent({
-                files: changedFiles,
-                meta,
-                emit: (msg, d) => emit("sync:scan", "running", msg, d),
-              }),
-          })
-        : Promise.resolve({ projectMap: [], _skipped: true }),
-
-
-      agentsNeeded.has("apiExtractor")
-        ? runAgent({
-            label: "API Extractor",
-            step: "sync:api",
-            timeout: TIMEOUTS.api,
-            fallback: { endpoints: [], summary: {} },
-            emit,
-            fn: () => {
-              const routeFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.apiExtractor,
-                removedPathSet,
-              );
-              if (!routeFiles.length)
-                return Promise.resolve({ endpoints: [], _skipped: true });
-              return apiExtractorAgent({
-                files: routeFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:api", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({ endpoints: [], _skipped: true }),
-
-
-      agentsNeeded.has("schemaAnalyser")
-        ? runAgent({
-            label: "Schema Analyser",
-            step: "sync:schema",
-            timeout: TIMEOUTS.schema,
-            fallback: { models: [], relationships: undefined },
-            emit,
-            fn: () => {
-              const schemaFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.schemaAnalyser,
-                removedPathSet,
-              );
-              if (!schemaFiles.length)
-                return Promise.resolve({
-                  models: [],
-                  relationships: undefined,
+        agentsNeeded.has("apiExtractor")
+          ? runAgent({
+              label: "API Extractor",
+              step: "sync:api",
+              timeout: TIMEOUTS.api,
+              fallback: { endpoints: [], summary: {} },
+              emit,
+              fn: () => {
+                const routeFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.apiExtractor,
+                  removedPathSet,
+                );
+                if (!routeFiles.length) return Promise.resolve({ endpoints: [], _skipped: true });
+                return apiExtractorAgent({
+                  files: routeFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:api", "running", msg, d),
                 });
-              return schemaAnalyserAgent({
-                files: schemaFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:schema", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({
-            models: [],
-            relationships: undefined,
-            _skipped: true,
-          }),
+              },
+            })
+          : Promise.resolve({ endpoints: [], _skipped: true }),
 
+        agentsNeeded.has("schemaAnalyser")
+          ? runAgent({
+              label: "Schema Analyser",
+              step: "sync:schema",
+              timeout: TIMEOUTS.schema,
+              fallback: { models: [], relationships: undefined },
+              emit,
+              fn: () => {
+                const schemaFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.schemaAnalyser,
+                  removedPathSet,
+                );
+                if (!schemaFiles.length)
+                  return Promise.resolve({
+                    models: [],
+                    relationships: undefined,
+                  });
+                return schemaAnalyserAgent({
+                  files: schemaFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:schema", "running", msg, d),
+                });
+              },
+            })
+          : Promise.resolve({
+              models: [],
+              relationships: undefined,
+              _skipped: true,
+            }),
 
-      agentsNeeded.has("componentMapper")
-        ? runAgent({
-            label: "Component Mapper",
-            step: "sync:components",
-            timeout: TIMEOUTS.components,
-            fallback: { components: [], summary: {} },
-            emit,
-            fn: () => {
-              const serviceFiles = filterFilesForAgent(
-                changedFiles,
-                analysis.changedByAgent.componentMapper,
-                removedPathSet,
-              );
-              if (!serviceFiles.length)
-                return Promise.resolve({ components: [] });
-              return componentMapperAgent({
-                files: serviceFiles,
-                projectMap: baselineProjectMap,
-                structure: buildStructure(baselineProjectMap),
-                emit: (msg, d) => emit("sync:components", "running", msg, d),
-              });
-            },
-          })
-        : Promise.resolve({ components: [], _skipped: true }),
+        agentsNeeded.has("componentMapper")
+          ? runAgent({
+              label: "Component Mapper",
+              step: "sync:components",
+              timeout: TIMEOUTS.components,
+              fallback: { components: [], summary: {} },
+              emit,
+              fn: () => {
+                const serviceFiles = filterFilesForAgent(
+                  changedFiles,
+                  analysis.changedByAgent.componentMapper,
+                  removedPathSet,
+                );
+                if (!serviceFiles.length) return Promise.resolve({ components: [] });
+                return componentMapperAgent({
+                  files: serviceFiles,
+                  projectMap: baselineProjectMap,
+                  structure: buildStructure(baselineProjectMap),
+                  emit: (msg, d) => emit("sync:components", "running", msg, d),
+                });
+              },
+            })
+          : Promise.resolve({ components: [], _skipped: true }),
 
-
-      agentsNeeded.has("securityAuditor") && changedFiles.length > 0
-        ? runAgent({
-            label: "Security Auditor",
-            step: "sync:security",
-            timeout: TIMEOUTS.security,
-            fallback: {
-              findings: [],
-              score: null,
-              grade: null,
-              counts: null,
-              categoryCounts: {},
-              remediationMarkdown: "",
-            },
-            emit,
-            fn: () =>
-              securityAuditorAgent({
-                files: changedFiles,
-                projectMap: baselineProjectMap,
-                emit: (msg, d) => emit("sync:security", "running", msg, d),
-              }),
-          })
-        : Promise.resolve({ findings: [], _skipped: true }),
-    ]);
+        agentsNeeded.has("securityAuditor") && changedFiles.length > 0
+          ? runAgent({
+              label: "Security Auditor",
+              step: "sync:security",
+              timeout: TIMEOUTS.security,
+              fallback: {
+                findings: [],
+                score: null,
+                grade: null,
+                counts: null,
+                categoryCounts: {},
+                remediationMarkdown: "",
+              },
+              emit,
+              fn: () =>
+                securityAuditorAgent({
+                  files: changedFiles,
+                  projectMap: baselineProjectMap,
+                  emit: (msg, d) => emit("sync:security", "running", msg, d),
+                }),
+            })
+          : Promise.resolve({ findings: [], _skipped: true }),
+      ]);
 
     const agentsDuration = Date.now() - agentsStart;
-
 
     for (const [agent, r] of [
       ["scan", scanResult],
@@ -958,7 +795,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${agentsNeeded.size} agent(s) complete`,
       `${(agentsDuration / 1000).toFixed(1)}s · ${syncErrors.length ? `⚠ ${syncErrors.length} error(s)` : "✅ clean"}`,
     );
-
 
     const mergedProjectMap = mergeProjectMap(
       existingProjectMap,
@@ -980,12 +816,9 @@ export async function incrementalSync(project, onProgress, options = {}) {
       [...removedPathSet],
     );
 
-
     let securitySummary;
     if (agentsNeeded.has("securityAuditor")) {
-      const { score, grade, counts } = recomputeSecurityScore(
-        mergedOutputs.findings,
-      );
+      const { score, grade, counts } = recomputeSecurityScore(mergedOutputs.findings);
       const categoryCounts = securityResult.categoryCounts ?? {};
       securitySummary = {
         score,
@@ -1004,7 +837,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
         remediationMarkdown: buildRemediationPlan(mergedOutputs.findings),
       };
     } else {
-
       securitySummary = project.security ?? {
         score: 100,
         grade: "A",
@@ -1013,12 +845,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-
-    emit(
-      "sync:docs",
-      "running",
-      "Regenerating affected documentation sections…",
-    );
+    emit("sync:docs", "running", "Regenerating affected documentation sections…");
     const docsStart = Date.now();
     const sectionsInfo = determineSectionsToRegenerate(agentsNeeded, analysis);
 
@@ -1030,21 +857,15 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ...(project.output?.toObject?.() ?? { ...project.output }),
     };
 
-
     const docContext = {
       meta,
       techStack: project.techStack ?? [],
       structure: buildStructure(mergedProjectMap),
       endpoints: mergedOutputs.endpoints,
       models: mergedOutputs.models,
-      relationships:
-        mergedOutputs.relationships ??
-        project.agentOutputs?.relationships ??
-        [],
+      relationships: mergedOutputs.relationships ?? project.agentOutputs?.relationships ?? [],
       components: mergedOutputs.components,
-      entryPoints: mergedProjectMap
-        .filter((f) => f.role === "entry")
-        .map((f) => f.path),
+      entryPoints: mergedProjectMap.filter((f) => f.role === "entry").map((f) => f.path),
       owner,
       repo,
       layerMap: buildLayerMap(mergedProjectMap),
@@ -1059,11 +880,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       },
     };
 
-
-    const editedSectionNames = new Set(
-      (project.editedSections ?? []).map((s) => s.section),
-    );
-
+    const editedSectionNames = new Set((project.editedSections ?? []).map((s) => s.section));
 
     const staticResults = await Promise.allSettled(
       sectionsInfo.static.map(async (section) => {
@@ -1075,9 +892,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
               section,
               buildSchemaDocs(
                 mergedOutputs.models,
-                mergedOutputs.relationships ??
-                  project.agentOutputs?.relationships ??
-                  [],
+                mergedOutputs.relationships ?? project.agentOutputs?.relationships ?? [],
               ),
             ];
           case "securityReport":
@@ -1106,7 +921,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
         skipped.push({ section, reason: "user_edit_preserved_as_stale" });
       }
     }
-
 
     const llmSectionsNeeded = sectionsInfo.llm;
     if (llmSectionsNeeded.length > 0) {
@@ -1164,14 +978,8 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${(docsDuration / 1000).toFixed(1)}s`,
     );
 
-
     const resolvedTree = await treePromise;
-    const newManifest = updateFileManifest(
-      project.fileManifest,
-      resolvedTree,
-      mergedProjectMap,
-    );
-
+    const newManifest = updateFileManifest(project.fileManifest, resolvedTree, mergedProjectMap);
 
     await Promise.all(
       regenerated.map((section) =>
@@ -1197,7 +1005,6 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ),
     );
 
-
     const regeneratedSet = new Set(regenerated);
     const updatedEditedSections = (project.editedSections ?? []).map((es) => ({
       ...(es.toObject?.() ?? es),
@@ -1222,9 +1029,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       [
         `${project.lastDocumentedCommit?.slice(0, 8) ?? "initial"} → ${currentSha.slice(0, 8)}`,
         `${changedPathsToFetch.length} files · ${(totalDuration / 1000).toFixed(1)}s`,
-        syncErrors.length
-          ? `⚠ ${syncErrors.length} non-fatal error(s)`
-          : "✅ clean",
+        syncErrors.length ? `⚠ ${syncErrors.length} non-fatal error(s)` : "✅ clean",
       ].join(" · "),
       totalDuration,
     );
@@ -1262,17 +1067,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
   }
 }
 
-
-
-
-async function fullSyncFallback(
-  project,
-  owner,
-  repo,
-  meta,
-  currentSha,
-  onProgress,
-) {
+async function fullSyncFallback(project, owner, repo, meta, currentSha, onProgress) {
   const emit = (step, status, msg, detail = null) =>
     onProgress?.({ step, status, msg, detail, ts: Date.now() });
 
@@ -1280,7 +1075,6 @@ async function fullSyncFallback(
 
   const { orchestrate } = await import("./orchestrator.service.js");
   const { accessToken: fallbackToken, ra: raFallback } = resolveGit(project);
-
 
   const result = await orchestrate(project.repoUrl, onProgress, {
     provider: project.provider || "github",

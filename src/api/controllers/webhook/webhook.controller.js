@@ -1,15 +1,12 @@
-
 import { serverError } from "../../../utils/response.util.js";
 
 let _handleGlobalWebhook = null;
 let _handleFlutterwaveWebhook = null;
 
-
 export function registerWebhookHandlers(globalHook, flutterwaveHook) {
   if (globalHook) _handleGlobalWebhook = globalHook;
   if (flutterwaveHook) _handleFlutterwaveWebhook = flutterwaveHook;
 }
-
 
 export async function handleWebhook(req, res) {
   if (!_handleGlobalWebhook) {
@@ -23,7 +20,6 @@ export async function handleWebhook(req, res) {
     const payload = req.body;
     const rawSig = req.headers["x-hub-signature-256"];
     const signature = Array.isArray(rawSig) ? rawSig[0] : rawSig || "";
-
 
     const rawEvent = req.headers["x-github-event"];
     const githubEvent = Array.isArray(rawEvent) ? rawEvent[0] : rawEvent || "";
@@ -41,7 +37,6 @@ export async function handleWebhook(req, res) {
   }
 }
 
-
 export async function handleFlutterwaveWebhook(req, res) {
   if (!_handleFlutterwaveWebhook) {
     return res.status(503).json({
@@ -53,16 +48,7 @@ export async function handleFlutterwaveWebhook(req, res) {
   try {
     await _handleFlutterwaveWebhook(req, res);
   } catch (err) {
-    console.error(
-      "[webhook:flutterwave] Unhandled error:",
-      err.message,
-      err.stack,
-    );
-    return serverError(
-      res,
-      err,
-      "handleFlutterwaveWebhook",
-      "Failed to process billing webhook",
-    );
+    console.error("[webhook:flutterwave] Unhandled error:", err.message, err.stack);
+    return serverError(res, err, "handleFlutterwaveWebhook", "Failed to process billing webhook");
   }
 }

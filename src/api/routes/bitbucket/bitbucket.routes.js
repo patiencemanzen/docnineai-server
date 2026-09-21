@@ -1,4 +1,3 @@
-
 import { Router } from "express";
 import * as ctrl from "../../controllers/bitbucket/bitbucket.controller.js";
 import { protect } from "../../../middleware/auth.middleware.js";
@@ -7,9 +6,7 @@ import { wrap } from "../../../utils/response.util.js";
 
 const router = Router();
 
-
 router.get("/oauth/callback", wrap(ctrl.oauthCallback));
-
 
 router.use(protect, apiLimiter);
 

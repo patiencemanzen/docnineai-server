@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -6,7 +5,6 @@ const { Schema, model } = mongoose;
 
 const UserSchema = new Schema(
   {
-
     name: {
       type: String,
       required: [true, "Name is required"],
@@ -28,13 +26,11 @@ const UserSchema = new Schema(
       select: false,
     },
 
-
     provider: {
       type: String,
       enum: ["email", "github", "google"],
       default: "email",
     },
-
 
     isEmailVerified: {
       type: Boolean,
@@ -49,7 +45,6 @@ const UserSchema = new Schema(
       select: false,
     },
 
-
     passwordResetToken: {
       type: String,
       select: false,
@@ -59,12 +54,10 @@ const UserSchema = new Schema(
       select: false,
     },
 
-
     refreshTokenHash: {
       type: String,
       select: false,
     },
-
 
     githubId: {
       type: String,
@@ -75,7 +68,6 @@ const UserSchema = new Schema(
       type: String,
       trim: true,
     },
-
 
     gitlabId: {
       type: String,
@@ -96,7 +88,6 @@ const UserSchema = new Schema(
     },
     gitlabConnectedAt: Date,
 
-
     bitbucketId: {
       type: String,
       sparse: true,
@@ -115,7 +106,6 @@ const UserSchema = new Schema(
       select: false,
     },
     bitbucketConnectedAt: Date,
-
 
     azureDevOpsId: {
       type: String,
@@ -136,7 +126,6 @@ const UserSchema = new Schema(
     },
     azureDevOpsConnectedAt: Date,
 
-
     googleId: {
       type: String,
       sparse: true,
@@ -146,7 +135,6 @@ const UserSchema = new Schema(
       type: String,
       trim: true,
     },
-
 
     webhookSecret: {
       type: String,
@@ -163,7 +151,6 @@ const UserSchema = new Schema(
       default: null,
     },
 
-
     role: {
       type: String,
       enum: ["user", "super-admin"],
@@ -176,7 +163,6 @@ const UserSchema = new Schema(
   },
 );
 
-
 UserSchema.pre("validate", function (next) {
   if (this.provider === "email" && this.isNew && !this.password) {
     this.invalidate("password", "Password is required for email sign-up");
@@ -184,22 +170,18 @@ UserSchema.pre("validate", function (next) {
   next();
 });
 
-
 UserSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
   this.password = await bcrypt.hash(this.password, 12);
   next();
 });
 
-
 UserSchema.methods.comparePassword = async function (candidate) {
   if (!this.password) {
-
     throw new Error("PASSWORD_LOGIN_NOT_AVAILABLE");
   }
   return bcrypt.compare(candidate, this.password);
 };
-
 
 UserSchema.set("toJSON", {
   transform(doc, ret) {

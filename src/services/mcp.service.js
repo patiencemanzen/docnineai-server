@@ -23,9 +23,7 @@ async function assertUserCanAccessProject(project, userId) {
   });
 
   if (!share) {
-    const err = new Error(
-      "Access denied. You do not have permission to access this project."
-    );
+    const err = new Error("Access denied. You do not have permission to access this project.");
     err.statusCode = 403;
     throw err;
   }
@@ -38,14 +36,12 @@ async function getProjectOrThrow({ projectId, userId }) {
 }
 
 function mapAskCodebaseToSlackShape(mcpResult) {
-
   return {
     response: mcpResult?.answer ?? "",
   };
 }
 
 function mapSecurityAuditToSlackShape(mcpResult) {
-
   const audit = mcpResult?.audit ?? {};
   const summary = mcpResult?.summary ?? {};
 
@@ -63,7 +59,6 @@ function mapSecurityAuditToSlackShape(mcpResult) {
 }
 
 function mapSecurityScoreToSlackShape(mcpResult) {
-
   const score = mcpResult?.score ?? {};
   return {
     grade: score.grade ?? "A",
@@ -73,7 +68,6 @@ function mapSecurityScoreToSlackShape(mcpResult) {
 }
 
 function mapDiffToSlackShape(mcpResult) {
-
   const beforeSection = mcpResult?.recentChanges?.before?.section;
   const afterSection = mcpResult?.recentChanges?.after?.section;
 
@@ -89,7 +83,6 @@ function mapDiffToSlackShape(mcpResult) {
 }
 
 function mapSearchDocsToSlackShape(mcpResult) {
-
   const results = mcpResult?.results ?? [];
   return results.map((r) => ({
     title: r.section ?? "",
@@ -116,23 +109,13 @@ export async function getMcpService({ userId } = {}) {
 
     async search_docs({ projectId, query }) {
       const project = await getProjectOrThrow({ projectId, userId });
-      const mcpResult = await MCPController.invokeTool(
-        "search_docs",
-        { query },
-        project,
-        userId,
-      );
+      const mcpResult = await MCPController.invokeTool("search_docs", { query }, project, userId);
       return mapSearchDocsToSlackShape(mcpResult);
     },
 
     async get_security_audit({ projectId }) {
       const project = await getProjectOrThrow({ projectId, userId });
-      const mcpResult = await MCPController.invokeTool(
-        "get_security_audit",
-        {},
-        project,
-        userId,
-      );
+      const mcpResult = await MCPController.invokeTool("get_security_audit", {}, project, userId);
       return mapSecurityAuditToSlackShape(mcpResult);
     },
 
@@ -152,25 +135,14 @@ export async function getMcpService({ userId } = {}) {
 
     async get_security_score({ projectId }) {
       const project = await getProjectOrThrow({ projectId, userId });
-      const mcpResult = await MCPController.invokeTool(
-        "get_security_score",
-        {},
-        project,
-        userId,
-      );
+      const mcpResult = await MCPController.invokeTool("get_security_score", {}, project, userId);
       return mapSecurityScoreToSlackShape(mcpResult);
     },
 
     async get_diff({ projectId }) {
       const project = await getProjectOrThrow({ projectId, userId });
-      const mcpResult = await MCPController.invokeTool(
-        "get_diff",
-        {},
-        project,
-        userId,
-      );
+      const mcpResult = await MCPController.invokeTool("get_diff", {}, project, userId);
       return mapDiffToSlackShape(mcpResult);
     },
   };
 }
-

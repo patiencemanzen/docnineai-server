@@ -1,4 +1,3 @@
-
 import { Subscription } from "../models/Subscription.js";
 import { Invoice } from "../models/Invoice.js";
 import { PaymentMethod } from "../models/PaymentMethod.js";
@@ -25,20 +24,15 @@ import {
 } from "../config/email.js";
 import { computeMonthlyPrice } from "../config/plans.js";
 
-
 export async function processDunning() {
   const pastDueSubs = await Subscription.find({ status: "past_due" });
-  console.log(
-    `[dunning] Processing ${pastDueSubs.length} past-due subscriptions`,
-  );
+  console.log(`[dunning] Processing ${pastDueSubs.length} past-due subscriptions`);
 
   for (const sub of pastDueSubs) {
     try {
       await processSingleDunning(sub);
     } catch (err) {
-      console.error(
-        `[dunning] Error processing sub ${sub._id}: ${err.message}`,
-      );
+      console.error(`[dunning] Error processing sub ${sub._id}: ${err.message}`);
     }
   }
 }
@@ -48,7 +42,6 @@ async function processSingleDunning(sub) {
   const user = await User.findById(sub.userId).select("name email");
   if (!user) return;
 
-
   if (dunningDay >= DUNNING_MAX_DAYS) {
     console.log(`[dunning] Downgrading ${sub.userId} after ${dunningDay} days`);
     await downgradeToFree(sub);
@@ -56,17 +49,14 @@ async function processSingleDunning(sub) {
     return;
   }
 
-
   if (DUNNING_RETRY_DAYS.includes(dunningDay)) {
     const recharged = await attemptRetryCharge(sub, user);
     if (recharged) return;
   }
 
-
   if (DUNNING_EMAIL_DAYS.includes(dunningDay)) {
     await sendDunningEmail(dunningDay, user, sub);
   }
-
 
   sub.dunningAttemptCount = (sub.dunningAttemptCount || 0) + 1;
   await sub.save();
@@ -82,11 +72,7 @@ async function attemptRetryCharge(sub, user) {
   if (!savedMethod?.flutterwaveToken) return false;
 
   const plan = getPlan(sub.plan);
-  const amountCents = computeMonthlyPrice(
-    sub.plan,
-    sub.billingCycle || "monthly",
-    sub.seats,
-  );
+  const amountCents = computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats);
   const txRef = buildTxRef("dunning");
 
   try {
@@ -98,7 +84,6 @@ async function attemptRetryCharge(sub, user) {
       email: user.email,
       narration: `Docnine ${plan.name} : retry`,
     });
-
 
     const invoice = await Invoice.create({
       userId: sub.userId,
@@ -114,7 +99,6 @@ async function attemptRetryCharge(sub, user) {
       customerName: user.name,
       customerEmail: user.email,
     });
-
 
     const addPeriod = (date, cycle) => {
       const d = new Date(date);

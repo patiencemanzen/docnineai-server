@@ -1,6 +1,3 @@
-
-
-
 import { Router } from "express";
 import { param, body } from "express-validator";
 import multer from "multer";
@@ -31,20 +28,14 @@ import { autoLog } from "../../../middleware/activity-logger.middleware.js";
 const router = Router();
 router.use(protect, apiLimiter);
 
-
 router.use("/zip", zipRoutes);
-
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-
-const validateMongoId = [
-  param("id").isMongoId().withMessage("Invalid project ID"),
-  validate,
-];
+const validateMongoId = [param("id").isMongoId().withMessage("Invalid project ID"), validate];
 const validatePatchBody = [...rules.updateProject, validate];
 const validateSection = [
   param("section")
@@ -57,38 +48,18 @@ const validateVersionId = [
   validate,
 ];
 
-
 router.get("/shared", wrap(shareCtrl.getSharedProjects));
 
-
-router.post(
-  "/",
-  rules.createProject,
-  validate,
-  checkProjectLimit,
-  wrap(ctrl.createProject),
-);
-router.post(
-  "/from-scratch",
-  checkProjectLimit,
-  wrap(ctrl.createFromScratchProject),
-);
+router.post("/", rules.createProject, validate, checkProjectLimit, wrap(ctrl.createProject));
+router.post("/from-scratch", checkProjectLimit, wrap(ctrl.createFromScratchProject));
 router.get("/", rules.listProjects, validate, wrap(ctrl.listProjects));
-
 
 router.get("/:id", validateMongoId, wrap(ctrl.getProject));
 router.delete("/:id", validateMongoId, wrap(ctrl.deleteProject));
-router.patch(
-  "/:id",
-  validateMongoId,
-  validatePatchBody,
-  wrap(ctrl.updateProject),
-);
-
+router.patch("/:id", validateMongoId, validatePatchBody, wrap(ctrl.updateProject));
 
 router.post("/:id/retry", validateMongoId, wrap(ctrl.retryProject));
 router.post("/:id/sync", validateMongoId, requireGithubSync, wrap(ctrl.syncProject));
-
 
 router.get("/:id/stream", validateMongoId, ctrl.streamProject);
 
@@ -98,10 +69,7 @@ router.patch(
   "/:id/docs/:section",
   validateMongoId,
   validateSection,
-  [
-    body("content").isString().notEmpty().withMessage("content is required"),
-    validate,
-  ],
+  [body("content").isString().notEmpty().withMessage("content is required"), validate],
   wrap(ctrl.editDocSection),
 );
 
@@ -118,7 +86,6 @@ router.post(
   validateSection,
   wrap(ctrl.acceptAISection),
 );
-
 
 router.get(
   "/:id/docs/:section/versions",
@@ -143,35 +110,29 @@ router.post(
   wrap(ctrl.restoreVersion),
 );
 
-
-router.get(
-  "/:id/changelog",
-  validateMongoId,
-  wrap(ctrl.getProjectChangeLog),
-);
+router.get("/:id/changelog", validateMongoId, wrap(ctrl.getProjectChangeLog));
 
 router.get("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), wrap(ctrl.exportPdf));
-router.post("/:id/export/pdf", validateMongoId, requireExportFormat("pdf"), autoLog("EXPORT_PDF"), wrap(ctrl.exportPdf));
+router.post(
+  "/:id/export/pdf",
+  validateMongoId,
+  requireExportFormat("pdf"),
+  autoLog("EXPORT_PDF"),
+  wrap(ctrl.exportPdf),
+);
 router.get("/:id/export/yaml", validateMongoId, wrap(ctrl.exportYaml));
 router.post("/:id/export/yaml", validateMongoId, autoLog("EXPORT_YAML"), wrap(ctrl.exportYaml));
-router.post("/:id/export/notion", validateMongoId, requireExportFormat("notion"), autoLog("EXPORT_NOTION"), wrap(ctrl.exportNotion));
+router.post(
+  "/:id/export/notion",
+  validateMongoId,
+  requireExportFormat("notion"),
+  autoLog("EXPORT_NOTION"),
+  wrap(ctrl.exportNotion),
+);
 
-
-router.get(
-  "/:id/export/google-docs/connect",
-  validateMongoId,
-  wrap(ctrl.googleDocsConnect),
-);
-router.get(
-  "/:id/export/google-docs/status",
-  validateMongoId,
-  wrap(ctrl.googleDocsStatus),
-);
-router.delete(
-  "/:id/export/google-docs",
-  validateMongoId,
-  wrap(ctrl.googleDocsDisconnect),
-);
+router.get("/:id/export/google-docs/connect", validateMongoId, wrap(ctrl.googleDocsConnect));
+router.get("/:id/export/google-docs/status", validateMongoId, wrap(ctrl.googleDocsStatus));
+router.delete("/:id/export/google-docs", validateMongoId, wrap(ctrl.googleDocsDisconnect));
 router.post(
   "/:id/export/google-docs",
   validateMongoId,
@@ -180,27 +141,16 @@ router.post(
   wrap(ctrl.exportGoogleDocs),
 );
 
-
 router.post("/:id/chat", validateMongoId, checkAiChatLimit, ctrl.chatHandler);
 router.delete("/:id/chat", validateMongoId, wrap(ctrl.resetChat));
 
-
-const validateShareId = [
-  param("shareId").isMongoId().withMessage("Invalid share ID"),
-  validate,
-];
-
+const validateShareId = [param("shareId").isMongoId().withMessage("Invalid share ID"), validate];
 
 router.post("/share/accept/:token", wrap(shareCtrl.acceptInvite));
 
 router.post("/:id/share", validateMongoId, wrap(shareCtrl.inviteUsers));
 router.get("/:id/share", validateMongoId, wrap(shareCtrl.listAccess));
-router.patch(
-  "/:id/share/:shareId",
-  validateMongoId,
-  validateShareId,
-  wrap(shareCtrl.changeRole),
-);
+router.patch("/:id/share/:shareId", validateMongoId, validateShareId, wrap(shareCtrl.changeRole));
 router.delete(
   "/:id/share/:shareId",
   validateMongoId,
@@ -220,17 +170,12 @@ router.delete(
   wrap(shareCtrl.cancelInvite),
 );
 
-
 const validateAttachmentId = [
   param("attachmentId").isMongoId().withMessage("Invalid attachment ID"),
   validate,
 ];
 
-router.get(
-  "/:id/attachments",
-  validateMongoId,
-  wrap(attachmentCtrl.listAttachments),
-);
+router.get("/:id/attachments", validateMongoId, wrap(attachmentCtrl.listAttachments));
 router.post(
   "/:id/attachments",
   validateMongoId,
@@ -248,10 +193,7 @@ router.patch(
   "/:id/attachments/:attachmentId",
   validateMongoId,
   validateAttachmentId,
-  [
-    body("description").isString().withMessage("description must be a string"),
-    validate,
-  ],
+  [body("description").isString().withMessage("description must be a string"), validate],
   wrap(attachmentCtrl.updateAttachment),
 );
 router.delete(
@@ -260,8 +202,6 @@ router.delete(
   validateAttachmentId,
   wrap(attachmentCtrl.deleteAttachment),
 );
-
-
 
 router.get("/:id/portal", validateMongoId, wrap(portalCtrl.getOwnerPortal));
 router.put("/:id/portal", validateMongoId, wrap(portalCtrl.upsertPortal));
@@ -272,39 +212,20 @@ router.post(
   wrap(portalCtrl.togglePublish),
 );
 
-
-
-const validateTabId = [
-  param("tabId").isMongoId().withMessage("Invalid tab ID"),
-  validate,
-];
+const validateTabId = [param("tabId").isMongoId().withMessage("Invalid tab ID"), validate];
 
 router.post("/:id/custom-tabs", validateMongoId, wrap(ctrl.createCustomTab));
 router.get("/:id/custom-tabs", validateMongoId, wrap(ctrl.listCustomTabs));
-router.patch(
-  "/:id/custom-tabs/:tabId",
-  validateMongoId,
-  validateTabId,
-  wrap(ctrl.updateCustomTab),
-);
+router.patch("/:id/custom-tabs/:tabId", validateMongoId, validateTabId, wrap(ctrl.updateCustomTab));
 router.delete(
   "/:id/custom-tabs/:tabId",
   validateMongoId,
   validateTabId,
   wrap(ctrl.deleteCustomTab),
 );
-router.patch(
-  "/:id/custom-tabs/reorder",
-  validateMongoId,
-  wrap(ctrl.reorderCustomTabs),
-);
-
-
+router.patch("/:id/custom-tabs/reorder", validateMongoId, wrap(ctrl.reorderCustomTabs));
 
 router.use("/:id/apispec", validateMongoId, apispecRoutes);
-
-
-
 
 router.post(
   "/mcp/list_projects",
@@ -312,12 +233,7 @@ router.post(
   checkTokenScope(["mcp"]),
   wrap(async (req, res) => {
     const userId = req.tokenAuth?.userId || req.user?.userId;
-    const result = await MCPController.invokeTool(
-      "list_projects",
-      {},
-      null,
-      userId,
-    );
+    const result = await MCPController.invokeTool("list_projects", {}, null, userId);
     res.json(result);
   }),
 );

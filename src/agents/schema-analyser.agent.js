@@ -117,17 +117,10 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
 - Must be parseable by JSON.parse() with zero preprocessing
 - Start with { and end with }`;
 
-const SCHEMA_ROLES = new Set([
-  "model",
-  "schema",
-  "migration",
-  "entity",
-  "seed",
-]);
+const SCHEMA_ROLES = new Set(["model", "schema", "migration", "entity", "seed"]);
 
 const SCHEMA_REGEX = new RegExp(
   [
-
     /model\s+\w+\s*\{/,
     /@@relation|@relation|@default|@@index|@@unique/,
 
@@ -239,12 +232,7 @@ const VALID_DATABASES = new Set([
   "unknown",
 ]);
 
-const VALID_REL_TYPES = new Set([
-  "one-to-one",
-  "one-to-many",
-  "many-to-one",
-  "many-to-many",
-]);
+const VALID_REL_TYPES = new Set(["one-to-one", "one-to-many", "many-to-one", "many-to-many"]);
 
 function safeParseJSON(raw) {
   try {
@@ -277,18 +265,12 @@ function validateModel(model, fallbackFile) {
     database: VALID_DATABASES.has(model.database) ? model.database : "unknown",
     table: model.table || "",
     description: model.description || "",
-    fields: Array.isArray(model.fields)
-      ? model.fields.map(normalizeField).filter(Boolean)
-      : [],
-    indexes: Array.isArray(model.indexes)
-      ? model.indexes.map(normalizeIndex).filter(Boolean)
-      : [],
+    fields: Array.isArray(model.fields) ? model.fields.map(normalizeField).filter(Boolean) : [],
+    indexes: Array.isArray(model.indexes) ? model.indexes.map(normalizeIndex).filter(Boolean) : [],
     constraints: Array.isArray(model.constraints)
       ? model.constraints.map(normalizeConstraint).filter(Boolean)
       : [],
-    hooks: Array.isArray(model.hooks)
-      ? model.hooks.filter((h) => typeof h === "string")
-      : [],
+    hooks: Array.isArray(model.hooks) ? model.hooks.filter((h) => typeof h === "string") : [],
     soft_delete: model.soft_delete ?? false,
     timestamps: model.timestamps ?? detectTimestamps(model.fields),
     tags: Array.isArray(model.tags) ? model.tags : inferModelTags(name, file),
@@ -361,9 +343,7 @@ function validateRelationship(rel) {
 function detectTimestamps(fields) {
   if (!Array.isArray(fields)) return false;
   const names = fields.map((f) => String(f.name ?? "").toLowerCase());
-  return names.some((n) =>
-    ["createdat", "updatedat", "created_at", "updated_at"].includes(n),
-  );
+  return names.some((n) => ["createdat", "updatedat", "created_at", "updated_at"].includes(n));
 }
 
 function inferModelTags(name, file) {
@@ -391,12 +371,10 @@ function inferModelTags(name, file) {
 function inferOrm(content) {
   if (!content) return "other";
   if (/model\s+\w+\s*\{|@default\(|@@index/i.test(content)) return "prisma";
-  if (/@Entity\s*\(|@Column\s*\(|@PrimaryGeneratedColumn/i.test(content))
-    return "typeorm";
+  if (/@Entity\s*\(|@Column\s*\(|@PrimaryGeneratedColumn/i.test(content)) return "typeorm";
   if (/sequelize\.define|DataTypes\./i.test(content)) return "sequelize";
   if (/new\s+Schema\s*\(|mongoose\.Schema/i.test(content)) return "mongoose";
-  if (/class\s+\w+\s*\(\s*Base\s*\)|Column\s*\(/i.test(content))
-    return "sqlalchemy";
+  if (/class\s+\w+\s*\(\s*Base\s*\)|Column\s*\(/i.test(content)) return "sqlalchemy";
   if (/models\.Model\)|models\.CharField/i.test(content)) return "django";
   if (/belongs_to\s+:|has_many\s+:/i.test(content)) return "activerecord";
   if (/extends\s+Model.*\$fillable/is.test(content)) return "eloquent";
@@ -446,11 +424,7 @@ function scoreRelationship(rel) {
   return score;
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -526,9 +500,7 @@ function buildSummary(models, relationships) {
     withTimestamps,
     withSoftDelete,
     withIndexes,
-    avgFieldsPerModel: models.length
-      ? Math.round(totalFields / models.length)
-      : 0,
+    avgFieldsPerModel: models.length ? Math.round(totalFields / models.length) : 0,
     ormDist,
     dbDist,
     relTypeDist,
@@ -546,28 +518,124 @@ function heuristicExtractModels(files, projectMap) {
     for (const m of prismaModels) {
       const name = m[1];
       const body = m[2];
-      const fields = [...body.matchAll(/^\s+(\w+)\s+(\w+(?:\?)?)/gm)].map(f => ({
-        name: f[1], type: f[2].replace("?", ""), db_type: "", required: !f[2].endsWith("?"),
-        unique: body.includes(`@unique`) && body.includes(f[1]), primary: f[1] === "id",
-        default: "", auto: /auto|uuid|cuid|now\(\)/.test(body.slice(body.indexOf(f[1]), body.indexOf(f[1]) + 80)),
-        index: false, enum_values: [], relation: "", description: "",
+      const fields = [...body.matchAll(/^\s+(\w+)\s+(\w+(?:\?)?)/gm)].map((f) => ({
+        name: f[1],
+        type: f[2].replace("?", ""),
+        db_type: "",
+        required: !f[2].endsWith("?"),
+        unique: body.includes(`@unique`) && body.includes(f[1]),
+        primary: f[1] === "id",
+        default: "",
+        auto: /auto|uuid|cuid|now\(\)/.test(
+          body.slice(body.indexOf(f[1]), body.indexOf(f[1]) + 80),
+        ),
+        index: false,
+        enum_values: [],
+        relation: "",
+        description: "",
       }));
-      rawModels.push(validateModel({ name, file: file.path, line: null, orm: "prisma", database: "unknown", table: "", description: `${name} Prisma model`, fields, indexes: [], constraints: [], hooks: [], soft_delete: body.includes("deletedAt"), timestamps: body.includes("createdAt"), tags: [] }, file.path));
+      rawModels.push(
+        validateModel(
+          {
+            name,
+            file: file.path,
+            line: null,
+            orm: "prisma",
+            database: "unknown",
+            table: "",
+            description: `${name} Prisma model`,
+            fields,
+            indexes: [],
+            constraints: [],
+            hooks: [],
+            soft_delete: body.includes("deletedAt"),
+            timestamps: body.includes("createdAt"),
+            tags: [],
+          },
+          file.path,
+        ),
+      );
     }
 
     const mongooseModels = [...content.matchAll(/mongoose\.model\s*\(\s*['"`](\w+)['"`]/gi)];
     for (const m of mongooseModels) {
-      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "mongoose", database: "mongodb", table: m[1].toLowerCase() + "s", description: `${m[1]} Mongoose model`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: /timestamps\s*:\s*true/.test(content), tags: [] }, file.path));
+      rawModels.push(
+        validateModel(
+          {
+            name: m[1],
+            file: file.path,
+            line: null,
+            orm: "mongoose",
+            database: "mongodb",
+            table: m[1].toLowerCase() + "s",
+            description: `${m[1]} Mongoose model`,
+            fields: [],
+            indexes: [],
+            constraints: [],
+            hooks: [],
+            soft_delete: false,
+            timestamps: /timestamps\s*:\s*true/.test(content),
+            tags: [],
+          },
+          file.path,
+        ),
+      );
     }
 
-    const typeormModels = [...content.matchAll(/@Entity\s*\([^)]*\)\s*(?:export\s+)?class\s+(\w+)/gi)];
+    const typeormModels = [
+      ...content.matchAll(/@Entity\s*\([^)]*\)\s*(?:export\s+)?class\s+(\w+)/gi),
+    ];
     for (const m of typeormModels) {
-      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "typeorm", database: "unknown", table: "", description: `${m[1]} TypeORM entity`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: content.includes("DeleteDateColumn"), timestamps: content.includes("CreateDateColumn"), tags: [] }, file.path));
+      rawModels.push(
+        validateModel(
+          {
+            name: m[1],
+            file: file.path,
+            line: null,
+            orm: "typeorm",
+            database: "unknown",
+            table: "",
+            description: `${m[1]} TypeORM entity`,
+            fields: [],
+            indexes: [],
+            constraints: [],
+            hooks: [],
+            soft_delete: content.includes("DeleteDateColumn"),
+            timestamps: content.includes("CreateDateColumn"),
+            tags: [],
+          },
+          file.path,
+        ),
+      );
     }
 
-    const zodSchemas = [...content.matchAll(/(?:const|let)\s+(\w+Schema|\w+Dto)\s*=\s*(?:z|Yup|yup|Joi|joi)\.object\s*\(/gi)];
+    const zodSchemas = [
+      ...content.matchAll(
+        /(?:const|let)\s+(\w+Schema|\w+Dto)\s*=\s*(?:z|Yup|yup|Joi|joi)\.object\s*\(/gi,
+      ),
+    ];
     for (const m of zodSchemas) {
-      rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: /Yup|yup/.test(content) ? "yup" : /Joi|joi/.test(content) ? "joi" : "zod", database: "unknown", table: "", description: `${m[1]} validation schema`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: false, tags: ["validation"] }, file.path));
+      rawModels.push(
+        validateModel(
+          {
+            name: m[1],
+            file: file.path,
+            line: null,
+            orm: /Yup|yup/.test(content) ? "yup" : /Joi|joi/.test(content) ? "joi" : "zod",
+            database: "unknown",
+            table: "",
+            description: `${m[1]} validation schema`,
+            fields: [],
+            indexes: [],
+            constraints: [],
+            hooks: [],
+            soft_delete: false,
+            timestamps: false,
+            tags: ["validation"],
+          },
+          file.path,
+        ),
+      );
     }
   }
 
@@ -594,11 +662,9 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
       const metaA = projectMap?.find((m) => m.path === a.path);
       const metaB = projectMap?.find((m) => m.path === b.path);
       const scoreA =
-        (metaA?.flags?.includes("has_db") ? 2 : 0) +
-        (metaA?.importance === "critical" ? 1 : 0);
+        (metaA?.flags?.includes("has_db") ? 2 : 0) + (metaA?.importance === "critical" ? 1 : 0);
       const scoreB =
-        (metaB?.flags?.includes("has_db") ? 2 : 0) +
-        (metaB?.importance === "critical" ? 1 : 0);
+        (metaB?.flags?.includes("has_db") ? 2 : 0) + (metaB?.importance === "critical" ? 1 : 0);
       return scoreB - scoreA;
     })
     .slice(0, MAX_FILES);
@@ -623,7 +689,10 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     const staticRels = extractStaticRelationships(models);
     const relationships = staticRels.map(({ _static, ...r }) => r);
     const summary = buildSummary(models, relationships);
-    notify(`${models.length} models · ${relationships.length} relationships (heuristic)`, `${schemaFiles.length} files scanned`);
+    notify(
+      `${models.length} models · ${relationships.length} relationships (heuristic)`,
+      `${schemaFiles.length} files scanned`,
+    );
     return { models, relationships, summary };
   }
 
@@ -648,9 +717,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
         const truncated = f.content.length > CHARS_PER_FILE;
         return [
           `=== FILE: ${f.path} ===`,
-          truncated
-            ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]`
-            : "",
+          truncated ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]` : "",
           f.content.slice(0, CHARS_PER_FILE),
         ]
           .filter(Boolean)
@@ -675,30 +742,18 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
 
       if (Array.isArray(parsed.models)) {
         for (const model of parsed.models) {
-
           const matchedFile = batch.find((f) =>
-            model.file
-              ? f.path.endsWith(model.file) || model.file.endsWith(f.path)
-              : false,
+            model.file ? f.path.endsWith(model.file) || model.file.endsWith(f.path) : false,
           );
           const fallbackFile =
-            batch.length === 1
-              ? batch[0].path
-              : matchedFile?.path || model.file || batch[0].path;
+            batch.length === 1 ? batch[0].path : matchedFile?.path || model.file || batch[0].path;
 
           const enriched = {
             ...model,
-            orm:
-              model.orm ||
-              inferOrm(
-                batch.find((f) => f.path === fallbackFile)?.content || "",
-              ),
+            orm: model.orm || inferOrm(batch.find((f) => f.path === fallbackFile)?.content || ""),
             database:
               model.database ||
-              inferDatabase(
-                model.orm,
-                batch.find((f) => f.path === fallbackFile)?.content || "",
-              ),
+              inferDatabase(model.orm, batch.find((f) => f.path === fallbackFile)?.content || ""),
           };
 
           const validated = validateModel(enriched, fallbackFile);
@@ -724,17 +779,13 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     if (!existing) {
       modelMap.set(model.name, model);
     } else {
-
       const mergedFields = mergeFields(existing.fields, model.fields);
-      const winner =
-        scoreModel(model) >= scoreModel(existing) ? model : existing;
+      const winner = scoreModel(model) >= scoreModel(existing) ? model : existing;
       modelMap.set(model.name, { ...winner, fields: mergedFields });
     }
   }
 
-  const models = Array.from(modelMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const models = Array.from(modelMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
   const staticRels = extractStaticRelationships(models);
 
@@ -742,7 +793,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
 
   const allRels = [...rawRelationships, ...staticRels];
   for (const rel of allRels) {
-
     const key = `${rel.from}→${rel.to}:${rel.type}`;
     const existing = relMap.get(key);
 
@@ -803,7 +853,6 @@ function mergeFields(fieldsA, fieldsB) {
     if (!existing) {
       fieldMap.set(f.name, f);
     } else {
-
       const scoreF =
         (f.description ? 2 : 0) +
         (f.db_type ? 1 : 0) +

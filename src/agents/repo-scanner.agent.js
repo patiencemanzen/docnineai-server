@@ -191,19 +191,11 @@ function validateClassification(item, originalPath) {
     path,
     role: VALID_ROLES.has(item.role) ? item.role : "other",
     layer: VALID_LAYERS.has(item.layer) ? item.layer : "other",
-    language: VALID_LANGUAGES.has(item.language)
-      ? item.language
-      : inferLanguage(path),
-    importance: VALID_IMPORTANCE.has(item.importance)
-      ? item.importance
-      : "medium",
+    language: VALID_LANGUAGES.has(item.language) ? item.language : inferLanguage(path),
+    importance: VALID_IMPORTANCE.has(item.importance) ? item.importance : "medium",
     summary: String(item.summary ?? "").trim() || "",
-    exports: Array.isArray(item.exports)
-      ? item.exports.filter((e) => typeof e === "string")
-      : [],
-    flags: Array.isArray(item.flags)
-      ? item.flags.filter((f) => VALID_FLAGS.has(f))
-      : [],
+    exports: Array.isArray(item.exports) ? item.exports.filter((e) => typeof e === "string") : [],
+    flags: Array.isArray(item.flags) ? item.flags.filter((f) => VALID_FLAGS.has(f)) : [],
   };
 }
 
@@ -272,25 +264,19 @@ function heuristicClassify(file) {
     importance = "medium";
   }
 
-  if (/src\/client|src\/frontend|src\/ui|pages\/|components\/|hooks\//i.test(p))
-    layer = "frontend";
+  if (/src\/client|src\/frontend|src\/ui|pages\/|components\/|hooks\//i.test(p)) layer = "frontend";
   else if (/src\/server|src\/api|src\/backend/i.test(p)) layer = "backend";
   else if (/shared\/|common\/|lib\//i.test(p)) layer = "shared";
-  else if (/docker|k8s|terraform|\.yml$|\.yaml$|nginx/i.test(p))
-    layer = "infrastructure";
+  else if (/docker|k8s|terraform|\.yml$|\.yaml$|nginx/i.test(p)) layer = "infrastructure";
   else if (/migration|seed|schema|prisma|entity/i.test(p)) layer = "database";
   else if (/test|spec|__mock/i.test(p)) layer = "test";
 
   const content = file.content || "";
   const flags = [];
-  if (/process\.env\.|dotenv|os\.environ/i.test(content))
-    flags.push("has_env_usage");
-  if (/jwt|bearer|auth|passport|session|cookie/i.test(content))
-    flags.push("has_auth");
-  if (/db\.|pool\.|prisma\.|mongoose\.|sequelize\.|query\(/i.test(content))
-    flags.push("has_db");
-  if (/try\s*{|catch\s*\(|\.catch\(|throw new/i.test(content))
-    flags.push("has_error_handling");
+  if (/process\.env\.|dotenv|os\.environ/i.test(content)) flags.push("has_env_usage");
+  if (/jwt|bearer|auth|passport|session|cookie/i.test(content)) flags.push("has_auth");
+  if (/db\.|pool\.|prisma\.|mongoose\.|sequelize\.|query\(/i.test(content)) flags.push("has_db");
+  if (/try\s*{|catch\s*\(|\.catch\(|throw new/i.test(content)) flags.push("has_error_handling");
   if (/TODO|FIXME|HACK|XXX/i.test(content)) flags.push("has_todos");
   if (role === "entry") flags.push("is_entry_point");
   if (/^export\s*\{|export \* from/m.test(content)) flags.push("is_barrel");
@@ -311,7 +297,6 @@ function heuristicClassify(file) {
 function inferLanguage(filePath) {
   const ext = filePath.split(".").pop()?.toLowerCase();
   const map = {
-
     ts: "typescript",
     tsx: "typescript",
     mts: "typescript",
@@ -371,11 +356,7 @@ function inferLanguage(filePath) {
   return map[ext] || "other";
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -428,8 +409,7 @@ function detectTechStack(files) {
     if (/"hono"/i.test(combined)) stack.push("Hono");
     if (/"@nestjs\/core"/i.test(combined)) stack.push("NestJS");
 
-    if (/"typescript"|"ts-node"|tsconfig/i.test(combined))
-      stack.push("TypeScript");
+    if (/"typescript"|"ts-node"|tsconfig/i.test(combined)) stack.push("TypeScript");
 
     if (/"prisma"/i.test(combined)) stack.push("Prisma");
     if (/"typeorm"/i.test(combined)) stack.push("TypeORM");
@@ -521,8 +501,7 @@ function detectTechStack(files) {
   if (/\.csproj$|appsettings\.json/i.test(paths)) {
     stack.push("C#");
     if (/"DotNet"|"net6"|"net7"|"net8"/i.test(combined)) stack.push(".NET");
-    if (/EntityFramework|EF Core/i.test(combined))
-      stack.push("Entity Framework");
+    if (/EntityFramework|EF Core/i.test(combined)) stack.push("Entity Framework");
     if (/"Xamarin"/i.test(combined)) stack.push("Xamarin");
     if (/"ASP.NET"/i.test(combined)) stack.push("ASP.NET");
   }
@@ -569,9 +548,7 @@ function detectTechStack(files) {
 
 function detectTestFrameworks(files) {
   const combined = files
-    .filter((f) =>
-      /package\.json$|requirements\.txt$|Gemfile$|pom\.xml$/.test(f.path),
-    )
+    .filter((f) => /package\.json$|requirements\.txt$|Gemfile$|pom\.xml$/.test(f.path))
     .map((f) => f.content.slice(0, 2000))
     .join("\n");
 
@@ -648,11 +625,7 @@ function inferArchitecturePattern(classified, techStack) {
   if (roles.has("component") && roles.has("hook") && roles.has("store")) {
     return "Frontend SPA with component-hook-store pattern";
   }
-  if (
-    roles.has("component") &&
-    !roles.has("service") &&
-    !roles.has("controller")
-  ) {
+  if (roles.has("component") && !roles.has("service") && !roles.has("controller")) {
     return "Frontend-only application";
   }
   if (roles.has("job") || roles.has("event")) {
@@ -699,7 +672,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
       classifiedMap.set(r.path, r);
     }
   } else {
-
     for (const f of relevant) {
       classifiedMap.set(f.path, heuristicClassify(f));
     }
@@ -732,10 +704,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
 
         const userContent = batch
           .map((f) => {
-            const snippet = f.content
-              .slice(0, SNIPPET_SIZE)
-              .replace(/\n/g, " ")
-              .trim();
+            const snippet = f.content.slice(0, SNIPPET_SIZE).replace(/\n/g, " ").trim();
             const truncated = f.content.length > SNIPPET_SIZE ? " [truncated]" : "";
             return `FILE: ${f.path}\nSNIPPET: ${snippet}${truncated}`;
           })
@@ -757,9 +726,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
           for (const item of parsed) {
             const matchedFile = batch.find(
               (f) =>
-                item.path === f.path ||
-                f.path.endsWith(item.path) ||
-                item.path.endsWith(f.path),
+                item.path === f.path || f.path.endsWith(item.path) || item.path.endsWith(f.path),
             );
             const fallbackPath = matchedFile?.path || item.path;
             const validated = validateClassification(item, fallbackPath);
@@ -770,7 +737,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
           }
         } catch (err) {
           batchErrors.push({ batch: batchNum, error: err.message });
-
         }
       }
     }
@@ -781,26 +747,20 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
     return clean;
   });
 
-  const heuristicCount = Array.from(classifiedMap.values()).filter(
-    (c) => c._heuristic,
-  ).length;
+  const heuristicCount = Array.from(classifiedMap.values()).filter((c) => c._heuristic).length;
 
   const techStack = detectTechStack(files);
   const testFrameworks = detectTestFrameworks(files);
   const structure = groupByRole(classified);
   const layerMap = groupByLayer(classified);
   const flagsSummary = buildFlagsSummary(classified);
-  const entryPoints = classified
-    .filter((f) => f.role === "entry")
-    .map((f) => f.path);
+  const entryPoints = classified.filter((f) => f.role === "entry").map((f) => f.path);
   const keyFiles = identifyKeyFiles(classified);
   const architectureHint = inferArchitecturePattern(classified, techStack);
 
   const importanceOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   classified.sort(
-    (a, b) =>
-      (importanceOrder[a.importance] ?? 3) -
-      (importanceOrder[b.importance] ?? 3),
+    (a, b) => (importanceOrder[a.importance] ?? 3) - (importanceOrder[b.importance] ?? 3),
   );
 
   const dist = {};

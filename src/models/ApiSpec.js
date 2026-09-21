@@ -1,9 +1,7 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 const Mixed = Schema.Types.Mixed;
-
 
 const ParameterSchema = new Schema(
   {
@@ -16,7 +14,6 @@ const ParameterSchema = new Schema(
   },
   { _id: false },
 );
-
 
 const EndpointSchema = new Schema(
   {
@@ -37,7 +34,6 @@ const EndpointSchema = new Schema(
   { _id: false },
 );
 
-
 const ApiSpecSchema = new Schema(
   {
     projectId: {
@@ -48,10 +44,8 @@ const ApiSpecSchema = new Schema(
       index: true,
     },
 
-
     source: { type: String, enum: ["file", "url", "raw"], required: true },
     sourceUrl: { type: String },
-
 
     specVersion: {
       type: String,
@@ -59,9 +53,7 @@ const ApiSpecSchema = new Schema(
       default: "unknown",
     },
 
-
     rawContent: { type: String, select: false },
-
 
     info: {
       title: { type: String },
@@ -72,7 +64,6 @@ const ApiSpecSchema = new Schema(
       termsOfService: { type: String },
     },
 
-
     servers: [
       {
         url: { type: String },
@@ -80,7 +71,6 @@ const ApiSpecSchema = new Schema(
         _id: false,
       },
     ],
-
 
     tags: [
       {
@@ -90,15 +80,11 @@ const ApiSpecSchema = new Schema(
       },
     ],
 
-
     endpoints: [EndpointSchema],
-
 
     schemas: { type: Mixed, default: {} },
 
-
     securitySchemes: { type: Mixed, default: {} },
-
 
     autoSync: { type: Boolean, default: false },
     lastSyncedAt: { type: Date },

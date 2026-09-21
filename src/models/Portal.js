@@ -1,8 +1,5 @@
-
 import mongoose from "mongoose";
 const { Schema, model } = mongoose;
-
-
 
 const FooterLinkSchema = new Schema(
   {
@@ -31,13 +28,7 @@ const PortalSectionSchema = new Schema(
     sectionKey: {
       type: String,
       required: true,
-      enum: [
-        "readme",
-        "internalDocs",
-        "apiReference",
-        "schemaDocs",
-        "securityReport",
-      ],
+      enum: ["readme", "internalDocs", "apiReference", "schemaDocs", "securityReport"],
     },
     visibility: {
       type: String,
@@ -48,8 +39,6 @@ const PortalSectionSchema = new Schema(
   { _id: false },
 );
 
-
-
 const PortalSchema = new Schema(
   {
     projectId: {
@@ -59,7 +48,6 @@ const PortalSchema = new Schema(
       unique: true,
       index: true,
     },
-
 
     slug: {
       type: String,
@@ -77,7 +65,6 @@ const PortalSchema = new Schema(
       enum: ["public", "password"],
       default: "public",
     },
-
 
     passwordHash: { type: String, select: false },
 
@@ -100,12 +87,10 @@ const PortalSchema = new Schema(
       default: "classic",
     },
 
-
     sections: { type: [PortalSectionSchema], default: [] },
 
     seoTitle: String,
     seoDescription: String,
-
 
     customDomain: { type: String, trim: true, lowercase: true },
   },

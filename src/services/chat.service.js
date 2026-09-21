@@ -7,18 +7,10 @@ function buildDocsContext(output, meta) {
   const sections = [
     `# Project: ${meta?.name || "Unknown"}\n${meta?.description || ""}`,
     output.readme ? `## README SUMMARY\n${output.readme.slice(0, 800)}` : "",
-    output.apiReference
-      ? `## API REFERENCE\n${output.apiReference.slice(0, 800)}`
-      : "",
-    output.schemaDocs
-      ? `## DATA MODELS\n${output.schemaDocs.slice(0, 600)}`
-      : "",
-    output.internalDocs
-      ? `## ARCHITECTURE\n${output.internalDocs.slice(0, 600)}`
-      : "",
-    output.securityReport
-      ? `## SECURITY REPORT\n${output.securityReport.slice(0, 400)}`
-      : "",
+    output.apiReference ? `## API REFERENCE\n${output.apiReference.slice(0, 800)}` : "",
+    output.schemaDocs ? `## DATA MODELS\n${output.schemaDocs.slice(0, 600)}` : "",
+    output.internalDocs ? `## ARCHITECTURE\n${output.internalDocs.slice(0, 600)}` : "",
+    output.securityReport ? `## SECURITY REPORT\n${output.securityReport.slice(0, 400)}` : "",
   ];
   return sections.filter(Boolean).join("\n\n");
 }
@@ -27,47 +19,10 @@ function selectRelevantContext(question, fullContext) {
   const q = question.toLowerCase();
 
   const SECTION_KEYWORDS = {
-    api: [
-      "endpoint",
-      "route",
-      "api",
-      "request",
-      "post",
-      "get",
-      "http",
-      "url",
-      "param",
-    ],
-    schema: [
-      "model",
-      "schema",
-      "database",
-      "db",
-      "table",
-      "field",
-      "relation",
-      "mongo",
-      "sql",
-    ],
-    security: [
-      "security",
-      "auth",
-      "jwt",
-      "token",
-      "password",
-      "vulnerability",
-      "hack",
-      "safe",
-    ],
-    arch: [
-      "architecture",
-      "how does",
-      "flow",
-      "component",
-      "service",
-      "middleware",
-      "structure",
-    ],
+    api: ["endpoint", "route", "api", "request", "post", "get", "http", "url", "param"],
+    schema: ["model", "schema", "database", "db", "table", "field", "relation", "mongo", "sql"],
+    security: ["security", "auth", "jwt", "token", "password", "vulnerability", "hack", "safe"],
+    arch: ["architecture", "how does", "flow", "component", "service", "middleware", "structure"],
   };
 
   let bestSection = null;
@@ -167,8 +122,7 @@ export function getSuggestedQuestions(output) {
   return questions
     .filter((q) => {
       if (q.includes("security") && !output.securityReport) return false;
-      if (q.includes("endpoint") && !output.apiReference?.includes("GET"))
-        return false;
+      if (q.includes("endpoint") && !output.apiReference?.includes("GET")) return false;
       return true;
     })
     .slice(0, 5);

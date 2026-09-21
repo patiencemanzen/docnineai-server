@@ -66,4 +66,3 @@ export async function exportDoc(req, res) {
     return toDomainFail(res, err, "cli.export");
   }
 }
-

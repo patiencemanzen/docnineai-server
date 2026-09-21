@@ -1,11 +1,8 @@
-
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import { User } from "../../../models/User.js";
 import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 import * as glService from "../../../services/gitlab.service.js";
-
-
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.GITLAB_CLIENT_ID;
@@ -31,9 +28,6 @@ function getStateSecret() {
   return secret;
 }
 
-
-
-
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
@@ -51,13 +45,9 @@ export function buildOAuthUrl(userId) {
   return `https://gitlab.com/oauth/authorize?${params.toString()}`;
 }
 
-
-
-
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
-
 
   let statePayload;
   try {
@@ -69,16 +59,13 @@ export async function handleOAuthCallback({ code, state }) {
     console.error("[GitLab OAuth Service] State verification failed", {
       message: err.message,
     });
-    const e = new Error(
-      "Invalid or expired OAuth state. Please start the OAuth flow again.",
-    );
+    const e = new Error("Invalid or expired OAuth state. Please start the OAuth flow again.");
     e.code = "INVALID_OAUTH_STATE";
     e.status = 400;
     throw e;
   }
 
   const userId = statePayload.userId;
-
 
   console.log("[GitLab OAuth Service] Exchanging code for token...");
   let tokenRes;
@@ -111,18 +98,13 @@ export async function handleOAuthCallback({ code, state }) {
       error,
       hasToken: !!access_token,
     });
-    const e = new Error(
-      `GitLab OAuth error: ${error || "no access token returned"}`,
-    );
+    const e = new Error(`GitLab OAuth error: ${error || "no access token returned"}`);
     e.code = "OAUTH_EXCHANGE_FAILED";
     e.status = 400;
     throw e;
   }
 
-  console.log(
-    "[GitLab OAuth Service] Got access token, fetching user profile...",
-  );
-
+  console.log("[GitLab OAuth Service] Got access token, fetching user profile...");
 
   let glUser;
   try {
@@ -142,7 +124,6 @@ export async function handleOAuthCallback({ code, state }) {
     gitlabUsername: glUser.username,
   });
 
-
   console.log("[GitLab OAuth Service] Updating user with GitLab identity...");
   const updated1 = await User.findByIdAndUpdate(userId, {
     gitlabId: String(glUser.id),
@@ -150,15 +131,11 @@ export async function handleOAuthCallback({ code, state }) {
   });
 
   if (!updated1) {
-    console.error(
-      "[GitLab OAuth Service] User not found when updating identity",
-      {
-        userId,
-      },
-    );
+    console.error("[GitLab OAuth Service] User not found when updating identity", {
+      userId,
+    });
     throw new Error("User not found in database. Please log in again and try.");
   }
-
 
   console.log("[GitLab OAuth Service] Encrypting and storing token...");
   const encryptedToken = encrypt(access_token);
@@ -190,9 +167,6 @@ export async function handleOAuthCallback({ code, state }) {
   return { gitlabUsername: glUser.username, userId };
 }
 
-
-
-
 export function encryptProvidersToken(token) {
   return encrypt(token);
 }
@@ -201,9 +175,6 @@ export function decryptProvidersToken(encrypted) {
   return decrypt(encrypted);
 }
 
-
-
-
 export async function refreshAndStoreToken(userId) {
   const user = await User.findById(userId).select(
     "+gitlabTokenEncrypted +gitlabRefreshTokenEncrypted",
@@ -211,9 +182,7 @@ export async function refreshAndStoreToken(userId) {
 
   if (!user?.gitlabRefreshTokenEncrypted) {
     console.warn("[GitLab OAuth] No refresh token stored for user", { userId });
-    const e = new Error(
-      "GitLab session expired. Please reconnect your GitLab account.",
-    );
+    const e = new Error("GitLab session expired. Please reconnect your GitLab account.");
     e.code = "TOKEN_REFRESH_FAILED";
     e.status = 401;
     throw e;
@@ -234,9 +203,7 @@ export async function refreshAndStoreToken(userId) {
       gitlabTokenEncrypted: null,
       gitlabRefreshTokenEncrypted: null,
     });
-    const e = new Error(
-      "GitLab session expired. Please reconnect your GitLab account.",
-    );
+    const e = new Error("GitLab session expired. Please reconnect your GitLab account.");
     e.code = "TOKEN_REFRESH_FAILED";
     e.status = 401;
     throw e;
@@ -253,9 +220,6 @@ export async function refreshAndStoreToken(userId) {
   console.log("[GitLab OAuth] Token refreshed and stored", { userId });
   return access_token;
 }
-
-
-
 
 export async function disconnect(userId) {
   await User.findByIdAndUpdate(userId, {

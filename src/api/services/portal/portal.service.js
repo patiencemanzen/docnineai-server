@@ -1,4 +1,3 @@
-
 import bcrypt from "bcryptjs";
 import { Portal } from "../../../models/Portal.js";
 import { Project } from "../../../models/Project.js";
@@ -6,7 +5,6 @@ import { Subscription } from "../../../models/Subscription.js";
 import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
-
 
 export const SECTION_KEYS = [
   "readme",
@@ -23,8 +21,6 @@ export const SECTION_LABELS = {
   schemaDocs: "Schema Docs",
   securityReport: "Security Report",
 };
-
-
 
 function slugify(str) {
   return str
@@ -46,26 +42,20 @@ async function generateUniqueSlug(repoOwner, repoName) {
   return candidate;
 }
 
-
-
 async function requireOwner(projectId, userId) {
-  const project = await Project.findById(projectId)
-    .select("userId repoOwner repoName")
-    .lean();
+  const project = await Project.findById(projectId).select("userId repoOwner repoName").lean();
   if (!project)
     throw Object.assign(new Error("Project not found."), {
       status: 404,
       code: "NOT_FOUND",
     });
   if (String(project.userId) !== String(userId))
-    throw Object.assign(
-      new Error("Only the project owner can manage the portal."),
-      { status: 403, code: "FORBIDDEN" },
-    );
+    throw Object.assign(new Error("Only the project owner can manage the portal."), {
+      status: 403,
+      code: "FORBIDDEN",
+    });
   return project;
 }
-
-
 
 function mergeOutput(project) {
   const merged = {};
@@ -74,9 +64,6 @@ function mergeOutput(project) {
   }
   return merged;
 }
-
-
-
 
 export async function getOrCreate(projectId, userId) {
   const project = await requireOwner(projectId, userId);
@@ -88,7 +75,6 @@ export async function getOrCreate(projectId, userId) {
   return portal.toObject();
 }
 
-
 export async function getPortalForOwner(projectId, userId) {
   await requireOwner(projectId, userId);
   let portal = await Portal.findOne({ projectId });
@@ -96,16 +82,12 @@ export async function getPortalForOwner(projectId, userId) {
   return portal.toObject();
 }
 
-
 export async function updatePortal(projectId, userId, body) {
   await requireOwner(projectId, userId);
 
   let portal = await Portal.findOne({ projectId });
   if (!portal) {
-
-    const proj = await Project.findById(projectId)
-      .select("repoOwner repoName")
-      .lean();
+    const proj = await Project.findById(projectId).select("repoOwner repoName").lean();
     const slug = await generateUniqueSlug(proj.repoOwner, proj.repoName);
     portal = new Portal({ projectId, slug });
   }
@@ -127,10 +109,10 @@ export async function updatePortal(projectId, userId, body) {
     const sub = await Subscription.findOne({ userId }).lean();
     const features = getPlan(effectivePlanId(sub)).features;
     if (!features.customDomain) {
-      throw Object.assign(
-        new Error("Custom domains require the Pro plan or higher."),
-        { status: 403, code: "PLAN_GATE" },
-      );
+      throw Object.assign(new Error("Custom domains require the Pro plan or higher."), {
+        status: 403,
+        code: "PLAN_GATE",
+      });
     }
   }
 
@@ -145,10 +127,8 @@ export async function updatePortal(projectId, userId, body) {
     });
   }
 
-
   if (body.password !== undefined) {
     if (body.password === null || body.password === "") {
-
       portal.passwordHash = undefined;
       portal.accessMode = "public";
     } else {
@@ -166,7 +146,6 @@ export async function updatePortal(projectId, userId, body) {
   });
   return portal.toObject();
 }
-
 
 export async function togglePublish(projectId, userId) {
   const project = await requireOwner(projectId, userId);
@@ -209,7 +188,6 @@ export async function togglePublish(projectId, userId) {
   return portal.toObject();
 }
 
-
 export async function getPublicPortal(slug) {
   const portal = await Portal.findOne({ slug });
   if (!portal)
@@ -223,7 +201,6 @@ export async function getPublicPortal(slug) {
       code: "NOT_FOUND",
     });
 
-
   const project = await Project.findById(portal.projectId)
     .select("repoOwner repoName meta techStack output editedOutput")
     .lean();
@@ -233,21 +210,16 @@ export async function getPublicPortal(slug) {
       code: "NOT_FOUND",
     });
 
-
   const sectionVisMap = {};
   for (const s of SECTION_KEYS) sectionVisMap[s] = "public";
-  for (const entry of portal.sections)
-    sectionVisMap[entry.sectionKey] = entry.visibility;
-
+  for (const entry of portal.sections) sectionVisMap[entry.sectionKey] = entry.visibility;
 
   const effectiveOutput = mergeOutput(project);
-
 
   const content = {};
   for (const key of SECTION_KEYS) {
     if (sectionVisMap[key] === "internal") continue;
-    content[key] =
-      sectionVisMap[key] === "coming_soon" ? null : effectiveOutput[key] || "";
+    content[key] = sectionVisMap[key] === "coming_soon" ? null : effectiveOutput[key] || "";
   }
 
   return {
@@ -272,7 +244,6 @@ export async function getPublicPortal(slug) {
     content,
   };
 }
-
 
 export async function verifyPortalPassword(slug, attempt) {
   const portal = await Portal.findOne({ slug }).select("+passwordHash");

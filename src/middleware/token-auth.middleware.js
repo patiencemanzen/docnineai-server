@@ -1,5 +1,3 @@
-
-
 import { APIToken } from "../models/APIToken.js";
 import { fail } from "../utils/response.util.js";
 import { hashToken } from "../utils/crypto.util.js";
@@ -8,7 +6,6 @@ function clientIpOf(req) {
   return req.ip || req.socket?.remoteAddress || "";
 }
 
-
 export async function authenticateAPIToken(req, res, next) {
   if (req.tokenAuth) return next();
 
@@ -16,28 +13,17 @@ export async function authenticateAPIToken(req, res, next) {
 
   if (!header.startsWith("Bearer ")) {
     if (req.user) return next();
-    return fail(
-      res,
-      "NO_TOKEN",
-      "Missing or invalid Authorization header. Use: Authorization: Bearer <token>",
-      401,
-    );
+    return fail(res, "NO_TOKEN", "Missing or invalid Authorization header.", 401);
   }
 
   const plainToken = header.slice(7).trim();
-
 
   if (req.user && !plainToken.startsWith("docnine_")) {
     return next();
   }
 
   if (!plainToken.startsWith("docnine_")) {
-    return fail(
-      res,
-      "INVALID_TOKEN",
-      "Token format is invalid. API tokens start with docnine_.",
-      401,
-    );
+    return fail(res, "INVALID_TOKEN", "Token format is invalid.", 401);
   }
 
   const clientIp = clientIpOf(req);
@@ -54,12 +40,7 @@ export async function authenticateAPIToken(req, res, next) {
     }).populate("userId", "email name");
 
     if (!apiToken) {
-      return fail(
-        res,
-        "INVALID_TOKEN",
-        "API token not found or has been revoked",
-        401,
-      );
+      return fail(res, "INVALID_TOKEN", "API token not found or has been revoked", 401);
     }
 
     if (apiToken.expiresAt && new Date() > apiToken.expiresAt) {
@@ -68,23 +49,13 @@ export async function authenticateAPIToken(req, res, next) {
 
     if (apiToken.ipWhitelist && apiToken.ipWhitelist.length > 0) {
       if (!apiToken.ipWhitelist.includes(clientIp)) {
-        return fail(
-          res,
-          "IP_BLOCKED",
-          "Client IP is not whitelisted for this token",
-          403,
-        );
+        return fail(res, "IP_BLOCKED", "Client IP is not whitelisted for this token", 403);
       }
     }
 
     const projectId = req.params.id || req.params.projectId;
     if (projectId && !apiToken.hasProjectAccess(projectId)) {
-      return fail(
-        res,
-        "FORBIDDEN",
-        "This token is not allowed to access this project",
-        403,
-      );
+      return fail(res, "FORBIDDEN", "This token is not allowed to access this project", 403);
     }
 
     try {
@@ -115,30 +86,18 @@ export async function authenticateAPIToken(req, res, next) {
   }
 }
 
-
 export function requireAPIToken(req, res, next) {
   if (!req.tokenAuth || !req.tokenAuth.token) {
-    return fail(
-      res,
-      "REQUIRE_TOKEN",
-      "This endpoint requires API token authentication",
-      401,
-    );
+    return fail(res, "REQUIRE_TOKEN", "This endpoint requires API token authentication", 401);
   }
   next();
 }
-
 
 export function checkTokenScope(requiredScopes = []) {
   return (req, res, next) => {
     if (!req.tokenAuth) {
       if (req.user) return next();
-      return fail(
-        res,
-        "NO_TOKEN",
-        "Token authentication required for this scope",
-        401,
-      );
+      return fail(res, "NO_TOKEN", "Token authentication required for this scope", 401);
     }
 
     const rawScope = req.tokenAuth.scope || req.tokenAuth.scopes || [];

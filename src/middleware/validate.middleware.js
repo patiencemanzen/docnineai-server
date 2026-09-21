@@ -1,6 +1,4 @@
-
 import { body, query, param, validationResult } from "express-validator";
-
 
 export function validate(req, res, next) {
   const errors = validationResult(req);
@@ -20,8 +18,6 @@ export function validate(req, res, next) {
     },
   });
 }
-
-
 
 const nameField = () =>
   body("name")
@@ -57,28 +53,18 @@ const repoUrlField = () =>
     .custom((value) => {
       const lower = value.toLowerCase();
       if (!SUPPORTED_HOSTS.some((h) => lower.includes(h))) {
-        throw new Error(
-          `repoUrl must be from a supported provider: ${SUPPORTED_HOSTS.join(", ")}`,
-        );
+        throw new Error(`repoUrl must be from a supported provider: ${SUPPORTED_HOSTS.join(", ")}`);
       }
       return true;
     });
 
-
 export const rules = {
-  
   signup: [nameField(), emailField(), passwordField()],
 
-  
-  login: [
-    emailField(),
-    body("password").notEmpty().withMessage("Password is required"),
-  ],
+  login: [emailField(), body("password").notEmpty().withMessage("Password is required")],
 
-  
   forgotPassword: [emailField()],
 
-  
   resetPassword: [
     body("token").notEmpty().withMessage("Reset token is required"),
     passwordField("password"),
@@ -89,20 +75,12 @@ export const rules = {
       .withMessage("Passwords do not match"),
   ],
 
-  
-  verifyEmail: [
-    body("token").notEmpty().withMessage("Verification token is required"),
-  ],
+  verifyEmail: [body("token").notEmpty().withMessage("Verification token is required")],
 
-  
   createProject: [repoUrlField()],
 
-  
   listProjects: [
-    query("page")
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage("page must be a positive integer"),
+    query("page").optional().isInt({ min: 1 }).withMessage("page must be a positive integer"),
     query("limit")
       .optional()
       .isInt({ min: 1, max: 100 })
@@ -113,21 +91,13 @@ export const rules = {
       .withMessage("Invalid status filter"),
     query("sort")
       .optional()
-      .isIn([
-        "createdAt",
-        "-createdAt",
-        "updatedAt",
-        "-updatedAt",
-        "repoName",
-        "-repoName",
-      ])
+      .isIn(["createdAt", "-createdAt", "updatedAt", "-updatedAt", "repoName", "-repoName"])
       .withMessage(
         "Invalid sort field : valid values: createdAt, -createdAt, updatedAt, -updatedAt, repoName, -repoName",
       ),
     query("search").optional().isString().trim(),
   ],
 
-  
   updateProject: [
     body("name")
       .optional()
@@ -148,7 +118,6 @@ export const rules = {
       .withMessage("Only 'archived' status can be set via PATCH"),
   ],
 
-  
   updateProfile: [
     body("name")
       .optional()
@@ -157,19 +126,11 @@ export const rules = {
       .withMessage("Name cannot be empty")
       .isLength({ max: 80 })
       .withMessage("Name must be 80 characters or fewer"),
-    body("email")
-      .optional()
-      .trim()
-      .isEmail()
-      .withMessage("Email is not valid")
-      .normalizeEmail(),
+    body("email").optional().trim().isEmail().withMessage("Email is not valid").normalizeEmail(),
   ],
 
-  
   changePassword: [
-    body("currentPassword")
-      .notEmpty()
-      .withMessage("Current password is required"),
+    body("currentPassword").notEmpty().withMessage("Current password is required"),
     passwordField("newPassword"),
     body("confirmNewPassword")
       .notEmpty()

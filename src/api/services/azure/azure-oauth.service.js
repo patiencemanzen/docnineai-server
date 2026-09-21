@@ -1,11 +1,8 @@
-
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import { User } from "../../../models/User.js";
 import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 import * as azService from "../../../services/azure-devops.service.js";
-
-
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.AZURE_DEVOPS_CLIENT_ID;
@@ -28,15 +25,11 @@ function getStateSecret() {
   return secret;
 }
 
-
-
-
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
   const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m", algorithm: "HS256" });
-
 
   if (REDIRECT_URI?.includes("localhost")) {
     console.warn(
@@ -45,7 +38,6 @@ export function buildOAuthUrl(userId) {
     );
   }
 
-
   const scope = "vso.code vso.project";
 
   console.log("[Azure OAuth] Building authorization URL", {
@@ -53,7 +45,6 @@ export function buildOAuthUrl(userId) {
     REDIRECT_URI,
     scope,
   });
-
 
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -65,21 +56,16 @@ export function buildOAuthUrl(userId) {
   const url =
     `https://app.vssps.visualstudio.com/oauth2/authorize?${params.toString()}` +
     `&scope=${encodeURIComponent(scope)}`;
-  
 
   console.log("[Azure OAuth] Full authorization URL:");
   console.log(url);
-  
+
   return url;
 }
-
-
-
 
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
-
 
   let statePayload;
   try {
@@ -91,9 +77,7 @@ export async function handleOAuthCallback({ code, state }) {
     console.error("[Azure OAuth Service] State verification failed", {
       message: err.message,
     });
-    const e = new Error(
-      "Invalid or expired OAuth state. Please start the OAuth flow again.",
-    );
+    const e = new Error("Invalid or expired OAuth state. Please start the OAuth flow again.");
     e.code = "INVALID_OAUTH_STATE";
     e.status = 400;
     throw e;
@@ -101,11 +85,9 @@ export async function handleOAuthCallback({ code, state }) {
 
   const userId = statePayload.userId;
 
-
   console.log("[Azure OAuth Service] Exchanging code for token...");
   let tokenRes;
   try {
-
     const params = new URLSearchParams({
       client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: CLIENT_SECRET,
@@ -132,22 +114,20 @@ export async function handleOAuthCallback({ code, state }) {
   }
 
   const { access_token, refresh_token, error } = tokenRes.data;
-  
+
   console.log("[Azure OAuth Service] Token exchange response", {
     hasAccessToken: !!access_token,
     hasRefreshToken: !!refresh_token,
     error: error || null,
     responseKeys: Object.keys(tokenRes.data || {}),
   });
-  
+
   if (error || !access_token) {
     console.error("[Azure OAuth Service] No access token in response", {
       error,
       hasToken: !!access_token,
     });
-    const e = new Error(
-      `Azure DevOps OAuth error: ${error || "no access token returned"}`,
-    );
+    const e = new Error(`Azure DevOps OAuth error: ${error || "no access token returned"}`);
     e.code = "OAUTH_EXCHANGE_FAILED";
     e.status = 400;
     throw e;
@@ -155,14 +135,12 @@ export async function handleOAuthCallback({ code, state }) {
 
   console.log("[Azure OAuth Service] Got access token, fetching user profile...");
 
-
   const azUser = await azService.getAuthenticatedUser(access_token);
 
   console.log("[Azure OAuth Service] Got Azure user", {
     azureId: azUser.id,
     azureUsername: azUser.username,
   });
-
 
   console.log("[Azure OAuth Service] Updating user with Azure identity...");
   const updated1 = await User.findByIdAndUpdate(userId, {
@@ -174,11 +152,8 @@ export async function handleOAuthCallback({ code, state }) {
     console.error("[Azure OAuth Service] User not found when updating identity", {
       userId,
     });
-    throw new Error(
-      "User not found in database. Please log in again and try.",
-    );
+    throw new Error("User not found in database. Please log in again and try.");
   }
-
 
   console.log("[Azure OAuth Service] Encrypting and storing token...");
   const encryptedToken = encrypt(access_token);
@@ -209,8 +184,6 @@ export async function handleOAuthCallback({ code, state }) {
 
   return { azureUsername: azUser.username, userId };
 }
-
-
 
 export function encryptProvidersToken(token) {
   return encrypt(token);

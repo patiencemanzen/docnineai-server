@@ -1,5 +1,3 @@
-
-
 export function validateAgentOutput(output, agentType, schema = null) {
   if (!output) {
     return {
@@ -16,7 +14,6 @@ export function validateAgentOutput(output, agentType, schema = null) {
       recovery: `Check response parsing`,
     };
   }
-
 
   switch (agentType) {
     case "repo-scanner":
@@ -104,15 +101,7 @@ function validateApiExtractorOutput(output) {
     };
   }
 
-  const validMethods = new Set([
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ]);
+  const validMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
   const issues = [];
   for (let i = 0; i < output.length; i++) {
@@ -140,8 +129,7 @@ function validateSchemaAnalyserOutput(output) {
   if (typeof output !== "object" || !output.models) {
     return {
       valid: false,
-      error:
-        "Schema analyser output must have 'models' and 'relationships' keys",
+      error: "Schema analyser output must have 'models' and 'relationships' keys",
       recovery: "Check schema-analyser output format",
     };
   }
@@ -216,17 +204,12 @@ function validateSecurityAuditorOutput(output) {
   return { valid: true, error: null };
 }
 
-
 export function safeParseJSON(raw, context = "") {
   if (!raw) return null;
 
-
   try {
     return JSON.parse(raw);
-  } catch {
-
-  }
-
+  } catch {}
 
   try {
     const stripped = raw
@@ -234,10 +217,7 @@ export function safeParseJSON(raw, context = "") {
       .replace(/\s*```$/i, "")
       .trim();
     return JSON.parse(stripped);
-  } catch {
-
-  }
-
+  } catch {}
 
   try {
     const start = raw.search(/[\[\{]/);
@@ -246,13 +226,10 @@ export function safeParseJSON(raw, context = "") {
       const chunk = raw.substring(start, end + 1);
       return JSON.parse(chunk);
     }
-  } catch {
-
-  }
+  } catch {}
 
   return null;
 }
-
 
 export function handlePipelineError(error, agentType, context = {}) {
   const errorObj = {
@@ -274,24 +251,16 @@ export function handlePipelineError(error, agentType, context = {}) {
   } else if (error?.message?.includes("ENOENT")) {
     errorObj.recovery = "Check file paths : may be missing or inaccessible";
   } else {
-    errorObj.recovery =
-      "Check LLM context and prompt for the agent : may need refinement";
+    errorObj.recovery = "Check LLM context and prompt for the agent : may need refinement";
   }
 
   return errorObj;
 }
 
-
 export function sanitizeAgentOutput(output, agentType) {
-  if (!output)
-    return agentType === "schema-analyser"
-      ? { models: [], relationships: [] }
-      : [];
+  if (!output) return agentType === "schema-analyser" ? { models: [], relationships: [] } : [];
 
-  const sanitized = Array.isArray(output)
-    ? output.filter(Boolean)
-    : output || {};
-
+  const sanitized = Array.isArray(output) ? output.filter(Boolean) : output || {};
 
   if (Array.isArray(sanitized)) {
     return sanitized.map((item) => {
@@ -305,32 +274,22 @@ export function sanitizeAgentOutput(output, agentType) {
   return sanitized;
 }
 
-
 export function shouldRetry(output, agentType, maxRetries = 2) {
   if (!output) return true;
 
   const validation = validateAgentOutput(output, agentType);
   if (!validation.valid) return true;
 
-
   if (Array.isArray(output) && output.length === 0) return false;
 
   return false;
 }
 
-
 export function buildLanguageContext(detectedLanguage, detectedFramework) {
   const contexts = {
     "JavaScript/TypeScript": {
       fileExts: [".js", ".ts", ".jsx", ".tsx"],
-      popularFrameworks: [
-        "Express",
-        "Fastify",
-        "NestJS",
-        "Next.js",
-        "React",
-        "Vue",
-      ],
+      popularFrameworks: ["Express", "Fastify", "NestJS", "Next.js", "React", "Vue"],
       packageManager: "npm/yarn",
       testFrameworks: ["Jest", "Vitest", "Mocha"],
     },

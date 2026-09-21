@@ -1,61 +1,52 @@
-import { Project } from '../../../models/Project.js';
-import { ProjectShare } from '../../../models/ProjectShare.js';
-import { DocumentVersion } from '../../../models/DocumentVersion.js';
-import { Portal } from '../../../models/Portal.js';
-import * as projectService from '../../services/projects/project.service.js';
-
-
+import { Project } from "../../../models/Project.js";
+import { ProjectShare } from "../../../models/ProjectShare.js";
+import { DocumentVersion } from "../../../models/DocumentVersion.js";
+import { Portal } from "../../../models/Portal.js";
+import * as projectService from "../../services/projects/project.service.js";
 
 export class MCPController {
   static projectIdFrom(req) {
     return req.params.id || req.params.projectId;
   }
 
-  
   static async verifyProjectAccess(projectId, userId) {
     const project = await Project.findById(projectId);
     if (!project) {
-      const err = new Error('Project not found');
+      const err = new Error("Project not found");
       err.statusCode = 404;
       throw err;
     }
 
-
     const userIdStr = userId.toString();
     const projectOwnerStr = project.userId?.toString();
-    
+
     if (projectOwnerStr === userIdStr) {
       return project;
     }
 
-
     const share = await ProjectShare.findOne({
       projectId,
       inviteeUserId: userId,
-      status: 'accepted',
+      status: "accepted",
     });
 
     if (share) {
       return project;
     }
 
-
-    const err = new Error(
-      'Access denied. You are not authorized to access this project.'
-    );
+    const err = new Error("Access denied. You are not authorized to access this project.");
     err.statusCode = 403;
     throw err;
   }
-  
+
   static async getMCPInfo(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
 
       const project = await Project.findById(projectId);
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
-
 
       const userId = (req.user?.userId || req.user?._id)?.toString();
       const isOwner = project.userId?.toString() === userId;
@@ -64,10 +55,10 @@ export class MCPController {
         const share = await ProjectShare.findOne({
           projectId: project._id,
           inviteeUserId: userId,
-          status: 'accepted',
+          status: "accepted",
         });
         if (!share) {
-          return res.status(403).json({ error: 'Access denied' });
+          return res.status(403).json({ error: "Access denied" });
         }
       }
 
@@ -78,31 +69,29 @@ export class MCPController {
         projectName: project.name,
         mcpUrl,
         docs: {
-          readme:
-            'Use this URL in Claude, Cursor, or VS Code MCP configuration',
+          readme: "Use this URL in Claude, Cursor, or VS Code MCP configuration",
           example: {
             claude: {
               mcpServers: {
                 docnine: {
                   url: mcpUrl,
                   env: {
-                    DOCNINE_TOKEN: 'your-api-token-here',
+                    DOCNINE_TOKEN: "your-api-token-here",
                   },
                 },
               },
             },
           },
         },
-        setupGuide: 'https://docnineai.com/docs/mcp-setup',
-        status: 'ready',
+        setupGuide: "https://docnineai.com/docs/mcp-setup",
+        status: "ready",
       });
     } catch (error) {
-      console.error('Error getting MCP info:', error);
-      res.status(500).json({ error: 'Failed to get MCP info' });
+      console.error("Error getting MCP info:", error);
+      res.status(500).json({ error: "Failed to get MCP info" });
     }
   }
 
-  
   static async callTool(req, res) {
     try {
       const { tool: toolParam } = req.params;
@@ -121,28 +110,23 @@ export class MCPController {
       const actualProjectId = projectId || bodyProjectId;
 
       if (!toolName) {
-        return res.status(400).json({ error: 'Tool name required' });
+        return res.status(400).json({ error: "Tool name required" });
       }
-
 
       const userId = req.user?.userId || req.user?._id || req.tokenAuth?.userId;
       if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        return res.status(401).json({ error: "Unauthorized" });
       }
-
 
       let project;
       try {
-        project = await MCPController.verifyProjectAccess(
-          actualProjectId,
-          userId
-        );
+        project = await MCPController.verifyProjectAccess(actualProjectId, userId);
       } catch (err) {
         if (err.statusCode === 404) {
-          return res.status(404).json({ error: 'Project not found' });
+          return res.status(404).json({ error: "Project not found" });
         }
         if (err.statusCode === 403) {
-          return res.status(403).json({ error: 'Access denied' });
+          return res.status(403).json({ error: "Access denied" });
         }
         throw err;
       }
@@ -154,77 +138,68 @@ export class MCPController {
         if (query !== undefined) input.query = query;
       }
 
-
-      const result = await MCPController.invokeTool(
-        toolName,
-        input,
-        project,
-        userId,
-      );
+      const result = await MCPController.invokeTool(toolName, input, project, userId);
       return res.status(200).json(result);
     } catch (error) {
       console.error(`[MCP] Error calling tool:`, error);
       return res.status(500).json({
-        error: 'Tool execution failed',
+        error: "Tool execution failed",
         message: error.message,
       });
     }
   }
 
-  
   static async invokeTool(toolName, input, project, userId) {
     switch (toolName) {
-      case 'get_project_docs':
+      case "get_project_docs":
         return await MCPController.getProjectDocs(project);
 
-      case 'get_api_reference':
+      case "get_api_reference":
         return await MCPController.getAPIReference(project);
 
-      case 'get_schema_docs':
+      case "get_schema_docs":
         return await MCPController.getSchemaDocs(project);
 
-      case 'get_component_docs':
+      case "get_component_docs":
         return await MCPController.getComponentDocs(project);
 
-      case 'ask_codebase':
+      case "ask_codebase":
         return await MCPController.askCodebase(project, input.question);
 
-      case 'search_docs':
+      case "search_docs":
         return await MCPController.searchDocs(project, input.query);
 
-      case 'get_security_audit':
+      case "get_security_audit":
         return await MCPController.getSecurityAudit(project);
 
-      case 'get_critical_findings':
+      case "get_critical_findings":
         return await MCPController.getCriticalFindings(project);
 
-      case 'get_security_score':
+      case "get_security_score":
         return await MCPController.getSecurityScore(project);
 
-      case 'list_projects':
+      case "list_projects":
         return await MCPController.listProjects(userId);
 
-      case 'get_project_summary':
+      case "get_project_summary":
         return await MCPController.getProjectSummary(project);
 
-      case 'get_diff':
+      case "get_diff":
         return await MCPController.getDiff(project);
 
-      case 'get_project_status':
+      case "get_project_status":
         return await MCPController.getProjectStatus(project);
 
-      case 'get_doc_section':
+      case "get_doc_section":
         return await MCPController.getDocSection(project, input.section);
 
-      case 'get_portal_url':
+      case "get_portal_url":
         return await MCPController.getPortalUrl(project);
 
       default:
         throw new Error(`Unknown tool: ${toolName}`);
     }
   }
-
-
 
   static async getProjectDocs(project) {
     return {
@@ -235,17 +210,13 @@ export class MCPController {
         provider: project.provider,
       },
       documentation: {
-        README: project.output?.readme || 'No README generated',
-        internal: project.output?.internalDocs || 'No internal docs',
-        apiReference:
-          project.output?.apiReference || 'No API reference generated',
-        schemaDocs: project.output?.schemaDocs || 'No schema docs generated',
-        componentRef:
-          project.output?.componentRef || 'No component reference generated',
-        componentIndex:
-          project.output?.componentIndex || 'No component index generated',
-        securityReport:
-          project.output?.securityReport || 'No security report generated',
+        README: project.output?.readme || "No README generated",
+        internal: project.output?.internalDocs || "No internal docs",
+        apiReference: project.output?.apiReference || "No API reference generated",
+        schemaDocs: project.output?.schemaDocs || "No schema docs generated",
+        componentRef: project.output?.componentRef || "No component reference generated",
+        componentIndex: project.output?.componentIndex || "No component index generated",
+        securityReport: project.output?.securityReport || "No security report generated",
       },
       lastUpdated: project.stats?.lastDocumentedCommit || null,
       status: project.status,
@@ -257,17 +228,14 @@ export class MCPController {
     return {
       projectId: project._id,
       projectName: project.name,
-      documentation: project.output?.apiReference || 'No API reference',
+      documentation: project.output?.apiReference || "No API reference",
       endpoints: apiEndpoints,
       summary: {
         total: apiEndpoints.length,
-        byMethod: apiEndpoints.reduce(
-          (acc, ep) => {
-            acc[ep.method] = (acc[ep.method] || 0) + 1;
-            return acc;
-          },
-          {},
-        ),
+        byMethod: apiEndpoints.reduce((acc, ep) => {
+          acc[ep.method] = (acc[ep.method] || 0) + 1;
+          return acc;
+        }, {}),
       },
       lastUpdated: project.stats?.lastDocumentedCommit || null,
     };
@@ -278,7 +246,7 @@ export class MCPController {
     return {
       projectId: project._id,
       projectName: project.name,
-      documentation: project.output?.schemaDocs || 'No schema docs',
+      documentation: project.output?.schemaDocs || "No schema docs",
       models,
       summary: {
         totalModels: models.length,
@@ -293,8 +261,8 @@ export class MCPController {
     return {
       projectId: project._id,
       projectName: project.name,
-      documentation: project.output?.componentRef || 'No component docs',
-      index: project.output?.componentIndex || 'No component index',
+      documentation: project.output?.componentRef || "No component docs",
+      index: project.output?.componentIndex || "No component index",
       components,
       summary: {
         totalComponents: components.length,
@@ -305,17 +273,17 @@ export class MCPController {
 
   static async askCodebase(project, question) {
     if (!question || question.trim().length === 0) {
-      return { error: 'Question is required' };
+      return { error: "Question is required" };
     }
 
-
     const SECTION_LIMIT = 2000;
-    const trim = (s) => (s ? s.slice(0, SECTION_LIMIT) + (s.length > SECTION_LIMIT ? '…' : '') : null);
+    const trim = (s) =>
+      s ? s.slice(0, SECTION_LIMIT) + (s.length > SECTION_LIMIT ? "…" : "") : null;
 
     const sections = [
-      project.output?.readme       ? `README:\n${trim(project.output.readme)}`         : null,
+      project.output?.readme ? `README:\n${trim(project.output.readme)}` : null,
       project.output?.apiReference ? `API Reference:\n${trim(project.output.apiReference)}` : null,
-      project.output?.componentRef ? `Components:\n${trim(project.output.componentRef)}`    : null,
+      project.output?.componentRef ? `Components:\n${trim(project.output.componentRef)}` : null,
       project.output?.internalDocs ? `Internal Docs:\n${trim(project.output.internalDocs)}` : null,
     ].filter(Boolean);
 
@@ -324,21 +292,22 @@ export class MCPController {
         projectId: project._id,
         projectName: project.name,
         question,
-        answer: 'No documentation has been generated yet for this project. Run `docnine generate` first.',
+        answer:
+          "No documentation has been generated yet for this project. Run `docnine generate` first.",
       };
     }
 
     try {
-      const { llmCall } = await import('../../../config/llm.js');
+      const { llmCall } = await import("../../../config/llm.js");
       const systemPrompt =
         `You are a helpful documentation assistant for the project "${project.name}". ` +
-        'Answer the question using only the provided documentation. Be concise and accurate.';
-      const userContent = `Documentation:\n\n${sections.join('\n\n---\n\n')}\n\n---\n\nQuestion: ${question}`;
+        "Answer the question using only the provided documentation. Be concise and accurate.";
+      const userContent = `Documentation:\n\n${sections.join("\n\n---\n\n")}\n\n---\n\nQuestion: ${question}`;
 
       const answer = await llmCall({ systemPrompt, userContent, temperature: 0 });
       return { projectId: project._id, projectName: project.name, question, answer };
     } catch (err) {
-      console.error('[MCP askCodebase] LLM call failed:', err.message);
+      console.error("[MCP askCodebase] LLM call failed:", err.message);
       return {
         projectId: project._id,
         projectName: project.name,
@@ -351,24 +320,21 @@ export class MCPController {
   static async searchDocs(project, query) {
     if (!query || query.trim().length === 0) {
       return {
-        error: 'Query is required',
+        error: "Query is required",
       };
     }
 
-
     const allDocs = {
-      readme: project.output?.readme || '',
-      api: project.output?.apiReference || '',
-      schema: project.output?.schemaDocs || '',
-      components: project.output?.componentRef || '',
-      internal: project.output?.internalDocs || '',
-      security: project.output?.securityReport || '',
+      readme: project.output?.readme || "",
+      api: project.output?.apiReference || "",
+      schema: project.output?.schemaDocs || "",
+      components: project.output?.componentRef || "",
+      internal: project.output?.internalDocs || "",
+      security: project.output?.securityReport || "",
     };
 
     const results = Object.entries(allDocs)
-      .filter(([_, content]) =>
-        content.toLowerCase().includes(query.toLowerCase()),
-      )
+      .filter(([_, content]) => content.toLowerCase().includes(query.toLowerCase()))
       .map(([section, content]) => ({
         section,
         preview: content.substring(0, 200),
@@ -390,10 +356,9 @@ export class MCPController {
       audit: {
         findings: project.security?.findings || [],
         score: project.security?.score || 100,
-        grade: project.security?.grade || 'A',
-        reportMarkdown: project.output?.securityReport || 'No security audit',
-        remediationMarkdown:
-          project.output?.remediationReport || 'No remediations found',
+        grade: project.security?.grade || "A",
+        reportMarkdown: project.output?.securityReport || "No security audit",
+        remediationMarkdown: project.output?.remediationReport || "No remediations found",
       },
       summary: {
         critical: project.security?.counts?.CRITICAL || 0,
@@ -407,7 +372,7 @@ export class MCPController {
 
   static async getCriticalFindings(project) {
     const findings = (project.security?.findings || []).filter(
-      (f) => f.severity === 'CRITICAL' || f.severity === 'HIGH',
+      (f) => f.severity === "CRITICAL" || f.severity === "HIGH",
     );
 
     return {
@@ -416,10 +381,10 @@ export class MCPController {
       findings,
       summary: {
         total: findings.length,
-        critical: findings.filter((f) => f.severity === 'CRITICAL').length,
-        high: findings.filter((f) => f.severity === 'HIGH').length,
+        critical: findings.filter((f) => f.severity === "CRITICAL").length,
+        high: findings.filter((f) => f.severity === "HIGH").length,
       },
-      recommendation: 'Review and fix CRITICAL and HIGH severity findings immediately',
+      recommendation: "Review and fix CRITICAL and HIGH severity findings immediately",
     };
   }
 
@@ -429,7 +394,7 @@ export class MCPController {
       projectName: project.name,
       score: {
         value: project.security?.score || 100,
-        grade: project.security?.grade || 'A',
+        grade: project.security?.grade || "A",
       },
       breakdown: project.security?.counts || {
         CRITICAL: 0,
@@ -438,29 +403,27 @@ export class MCPController {
         LOW: 0,
       },
       recommendation:
-        project.security?.grade === 'A'
-          ? 'Security posture is strong'
-          : 'Review findings for security improvements',
+        project.security?.grade === "A"
+          ? "Security posture is strong"
+          : "Review findings for security improvements",
     };
   }
 
   static async listProjects(userId) {
-
     const ownedProjects = await Project.find({ userId })
-      .select('_id name repoName status techStack provider')
+      .select("_id name repoName status techStack provider")
       .sort({ updatedAt: -1 })
       .limit(50);
 
-
     const sharedEntries = await ProjectShare.find({
       inviteeUserId: userId,
-      status: 'accepted',
-    }).select('projectId role');
+      status: "accepted",
+    }).select("projectId role");
 
     const sharedProjectIds = sharedEntries.map((s) => s.projectId);
     const sharedProjects = sharedProjectIds.length
       ? await Project.find({ _id: { $in: sharedProjectIds } })
-          .select('_id name repoName status techStack provider')
+          .select("_id name repoName status techStack provider")
           .limit(50)
       : [];
 
@@ -478,7 +441,7 @@ export class MCPController {
           provider: p.provider,
           status: p.status,
           techStack: p.techStack || [],
-          access: 'owner',
+          access: "owner",
         })),
         ...sharedProjects.map((p) => ({
           projectId: p._id,
@@ -487,7 +450,7 @@ export class MCPController {
           provider: p.provider,
           status: p.status,
           techStack: p.techStack || [],
-          access: shareRoleMap[p._id.toString()] || 'viewer',
+          access: shareRoleMap[p._id.toString()] || "viewer",
         })),
       ],
     };
@@ -502,7 +465,7 @@ export class MCPController {
         provider: project.provider,
       },
       architecture: {
-        hint: project.architectureHint || 'Unknown',
+        hint: project.architectureHint || "Unknown",
         techStack: project.techStack || [],
         layerMap: project.agentOutputs?.layerMap || {},
         entryPoints: project.entryPoints || [],
@@ -521,13 +484,12 @@ export class MCPController {
   }
 
   static async getDiff(project) {
-
     const versions = await DocumentVersion.find({
       projectId: project._id,
     })
       .sort({ createdAt: -1 })
       .limit(2)
-      .select('section content meta createdAt');
+      .select("section content meta createdAt");
 
     return {
       projectId: project._id,
@@ -539,14 +501,21 @@ export class MCPController {
               after: versions[0],
             }
           : {
-              message: 'No previous version to compare',
+              message: "No previous version to compare",
             },
     };
   }
 
   static async getProjectStatus(project) {
     const outputSections = Object.keys(project.output || {});
-    const expectedSections = ['readme', 'apiReference', 'schemaDocs', 'componentRef', 'internalDocs', 'securityReport'];
+    const expectedSections = [
+      "readme",
+      "apiReference",
+      "schemaDocs",
+      "componentRef",
+      "internalDocs",
+      "securityReport",
+    ];
     const completedSections = expectedSections.filter((s) => !!project.output?.[s]);
 
     return {
@@ -578,10 +547,17 @@ export class MCPController {
   }
 
   static async getDocSection(project, section) {
-    const validSections = ['readme', 'apiReference', 'schemaDocs', 'componentRef', 'internalDocs', 'securityReport'];
+    const validSections = [
+      "readme",
+      "apiReference",
+      "schemaDocs",
+      "componentRef",
+      "internalDocs",
+      "securityReport",
+    ];
     if (!section || !validSections.includes(section)) {
       return {
-        error: `Invalid section. Must be one of: ${validSections.join(', ')}`,
+        error: `Invalid section. Must be one of: ${validSections.join(", ")}`,
       };
     }
 
@@ -607,7 +583,7 @@ export class MCPController {
 
   static async getPortalUrl(project) {
     const portal = await Portal.findOne({ projectId: project._id }).select(
-      'slug isPublished accessMode customDomain seoTitle',
+      "slug isPublished accessMode customDomain seoTitle",
     );
 
     if (!portal) {
@@ -615,11 +591,11 @@ export class MCPController {
         projectId: project._id,
         projectName: project.name,
         portal: null,
-        message: 'No portal configured for this project. Create one at docnineai.com.',
+        message: "No portal configured for this project. Create one at docnineai.com.",
       };
     }
 
-    const baseUrl = 'https://docnineai.com/docs';
+    const baseUrl = "https://docnineai.com/docs";
     const portalUrl = portal.customDomain
       ? `https://${portal.customDomain}`
       : `${baseUrl}/${portal.slug}`;
@@ -634,90 +610,86 @@ export class MCPController {
         portalUrl: portal.isPublished ? portalUrl : null,
         customDomain: portal.customDomain || null,
         seoTitle: portal.seoTitle || project.name,
-        message: portal.isPublished
-          ? 'Portal is live'
-          : 'Portal exists but is not published yet',
+        message: portal.isPublished ? "Portal is live" : "Portal exists but is not published yet",
       },
     };
   }
 
-  
   static async listTools(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
       const userId = req.user?.userId;
 
-
       await MCPController.verifyProjectAccess(projectId, userId);
 
       const project = await Project.findById(projectId);
       if (!project) {
-        return res.status(404).json({ error: 'Project not found' });
+        return res.status(404).json({ error: "Project not found" });
       }
 
       const tools = [
         {
-          name: 'get_project_docs',
-          category: 'documentation',
-          description: 'Get full project documentation, README, and API specs'
+          name: "get_project_docs",
+          category: "documentation",
+          description: "Get full project documentation, README, and API specs",
         },
         {
-          name: 'get_api_reference',
-          category: 'documentation',
-          description: 'Get all API endpoints and their documentation'
+          name: "get_api_reference",
+          category: "documentation",
+          description: "Get all API endpoints and their documentation",
         },
         {
-          name: 'get_schema_docs',
-          category: 'documentation',
-          description: 'Get data models and database schema documentation'
+          name: "get_schema_docs",
+          category: "documentation",
+          description: "Get data models and database schema documentation",
         },
         {
-          name: 'get_component_docs',
-          category: 'documentation',
-          description: 'Get component, service, and hook documentation'
+          name: "get_component_docs",
+          category: "documentation",
+          description: "Get component, service, and hook documentation",
         },
         {
-          name: 'ask_codebase',
-          category: 'qa',
-          description: 'Ask natural language questions about the codebase',
-          input: { question: 'string' }
+          name: "ask_codebase",
+          category: "qa",
+          description: "Ask natural language questions about the codebase",
+          input: { question: "string" },
         },
         {
-          name: 'search_docs',
-          category: 'qa',
-          description: 'Search documentation semantically',
-          input: { query: 'string' }
+          name: "search_docs",
+          category: "qa",
+          description: "Search documentation semantically",
+          input: { query: "string" },
         },
         {
-          name: 'get_security_audit',
-          category: 'security',
-          description: 'Get full OWASP security audit with findings'
+          name: "get_security_audit",
+          category: "security",
+          description: "Get full OWASP security audit with findings",
         },
         {
-          name: 'get_critical_findings',
-          category: 'security',
-          description: 'Get critical and high-severity security findings only'
+          name: "get_critical_findings",
+          category: "security",
+          description: "Get critical and high-severity security findings only",
         },
         {
-          name: 'get_security_score',
-          category: 'security',
-          description: 'Get security grade (A-F) with breakdown'
+          name: "get_security_score",
+          category: "security",
+          description: "Get security grade (A-F) with breakdown",
         },
         {
-          name: 'list_projects',
-          category: 'project',
-          description: 'List all projects in workspace'
+          name: "list_projects",
+          category: "project",
+          description: "List all projects in workspace",
         },
         {
-          name: 'get_project_summary',
-          category: 'project',
-          description: 'Get project architecture, tech stack, and sync status'
+          name: "get_project_summary",
+          category: "project",
+          description: "Get project architecture, tech stack, and sync status",
         },
         {
-          name: 'get_diff',
-          category: 'project',
-          description: 'Get what changed in docs since last push'
-        }
+          name: "get_diff",
+          category: "project",
+          description: "Get what changed in docs since last push",
+        },
       ];
 
       return res.status(200).json({
@@ -726,38 +698,38 @@ export class MCPController {
         tools,
         baseUrl: `https://mcp.docnineai.com/projects/${projectId}`,
         authentication: {
-          type: 'Bearer token',
-          header: 'Authorization: Bearer <DOCNINE_TOKEN>',
-          location: 'Get token from: Dashboard → Settings → API Tokens'
-        }
+          type: "Bearer token",
+          header: "Authorization: Bearer <DOCNINE_TOKEN>",
+          location: "Get token from: Dashboard → Settings → API Tokens",
+        },
       });
     } catch (error) {
-      console.error('Error listing tools:', error);
+      console.error("Error listing tools:", error);
       const status = error.statusCode || 500;
-      res.status(status).json({ error: status === 403 || status === 404 ? error.message : 'Failed to list tools' });
+      res
+        .status(status)
+        .json({ error: status === 403 || status === 404 ? error.message : "Failed to list tools" });
     }
   }
 
-  
   static async healthCheck(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
 
-
       const exists = await Project.exists({ _id: projectId });
       if (!exists) {
-        return res.status(404).json({ status: 'unhealthy', error: 'Project not found' });
+        return res.status(404).json({ status: "unhealthy", error: "Project not found" });
       }
 
       return res.status(200).json({
-        status: 'healthy',
+        status: "healthy",
         projectId,
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
+        version: "1.0.0",
       });
     } catch (error) {
-      console.error('Health check error:', error);
-      res.status(500).json({ status: 'unhealthy', error: 'Internal error' });
+      console.error("Health check error:", error);
+      res.status(500).json({ status: "unhealthy", error: "Internal error" });
     }
   }
 }

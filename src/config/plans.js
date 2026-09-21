@@ -1,10 +1,4 @@
-
-
-
-
-
 export const PLAN_IDS = ["free", "starter", "pro", "team"];
-
 
 export const PLAN_LEVEL = { free: 0, starter: 1, pro: 2, team: 3 };
 export const TRIAL_DAYS = 7;
@@ -12,9 +6,7 @@ export const DUNNING_MAX_DAYS = 10;
 export const DUNNING_RETRY_DAYS = [0, 3, 7];
 export const DUNNING_EMAIL_DAYS = [1, 5, 10];
 
-
 export const PLANS = {
-
   free: {
     id: "free",
     name: "Free",
@@ -49,7 +41,6 @@ export const PLANS = {
       githubSync: false,
     },
   },
-
 
   starter: {
     id: "starter",
@@ -86,7 +77,6 @@ export const PLANS = {
     },
   },
 
-
   pro: {
     id: "pro",
     name: "Pro",
@@ -121,7 +111,6 @@ export const PLANS = {
       githubSync: true,
     },
   },
-
 
   team: {
     id: "team",
@@ -159,9 +148,6 @@ export const PLANS = {
   },
 };
 
-
-
-
 export function computeMonthlyPrice(planId, cycle, seats = 1) {
   const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: ${planId}`);
@@ -170,7 +156,6 @@ export function computeMonthlyPrice(planId, cycle, seats = 1) {
   return perUnit;
 }
 
-
 export function computeAnnualTotal(planId, seats = 1) {
   const plan = PLANS[planId];
   if (!plan) throw new Error(`Unknown plan: ${planId}`);
@@ -178,20 +163,14 @@ export function computeAnnualTotal(planId, seats = 1) {
   return plan.prices.annualTotal;
 }
 
-
 export function effectivePlanId(sub) {
   if (!sub) return "free";
   if (sub.status === "paused") return "free";
-  if (
-    sub.status === "trialing" ||
-    sub.status === "active" ||
-    sub.status === "past_due"
-  ) {
+  if (sub.status === "trialing" || sub.status === "active" || sub.status === "past_due") {
     return sub.plan || "free";
   }
   return "free";
 }
-
 
 export function getPlan(planId) {
   const plan = PLANS[planId];
@@ -199,11 +178,9 @@ export function getPlan(planId) {
   return plan;
 }
 
-
 export function isUpgrade(currentPlanId, targetPlanId) {
   return (PLAN_LEVEL[targetPlanId] ?? 0) > (PLAN_LEVEL[currentPlanId] ?? 0);
 }
-
 
 export function isDowngrade(currentPlanId, targetPlanId) {
   return (PLAN_LEVEL[targetPlanId] ?? 0) < (PLAN_LEVEL[currentPlanId] ?? 0);

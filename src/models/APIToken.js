@@ -1,5 +1,3 @@
-
-
 import mongoose from "mongoose";
 import { randomBytes } from "crypto";
 import { hashToken } from "../utils/crypto.util.js";
@@ -72,12 +70,8 @@ const apiTokenSchema = new mongoose.Schema(
   },
 );
 
-
 apiTokenSchema.index({ userId: 1, isRevoked: 1 });
 apiTokenSchema.index({ expiresAt: 1 }, { sparse: true });
-
-
-
 
 apiTokenSchema.statics.generateToken = function () {
   const prefix = "docnine_";
@@ -89,13 +83,9 @@ apiTokenSchema.statics.generateToken = function () {
   return { plainToken, tokenHash, lastChars };
 };
 
-
 apiTokenSchema.statics.verifyToken = function (plainToken, tokenHash) {
   return hashToken(plainToken) === tokenHash;
 };
-
-
-
 
 apiTokenSchema.methods.isValid = function () {
   if (this.isRevoked) return false;
@@ -103,25 +93,20 @@ apiTokenSchema.methods.isValid = function () {
   return true;
 };
 
-
 apiTokenSchema.methods.hasScope = function (requiredScope) {
   return this.scope.includes(requiredScope);
 };
 
-
 apiTokenSchema.methods.hasProjectAccess = function (projectId) {
-
   if (!this.projectIds || this.projectIds.length === 0) return true;
   return this.projectIds.some((p) => p.toString() === projectId.toString());
 };
-
 
 apiTokenSchema.methods.recordUsage = async function (ipAddress) {
   this.lastUsedAt = new Date();
   if (ipAddress) this.lastIpAddress = ipAddress;
   await this.save();
 };
-
 
 apiTokenSchema.methods.toSafeJSON = function () {
   return {

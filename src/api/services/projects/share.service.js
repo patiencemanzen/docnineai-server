@@ -1,4 +1,3 @@
-
 import { randomUUID } from "crypto";
 import { Project } from "../../../models/Project.js";
 import { ProjectShare } from "../../../models/ProjectShare.js";
@@ -9,8 +8,6 @@ import { Subscription } from "../../../models/Subscription.js";
 import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
-
-
 
 function forbidden(msg = "Access denied.") {
   const e = new Error(msg);
@@ -36,23 +33,13 @@ async function assertShareAllowed(ownerId, role, { countTowardLimit = true } = {
   const features = getPlan(planId).features;
 
   if (role === "editor" && !features.shareEdit) {
-    throw planGate(
-      "Edit sharing requires the Pro plan or higher.",
-      "pro",
-    );
+    throw planGate("Edit sharing requires the Pro plan or higher.", "pro");
   }
   if (role === "viewer" && !features.shareViewOnly) {
-    throw planGate(
-      "Project sharing requires the Starter plan or higher.",
-      "starter",
-    );
+    throw planGate("Project sharing requires the Starter plan or higher.", "starter");
   }
 
-  if (
-    countTowardLimit &&
-    features.maxShares !== null &&
-    features.maxShares !== undefined
-  ) {
+  if (countTowardLimit && features.maxShares !== null && features.maxShares !== undefined) {
     const count = await ProjectShare.countDocuments({
       ownerId,
       status: { $in: ["pending", "accepted"] },
@@ -66,7 +53,6 @@ async function assertShareAllowed(ownerId, role, { countTowardLimit = true } = {
   }
 }
 
-
 async function assertOwner(projectId, userId) {
   const project = await Project.findById(projectId).lean();
   if (!project) throw notFound("Project not found.");
@@ -74,9 +60,6 @@ async function assertOwner(projectId, userId) {
     throw forbidden("Only the project owner can manage sharing.");
   return project;
 }
-
-
-
 
 export async function inviteUsers(projectId, ownerId, invites) {
   const project = await assertOwner(projectId, ownerId);
@@ -87,7 +70,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
   for (const { email, role } of invites) {
     const lc = email.toLowerCase().trim();
 
-
     if (lc === owner.email) {
       results.push({
         email: lc,
@@ -96,7 +78,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
       });
       continue;
     }
-
 
     const existing = await ProjectShare.findOne({
       projectId,
@@ -133,7 +114,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
       continue;
     }
 
-
     await ProjectShare.deleteOne({
       projectId,
       inviteeEmail: lc,
@@ -141,7 +121,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
     });
 
     await assertShareAllowed(ownerId, role);
-
 
     const inviteeUser = await User.findOne({ email: lc }).select("_id").lean();
 
@@ -173,7 +152,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
       metadata: { inviteeEmail: lc, role },
     });
 
-
     if (inviteeUser?._id) {
       NotificationService.create({
         userId: inviteeUser._id,
@@ -191,7 +169,6 @@ export async function inviteUsers(projectId, ownerId, invites) {
   return results;
 }
 
-
 export async function listAccess(projectId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -205,7 +182,6 @@ export async function listAccess(projectId, ownerId) {
 
   return shares.map(_serialize);
 }
-
 
 export async function changeRole(projectId, shareId, ownerId, newRole) {
   await assertOwner(projectId, ownerId);
@@ -248,7 +224,6 @@ export async function changeRole(projectId, shareId, ownerId, newRole) {
   return _serialize(share);
 }
 
-
 export async function revokeAccess(projectId, shareId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -282,7 +257,6 @@ export async function revokeAccess(projectId, shareId, ownerId) {
   await syncTeamSeatsAndBilling(projectId, ownerId);
 }
 
-
 export async function resendInvite(projectId, shareId, ownerId) {
   const project = await assertOwner(projectId, ownerId);
   const owner = await User.findById(ownerId).select("name email").lean();
@@ -309,7 +283,6 @@ export async function resendInvite(projectId, shareId, ownerId) {
   return _serialize(share);
 }
 
-
 export async function cancelInvite(projectId, shareId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -323,15 +296,12 @@ export async function cancelInvite(projectId, shareId, ownerId) {
   await share.deleteOne();
 }
 
-
 export async function acceptInvite(token, userId) {
   const share = await ProjectShare.findOne({ token, status: "pending" });
   if (!share) throw notFound("Invalid or expired invite link.");
 
   if (share.expiresAt < new Date()) {
-    throw forbidden(
-      "This invite link has expired. Ask the owner to resend it.",
-    );
+    throw forbidden("This invite link has expired. Ask the owner to resend it.");
   }
 
   share.status = "accepted";
@@ -348,12 +318,11 @@ export async function acceptInvite(token, userId) {
     metadata: { inviteeEmail: share.inviteeEmail, role: share.role },
   });
 
-
   const project = await Project.findById(share.projectId).select("userId meta repoName");
   if (project) {
     await syncTeamSeatsAndBilling(project._id.toString(), project.userId.toString());
     const inviteeName = userId
-      ? (await User.findById(userId).select("name").lean())?.name ?? share.inviteeEmail
+      ? ((await User.findById(userId).select("name").lean())?.name ?? share.inviteeEmail)
       : share.inviteeEmail;
     NotificationService.create({
       userId: project.userId,
@@ -370,9 +339,7 @@ export async function acceptInvite(token, userId) {
   return { projectId: share.projectId.toString(), role: share.role };
 }
 
-
 export async function getSharedProjects(userId) {
-
   const user = await User.findById(userId).select("email").lean();
 
   const query = user
@@ -394,7 +361,6 @@ export async function getSharedProjects(userId) {
   return projects.map((p) => ({ ...p, shareRole: roleMap[p._id.toString()] }));
 }
 
-
 export async function assertProjectAccess(projectId, userId) {
   const project = await Project.findById(projectId).lean();
   if (!project) throw notFound("Project not found.");
@@ -403,22 +369,17 @@ export async function assertProjectAccess(projectId, userId) {
     return { isOwner: true, role: "owner", project };
   }
 
-
   const user = await User.findById(userId).select("email").lean();
   const share = await ProjectShare.findOne({
     projectId,
     status: "accepted",
-    $or: [
-      { inviteeUserId: userId },
-      ...(user ? [{ inviteeEmail: user.email }] : []),
-    ],
+    $or: [{ inviteeUserId: userId }, ...(user ? [{ inviteeEmail: user.email }] : [])],
   }).lean();
 
   if (!share) throw forbidden("You do not have access to this project.");
 
   return { isOwner: false, role: share.role, project };
 }
-
 
 export async function getShareRole(projectId, userId) {
   const project = await Project.findById(projectId).select("userId").lean();
@@ -429,16 +390,11 @@ export async function getShareRole(projectId, userId) {
   const share = await ProjectShare.findOne({
     projectId,
     status: "accepted",
-    $or: [
-      { inviteeUserId: userId },
-      ...(user ? [{ inviteeEmail: user.email }] : []),
-    ],
+    $or: [{ inviteeUserId: userId }, ...(user ? [{ inviteeEmail: user.email }] : [])],
   }).lean();
 
   return share?.role ?? null;
 }
-
-
 
 function _serialize(share) {
   const s = share.toObject ? share.toObject() : { ...share };

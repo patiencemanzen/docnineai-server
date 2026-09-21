@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import crypto from "crypto";
 
@@ -8,8 +7,6 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-
 
 const HIGH_PRIORITY = [
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|go\.mod|pom\.xml|build\.gradle|Cargo\.toml|pyproject\.toml|setup\.py|composer\.json)$/i,
@@ -45,17 +42,12 @@ function selectRelevantFiles(files, cap) {
     .map(({ f }) => f);
 }
 
-
-
 function bbHeaders(accessToken) {
   return {
     Accept: "application/json",
     Authorization: `Bearer ${accessToken}`,
   };
 }
-
-
-
 
 export function parseRepoUrl(url) {
   const s = String(url || "")
@@ -78,9 +70,6 @@ export function parseRepoUrl(url) {
   throw err;
 }
 
-
-
-
 export function getOAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: process.env.BITBUCKET_CLIENT_ID,
@@ -90,9 +79,7 @@ export function getOAuthUrl(state) {
   return `https://bitbucket.org/site/oauth2/authorize?${params}`;
 }
 
-
 export async function exchangeCode(code) {
-
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -112,9 +99,7 @@ export async function exchangeCode(code) {
   return data;
 }
 
-
 export async function refreshAccessToken(refreshToken) {
-
   const params = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -134,7 +119,6 @@ export async function refreshAccessToken(refreshToken) {
   return data;
 }
 
-
 export async function getAuthenticatedUser(accessToken) {
   const { data } = await axios.get(`${BB_API}/user`, {
     headers: bbHeaders(accessToken),
@@ -148,11 +132,10 @@ export async function getAuthenticatedUser(accessToken) {
   };
 }
 
-
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   try {
     console.log("[bitbucket.service] Fetching repositories", { page, perPage });
-    
+
     const start = (page - 1) * perPage;
     const { data } = await axios.get(`${BB_API}/repositories`, {
       headers: bbHeaders(accessToken),
@@ -163,10 +146,16 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
         sort: "-updated_on",
       },
     });
-    
+
     console.log("[bitbucket.service] Raw Bitbucket API response", {
       repoCount: data.values?.length || 0,
-      firstRepo: data.values?.[0] ? { uuid: data.values[0].uuid, name: data.values[0].name, full_slug: data.values[0].full_slug } : null,
+      firstRepo: data.values?.[0]
+        ? {
+            uuid: data.values[0].uuid,
+            name: data.values[0].name,
+            full_slug: data.values[0].full_slug,
+          }
+        : null,
     });
 
     const repos = (data.values || []).map((r) => ({
@@ -197,9 +186,6 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   }
 }
 
-
-
-
 export async function getRepoMeta(owner, repo, accessToken) {
   const { data } = await axios.get(`${BB_API}/repositories/${owner}/${repo}`, {
     headers: bbHeaders(accessToken),
@@ -216,19 +202,12 @@ export async function getRepoMeta(owner, repo, accessToken) {
   };
 }
 
-
-
-
 export async function getCommitSha(owner, repo, branch, accessToken) {
-  const { data } = await axios.get(
-    `${BB_API}/repositories/${owner}/${repo}/commit/${branch}`,
-    { headers: bbHeaders(accessToken) },
-  );
+  const { data } = await axios.get(`${BB_API}/repositories/${owner}/${repo}/commit/${branch}`, {
+    headers: bbHeaders(accessToken),
+  });
   return data.hash;
 }
-
-
-
 
 export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
   const all = [];
@@ -267,31 +246,14 @@ export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
     }));
 }
 
-
 export async function getFileTree(owner, repo, branch, accessToken) {
   const items = await getFileTreeWithSha(owner, repo, branch, accessToken);
   return items.map((i) => ({ path: i.path, size: i.size }));
 }
 
-
-
-
-export async function computeFileDiff(
-  owner,
-  repo,
-  branch,
-  storedManifest,
-  accessToken,
-) {
-  const currentTree = await getFileTreeWithSha(
-    owner,
-    repo,
-    branch,
-    accessToken,
-  );
-  const eligible = currentTree.filter(
-    (f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024,
-  );
+export async function computeFileDiff(owner, repo, branch, storedManifest, accessToken) {
+  const currentTree = await getFileTreeWithSha(owner, repo, branch, accessToken);
+  const eligible = currentTree.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024);
 
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
   const currentMap = new Map(eligible.map((f) => [f.path, f]));
@@ -321,8 +283,6 @@ export async function computeFileDiff(
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
 
-
-
 export async function getFileContent(owner, repo, filePath, accessToken) {
   try {
     const { data } = await axios.get(
@@ -336,15 +296,7 @@ export async function getFileContent(owner, repo, filePath, accessToken) {
   }
 }
 
-
-
-export async function fetchFileContents(
-  owner,
-  repo,
-  filePaths,
-  onProgress,
-  accessToken,
-) {
+export async function fetchFileContents(owner, repo, filePaths, onProgress, accessToken) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
@@ -360,17 +312,10 @@ export async function fetchFileContents(
   return files;
 }
 
-
-
 export async function fetchRepoFiles(repoUrl, accessToken) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, repo, accessToken);
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
 
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),
@@ -388,13 +333,7 @@ export async function fetchRepoFiles(repoUrl, accessToken) {
   return { meta, files, owner, repo };
 }
 
-
-
-export async function fetchRepoFilesWithProgress(
-  repoUrl,
-  onProgress,
-  accessToken,
-) {
+export async function fetchRepoFilesWithProgress(repoUrl, onProgress, accessToken) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
@@ -404,12 +343,7 @@ export async function fetchRepoFilesWithProgress(
   const meta = await getRepoMeta(owner, repo, accessToken);
 
   notify(`Reading file tree on branch "${meta.defaultBranch}"…`);
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
 
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024),

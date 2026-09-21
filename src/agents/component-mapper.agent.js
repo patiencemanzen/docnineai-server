@@ -229,13 +229,7 @@ function validateComponent(comp, fallbackFile) {
     "type",
     "other",
   ];
-  const VALID_LAYERS = [
-    "frontend",
-    "backend",
-    "shared",
-    "infrastructure",
-    "database",
-  ];
+  const VALID_LAYERS = ["frontend", "backend", "shared", "infrastructure", "database"];
   const VALID_COMPLEXITY = ["low", "medium", "high"];
 
   return {
@@ -245,27 +239,19 @@ function validateComponent(comp, fallbackFile) {
     type: VALID_TYPES.includes(comp.type) ? comp.type : "other",
     layer: VALID_LAYERS.includes(comp.layer) ? comp.layer : "unknown",
     description: comp.description || "",
-    responsibilities: Array.isArray(comp.responsibilities)
-      ? comp.responsibilities
-      : [],
+    responsibilities: Array.isArray(comp.responsibilities) ? comp.responsibilities : [],
     exports: {
       default: comp.exports?.default ?? null,
       named: Array.isArray(comp.exports?.named) ? comp.exports.named : [],
     },
-    parameters: Array.isArray(comp.parameters)
-      ? comp.parameters.map(normalizeParam)
-      : [],
+    parameters: Array.isArray(comp.parameters) ? comp.parameters.map(normalizeParam) : [],
     returns: {
       type: comp.returns?.type || "void",
       description: comp.returns?.description || "",
     },
     dependencies: {
-      internal: Array.isArray(comp.dependencies?.internal)
-        ? comp.dependencies.internal
-        : [],
-      external: Array.isArray(comp.dependencies?.external)
-        ? comp.dependencies.external
-        : [],
+      internal: Array.isArray(comp.dependencies?.internal) ? comp.dependencies.internal : [],
+      external: Array.isArray(comp.dependencies?.external) ? comp.dependencies.external : [],
     },
     state: {
       manages: comp.state?.manages ?? false,
@@ -278,9 +264,7 @@ function validateComponent(comp, fallbackFile) {
     singleton: comp.singleton ?? null,
     testable: comp.testable ?? true,
     deprecated: comp.deprecated ?? false,
-    complexity: VALID_COMPLEXITY.includes(comp.complexity)
-      ? comp.complexity
-      : "unknown",
+    complexity: VALID_COMPLEXITY.includes(comp.complexity) ? comp.complexity : "unknown",
     tags: Array.isArray(comp.tags) ? comp.tags : inferTags(name, file),
     notes: comp.notes || "",
   };
@@ -370,11 +354,7 @@ function createFallbackComponent(file, projectMap) {
   };
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -451,8 +431,11 @@ export async function componentMapperAgent({
             named: meta?.exports || [],
           },
           async: /async\s+function|=>\s*{|\.then\s*\(|await\s+/m.test(f.content.slice(0, 1000)),
-          side_effects: meta?.flags?.includes("has_db") ? ["Database operations"] :
-                        meta?.flags?.includes("has_side_effects") ? ["Side effects detected"] : [],
+          side_effects: meta?.flags?.includes("has_db")
+            ? ["Database operations"]
+            : meta?.flags?.includes("has_side_effects")
+              ? ["Side effects detected"]
+              : [],
           notes: meta ? "" : "⚠ Auto-generated stub : LLM extraction skipped (fast mode).",
         };
       })
@@ -465,7 +448,16 @@ export async function componentMapperAgent({
     }
     const deduped = Array.from(componentMap.values());
     const summary = buildSummary(deduped);
-    notify(`${deduped.length} components mapped (heuristic)`, `${summary.byType ? Object.entries(summary.byType).map(([t, n]) => `${n} ${t}`).join(", ") : ""}`);
+    notify(
+      `${deduped.length} components mapped (heuristic)`,
+      `${
+        summary.byType
+          ? Object.entries(summary.byType)
+              .map(([t, n]) => `${n} ${t}`)
+              .join(", ")
+          : ""
+      }`,
+    );
     return { components: deduped, summary };
   }
 
@@ -489,9 +481,7 @@ export async function componentMapperAgent({
         const truncated = f.content.length > CHARS_PER_FILE;
         return [
           `=== FILE: ${f.path} ===`,
-          truncated
-            ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]`
-            : "",
+          truncated ? `[Truncated at ${CHARS_PER_FILE} chars : ${f.content.length} total]` : "",
           f.content.slice(0, CHARS_PER_FILE),
         ]
           .filter(Boolean)
@@ -512,23 +502,16 @@ export async function componentMapperAgent({
           error: "Response was not a JSON array",
         });
 
-        batch.forEach((f) =>
-          rawComponents.push(createFallbackComponent(f, projectMap)),
-        );
+        batch.forEach((f) => rawComponents.push(createFallbackComponent(f, projectMap)));
         continue;
       }
 
       for (const comp of parsed) {
-
         const matchedFile = batch.find((f) =>
-          comp.file
-            ? f.path.endsWith(comp.file) || comp.file.endsWith(f.path)
-            : false,
+          comp.file ? f.path.endsWith(comp.file) || comp.file.endsWith(f.path) : false,
         );
         const fallbackFile =
-          batch.length === 1
-            ? batch[0].path
-            : matchedFile?.path || comp.file || batch[0].path;
+          batch.length === 1 ? batch[0].path : matchedFile?.path || comp.file || batch[0].path;
 
         const validated = validateComponent(comp, fallbackFile);
         if (validated) rawComponents.push(validated);
@@ -536,9 +519,7 @@ export async function componentMapperAgent({
     } catch (err) {
       batchErrors.push({ batch: batchNum, error: err.message });
 
-      batch.forEach((f) =>
-        rawComponents.push(createFallbackComponent(f, projectMap)),
-      );
+      batch.forEach((f) => rawComponents.push(createFallbackComponent(f, projectMap)));
     }
   }
 
@@ -558,14 +539,7 @@ export async function componentMapperAgent({
   }
 
   const components = Array.from(componentMap.values()).sort((a, b) => {
-    const layerOrder = [
-      "backend",
-      "frontend",
-      "shared",
-      "infrastructure",
-      "database",
-      "unknown",
-    ];
+    const layerOrder = ["backend", "frontend", "shared", "infrastructure", "database", "unknown"];
     const typeOrder = [
       "service",
       "middleware",

@@ -100,7 +100,6 @@ const ROUTE_ROLES = new Set(["route", "controller", "entry", "handler", "api"]);
 
 const ROUTE_REGEX = new RegExp(
   [
-
     /router\.(get|post|put|delete|patch|head|options)\s*\(/,
     /app\.(get|post|put|delete|patch|head|options)\s*\(/,
     /fastify\.(get|post|put|delete|patch|head|options)\s*\(/,
@@ -154,7 +153,6 @@ function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-
     const stripped = raw
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/i, "")
@@ -171,15 +169,7 @@ function validateEndpoint(ep, fallbackFile) {
   if (!ep || typeof ep !== "object") return null;
 
   const method = String(ep.method ?? "").toUpperCase();
-  const validMethods = [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ];
+  const validMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
   if (!validMethods.includes(method)) return null;
 
   const path = String(ep.path ?? "").trim();
@@ -219,9 +209,7 @@ function validateEndpoint(ep, fallbackFile) {
 }
 
 function inferTags(path, file) {
-  const fromPath = path
-    .split("/")
-    .filter((s) => s && !s.startsWith(":") && s !== "api");
+  const fromPath = path.split("/").filter((s) => s && !s.startsWith(":") && s !== "api");
   if (fromPath.length > 0) return [fromPath[0]];
   const fromFile = file
     .split("/")
@@ -231,11 +219,7 @@ function inferTags(path, file) {
   return fromFile ? [fromFile] : [];
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -247,29 +231,42 @@ async function llmCallWithRetry({
 }
 
 const HEURISTIC_ROUTE_MATCHERS = [
+  {
+    re: /(?:router|app)\.(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]+)['"`]/gi,
+    mIdx: 1,
+    pIdx: 2,
+  },
 
-  { re: /(?:router|app)\.(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
+  {
+    re: /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*['"`]?([^'"`),]*)['"`]?\s*\)/gi,
+    mIdx: 1,
+    pIdx: 2,
+  },
 
-  { re: /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*['"`]?([^'"`),]*)['"`]?\s*\)/gi, mIdx: 1, pIdx: 2 },
-
-  { re: /@(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
+  {
+    re: /@(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi,
+    mIdx: 1,
+    pIdx: 2,
+  },
 
   { re: /@(?:app|blueprint|api)\.route\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: null, pIdx: 1 },
 
   { re: /Route::(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
-
 ];
 
 function heuristicExtractEndpoints(file, projectMap) {
   const endpoints = [];
   const meta = projectMap?.find((m) => m.path === file.path);
 
-  const isNextApiRoute = /(?:pages|app)\/api\//.test(file.path) || /(?:route|page)\.[jt]sx?$/.test(file.path);
+  const isNextApiRoute =
+    /(?:pages|app)\/api\//.test(file.path) || /(?:route|page)\.[jt]sx?$/.test(file.path);
 
   if (isNextApiRoute) {
     const methods = [];
-    if (/export\s+(?:async\s+)?function\s+GET\b|handler.*method.*GET/i.test(file.content)) methods.push("GET");
-    if (/export\s+(?:async\s+)?function\s+POST\b|handler.*method.*POST/i.test(file.content)) methods.push("POST");
+    if (/export\s+(?:async\s+)?function\s+GET\b|handler.*method.*GET/i.test(file.content))
+      methods.push("GET");
+    if (/export\s+(?:async\s+)?function\s+POST\b|handler.*method.*POST/i.test(file.content))
+      methods.push("POST");
     if (/export\s+(?:async\s+)?function\s+PUT\b/i.test(file.content)) methods.push("PUT");
     if (/export\s+(?:async\s+)?function\s+DELETE\b/i.test(file.content)) methods.push("DELETE");
     if (/export\s+(?:async\s+)?function\s+PATCH\b/i.test(file.content)) methods.push("PATCH");
@@ -279,29 +276,43 @@ function heuristicExtractEndpoints(file, projectMap) {
     }
     if (!methods.length) methods.push("GET");
 
-    const routePath = "/" + file.path
-      .replace(/^.*?(?:pages\/api|app\/api)\//, "api/")
-      .replace(/\/route\.[jt]sx?$/, "")
-      .replace(/\/index\.[jt]sx?$/, "")
-      .replace(/\.[jt]sx?$/, "")
-      .replace(/\[([^\]]+)\]/g, ":$1");
+    const routePath =
+      "/" +
+      file.path
+        .replace(/^.*?(?:pages\/api|app\/api)\//, "api/")
+        .replace(/\/route\.[jt]sx?$/, "")
+        .replace(/\/index\.[jt]sx?$/, "")
+        .replace(/\.[jt]sx?$/, "")
+        .replace(/\[([^\]]+)\]/g, ":$1");
 
     for (const method of methods) {
-      endpoints.push(validateEndpoint({
-        method,
-        path: routePath.startsWith("/") ? routePath : "/" + routePath,
-        file: file.path,
-        handler: "handler",
-        description: meta?.summary || "",
-        auth: { required: /auth|protect|verify|guard/i.test(file.content), type: "unknown", roles: [] },
-        request: { headers: [], params: [], body_schema: "" },
-        response: { success: { status: method === "POST" ? 201 : 200, description: "", schema: "" }, errors: [] },
-        middleware: [],
-        rate_limit: "",
-        deprecated: false,
-        tags: [routePath.split("/").filter(s => s && !s.startsWith(":"))[1] || "api"],
-        notes: "",
-      }, file.path));
+      endpoints.push(
+        validateEndpoint(
+          {
+            method,
+            path: routePath.startsWith("/") ? routePath : "/" + routePath,
+            file: file.path,
+            handler: "handler",
+            description: meta?.summary || "",
+            auth: {
+              required: /auth|protect|verify|guard/i.test(file.content),
+              type: "unknown",
+              roles: [],
+            },
+            request: { headers: [], params: [], body_schema: "" },
+            response: {
+              success: { status: method === "POST" ? 201 : 200, description: "", schema: "" },
+              errors: [],
+            },
+            middleware: [],
+            rate_limit: "",
+            deprecated: false,
+            tags: [routePath.split("/").filter((s) => s && !s.startsWith(":"))[1] || "api"],
+            notes: "",
+          },
+          file.path,
+        ),
+      );
     }
     return endpoints.filter(Boolean);
   }
@@ -314,21 +325,33 @@ function heuristicExtractEndpoints(file, projectMap) {
       const path = match[pIdx]?.trim();
       if (!path || path.length < 1) continue;
       const normalPath = path.startsWith("/") ? path : "/" + path;
-      endpoints.push(validateEndpoint({
-        method,
-        path: normalPath,
-        file: file.path,
-        handler: "unknown",
-        description: meta?.summary || "",
-        auth: { required: /auth|protect|verify|guard/i.test(file.content), type: "unknown", roles: [] },
-        request: { headers: [], params: [], body_schema: "" },
-        response: { success: { status: method === "POST" ? 201 : 200, description: "", schema: "" }, errors: [] },
-        middleware: [],
-        rate_limit: "",
-        deprecated: false,
-        tags: inferTags(normalPath, file.path),
-        notes: "",
-      }, file.path));
+      endpoints.push(
+        validateEndpoint(
+          {
+            method,
+            path: normalPath,
+            file: file.path,
+            handler: "unknown",
+            description: meta?.summary || "",
+            auth: {
+              required: /auth|protect|verify|guard/i.test(file.content),
+              type: "unknown",
+              roles: [],
+            },
+            request: { headers: [], params: [], body_schema: "" },
+            response: {
+              success: { status: method === "POST" ? 201 : 200, description: "", schema: "" },
+              errors: [],
+            },
+            middleware: [],
+            rate_limit: "",
+            deprecated: false,
+            tags: inferTags(normalPath, file.path),
+            notes: "",
+          },
+          file.path,
+        ),
+      );
     }
   }
 
@@ -367,7 +390,10 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
       return (a.tags[0] ?? "").localeCompare(b.tags[0] ?? "") || a.path.localeCompare(b.path);
     });
     const summary = buildSummary(endpoints);
-    notify(`${endpoints.length} endpoints found (heuristic)`, `${summary.authRequired} require auth`);
+    notify(
+      `${endpoints.length} endpoints found (heuristic)`,
+      `${summary.authRequired} require auth`,
+    );
     return { endpoints, summary };
   }
 
@@ -416,16 +442,11 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
       }
 
       for (const ep of parsed) {
-
         const matchedFile = batch.find((f) =>
-          ep.file
-            ? f.path.endsWith(ep.file) || ep.file.endsWith(f.path)
-            : false,
+          ep.file ? f.path.endsWith(ep.file) || ep.file.endsWith(f.path) : false,
         );
         const fallbackFile =
-          batch.length === 1
-            ? batch[0].path
-            : matchedFile?.path || ep.file || batch[0].path;
+          batch.length === 1 ? batch[0].path : matchedFile?.path || ep.file || batch[0].path;
 
         const validated = validateEndpoint(ep, fallbackFile);
         if (validated) rawEndpoints.push(validated);
@@ -444,7 +465,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
     if (!existing) {
       endpointMap.set(key, ep);
     } else {
-
       const existingScore = scoreCompleteness(existing);
       const newScore = scoreCompleteness(ep);
       if (newScore > existingScore) endpointMap.set(key, ep);

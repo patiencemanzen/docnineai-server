@@ -1,10 +1,13 @@
-
 import * as projectService from "../../services/projects/project.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-import { jobs, streams, hydrateJobFromRedis, hydrateJobFromDb } from "../../../services/job-registry.service.js";
+import {
+  jobs,
+  streams,
+  hydrateJobFromRedis,
+  hydrateJobFromDb,
+} from "../../../services/job-registry.service.js";
 import { SECTIONS } from "../../../models/DocumentVersion.js";
 import { PlanUsage } from "../../../models/PlanUsage.js";
-
 
 let _exportToPDF = null;
 let _exportToNotion = null;
@@ -13,7 +16,6 @@ let _getGoogleDocsOAuthUrl = null;
 let _getGoogleDocsConnectionStatus = null;
 let _disconnectGoogleDocs = null;
 let _genWorkflow = null;
-
 
 const DOMAIN_CODES = new Set([
   "INVALID_REPO_URL",
@@ -27,8 +29,7 @@ const DOMAIN_CODES = new Set([
 ]);
 
 function handleErr(res, err, ctx) {
-  if (DOMAIN_CODES.has(err.code))
-    return fail(res, err.code, err.message, err.status || 400);
+  if (DOMAIN_CODES.has(err.code)) return fail(res, err.code, err.message, err.status || 400);
   return serverError(res, err, ctx);
 }
 
@@ -85,7 +86,6 @@ async function getGenWorkflow() {
   return _genWorkflow;
 }
 
-
 export async function createProject(req, res) {
   try {
     const project = await projectService.createProject({
@@ -103,7 +103,6 @@ export async function createProject(req, res) {
       201,
     );
   } catch (err) {
-
     if (req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
     }
@@ -123,7 +122,6 @@ export async function createFromScratchProject(req, res) {
     }
     return ok(res, { project }, "From-scratch project created.", 201);
   } catch (err) {
-
     if (req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
     }
@@ -174,9 +172,7 @@ export async function deleteProject(req, res) {
       userId: req.user.userId,
     });
 
-    await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(
-      () => {},
-    );
+    await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
     return ok(res, null, "Project deleted.");
   } catch (err) {
     return handleErr(res, err, "deleteProject");
@@ -213,8 +209,6 @@ export async function retryProject(req, res) {
   }
 }
 
-
-
 export async function syncProject(req, res) {
   const forceFullRun = req.query.force === "true";
   try {
@@ -233,8 +227,6 @@ export async function syncProject(req, res) {
     return handleErr(res, err, "syncProject");
   }
 }
-
-
 
 export async function getProjectEvents(req, res) {
   try {
@@ -270,8 +262,6 @@ export async function streamProject(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-
-
   const jobId = project.jobId;
   let job = jobs.get(jobId);
 
@@ -284,7 +274,6 @@ export async function streamProject(req, res) {
     }
   }
 
-  
   if (!job) {
     if (project.status === "done" || project.status === "error") {
       const syntheticResult = {
@@ -301,7 +290,6 @@ export async function streamProject(req, res) {
       return res.end();
     }
 
-
     job = await hydrateJobFromRedis(jobId);
 
     if (!job && project.events?.length) {
@@ -309,7 +297,6 @@ export async function streamProject(req, res) {
     }
 
     if (!job) {
-
       const isLikelyVercelTimeout = project.meta?.vercelTimedOut === true;
       const message = isLikelyVercelTimeout
         ? "Pipeline was interrupted by Vercel's 60s HTTP timeout. It may still be running in the background. Please retry."
@@ -326,36 +313,26 @@ export async function streamProject(req, res) {
       );
       return res.end();
     }
-
   }
-
 
   for (const e of job.events) {
     res.write(`data: ${JSON.stringify(e)}\n\n`);
   }
 
-
   if (job.status !== "running") {
-    res.write(
-      `data: ${JSON.stringify({ step: "done", result: job.result })}\n\n`,
-    );
+    res.write(`data: ${JSON.stringify({ step: "done", result: job.result })}\n\n`);
     return res.end();
   }
-
 
   const clients = streams.get(jobId) || new Set();
   clients.add(res);
   streams.set(jobId, clients);
 
-
   const heartbeat = setInterval(() => {
     try {
       res.write(": heartbeat\n\n");
-    } catch {
-      
-    }
+    } catch {}
   }, 25_000);
-
 
   req.on("close", () => {
     clearInterval(heartbeat);
@@ -364,18 +341,11 @@ export async function streamProject(req, res) {
   });
 }
 
-
-
 export async function editDocSection(req, res) {
   const { section } = req.params;
   const { content } = req.body;
   if (typeof content !== "string" || content.trim().length === 0)
-    return fail(
-      res,
-      "VALIDATION_ERROR",
-      "content must be a non-empty string.",
-      422,
-    );
+    return fail(res, "VALIDATION_ERROR", "content must be a non-empty string.", 422);
   try {
     const project = await projectService.editDocSection({
       projectId: req.params.id,
@@ -396,7 +366,6 @@ export async function editDocSection(req, res) {
     return handleErr(res, err, "editDocSection");
   }
 }
-
 
 export async function revertDocSection(req, res) {
   const { section } = req.params;
@@ -420,7 +389,6 @@ export async function revertDocSection(req, res) {
   }
 }
 
-
 export async function acceptAISection(req, res) {
   const { section } = req.params;
   try {
@@ -442,7 +410,6 @@ export async function acceptAISection(req, res) {
     return handleErr(res, err, "acceptAISection");
   }
 }
-
 
 export async function listVersions(req, res) {
   const { section } = req.params;
@@ -495,9 +462,6 @@ export async function restoreVersion(req, res) {
   }
 }
 
-
-
-
 export async function getProjectChangeLog(req, res) {
   const { page = "1", limit = "50" } = req.query;
   try {
@@ -506,9 +470,7 @@ export async function getProjectChangeLog(req, res) {
       userId: req.user.userId,
     });
 
-
-    const { getProjectHistory } =
-      await import("../../../services/changelog.service.js");
+    const { getProjectHistory } = await import("../../../services/changelog.service.js");
     const result = await getProjectHistory(
       req.params.id,
       parseInt(limit, 10),
@@ -520,7 +482,6 @@ export async function getProjectChangeLog(req, res) {
     return handleErr(res, err, "getProjectChangeLog");
   }
 }
-
 
 export async function exportPdf(req, res) {
   const exportToPDF = await getExportToPDF();
@@ -539,7 +500,6 @@ export async function exportPdf(req, res) {
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
 
-
     const exportData = req.body?.tabs ? req.body : null;
 
     exportToPDF(res, {
@@ -551,15 +511,8 @@ export async function exportPdf(req, res) {
       projectDescription: exportData?.projectDescription,
     });
 
-
-    const { logExport } =
-      await import("../../../services/changelog.service.js");
-    await logExport(
-      req.params.id,
-      req.user.userId,
-      "pdf",
-      exportData || { tabs: [] },
-    );
+    const { logExport } = await import("../../../services/changelog.service.js");
+    await logExport(req.params.id, req.user.userId, "pdf", exportData || { tabs: [] });
   } catch (err) {
     return handleErr(res, err, "exportPdf");
   }
@@ -567,19 +520,12 @@ export async function exportPdf(req, res) {
 
 export async function exportYaml(req, res) {
   const genWorkflow = await getGenWorkflow();
-  if (!genWorkflow)
-    return fail(
-      res,
-      "SERVICE_UNAVAILABLE",
-      "Workflow generator unavailable.",
-      503,
-    );
+  if (!genWorkflow) return fail(res, "SERVICE_UNAVAILABLE", "Workflow generator unavailable.", 503);
   try {
     const project = await projectService.getProjectById({
       projectId: req.params.id,
       userId: req.user.userId,
     });
-
 
     const exportData = req.body?.tabs ? req.body : null;
 
@@ -588,15 +534,8 @@ export async function exportYaml(req, res) {
     res.setHeader("Content-Disposition", "attachment; filename=document.yml");
     res.send(yml);
 
-
-    const { logExport } =
-      await import("../../../services/changelog.service.js");
-    await logExport(
-      req.params.id,
-      req.user.userId,
-      "yaml",
-      exportData || { tabs: [] },
-    );
+    const { logExport } = await import("../../../services/changelog.service.js");
+    await logExport(req.params.id, req.user.userId, "yaml", exportData || { tabs: [] });
   } catch (err) {
     return handleErr(res, err, "exportYaml");
   }
@@ -606,16 +545,9 @@ export async function exportNotion(req, res) {
   const exportToNotion = await getExportToNotion();
 
   if (!exportToNotion)
-    return fail(
-      res,
-      "SERVICE_UNAVAILABLE",
-      "Notion export requires @notionhq/client.",
-      503,
-    );
+    return fail(res, "SERVICE_UNAVAILABLE", "Notion export requires @notionhq/client.", 503);
   try {
-
-    const { getDecryptedNotionSettings } =
-      await import("../../../services/notion.service.js");
+    const { getDecryptedNotionSettings } = await import("../../../services/notion.service.js");
     let notionCreds;
     try {
       notionCreds = await getDecryptedNotionSettings(req.user.userId);
@@ -638,7 +570,6 @@ export async function exportNotion(req, res) {
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
 
-
     const exportData = req.body?.tabs ? req.body : null;
 
     const result = await exportToNotion({
@@ -651,16 +582,8 @@ export async function exportNotion(req, res) {
       tabs: exportData?.tabs,
     });
 
-
-    const { logExport } =
-      await import("../../../services/changelog.service.js");
-    await logExport(
-      req.params.id,
-      req.user.userId,
-      "notion",
-      exportData || { tabs: [] },
-      result,
-    );
+    const { logExport } = await import("../../../services/changelog.service.js");
+    await logExport(req.params.id, req.user.userId, "notion", exportData || { tabs: [] }, result);
 
     return ok(res, result, "Documentation pushed to Notion.");
   } catch (err) {
@@ -668,17 +591,11 @@ export async function exportNotion(req, res) {
   }
 }
 
-
 export async function googleDocsConnect(req, res) {
   await getGoogleDocsExport();
 
   if (!_getGoogleDocsOAuthUrl)
-    return fail(
-      res,
-      "SERVICE_UNAVAILABLE",
-      "Google Docs service unavailable.",
-      503,
-    );
+    return fail(res, "SERVICE_UNAVAILABLE", "Google Docs service unavailable.", 503);
   try {
     await projectService.getProjectById({
       projectId: req.params.id,
@@ -716,12 +633,7 @@ export async function googleDocsDisconnect(req, res) {
 export async function exportGoogleDocs(req, res) {
   const exportToGoogleDocs = await getGoogleDocsExport();
   if (!exportToGoogleDocs)
-    return fail(
-      res,
-      "SERVICE_UNAVAILABLE",
-      "Google Docs export unavailable.",
-      503,
-    );
+    return fail(res, "SERVICE_UNAVAILABLE", "Google Docs export unavailable.", 503);
   try {
     const project = await projectService.getProjectById({
       projectId: req.params.id,
@@ -729,7 +641,6 @@ export async function exportGoogleDocs(req, res) {
     });
     if (project.status !== "done")
       return fail(res, "PROJECT_NOT_READY", "Pipeline has not completed.", 409);
-
 
     const exportData = req.body?.tabs ? req.body : null;
 
@@ -743,9 +654,7 @@ export async function exportGoogleDocs(req, res) {
       projectDescription: exportData?.projectDescription,
     });
 
-
-    const { logExport } =
-      await import("../../../services/changelog.service.js");
+    const { logExport } = await import("../../../services/changelog.service.js");
     await logExport(
       req.params.id,
       req.user.userId,
@@ -768,7 +677,6 @@ export async function exportGoogleDocs(req, res) {
     return handleErr(res, err, "exportGoogleDocs");
   }
 }
-
 
 export async function chatHandler(req, res) {
   const { message } = req.body;
@@ -794,8 +702,7 @@ export async function chatHandler(req, res) {
       success: false,
       error: {
         code: "CHAT_SESSION_NOT_FOUND",
-        message:
-          "No chat session available. Run the documentation pipeline first.",
+        message: "No chat session available. Run the documentation pipeline first.",
       },
     });
   }
@@ -806,19 +713,12 @@ export async function chatHandler(req, res) {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
 
-  const { chatStream, ensureSession } =
-    await import("../../../services/chat.service.js");
-
+  const { chatStream, ensureSession } = await import("../../../services/chat.service.js");
 
   const effectiveOutput = Object.fromEntries(
-    [
-      "readme",
-      "apiReference",
-      "schemaDocs",
-      "internalDocs",
-      "securityReport",
-      "otherDocs",
-    ].map((k) => [k, project.editedOutput?.[k] || project.output?.[k] || ""]),
+    ["readme", "apiReference", "schemaDocs", "internalDocs", "securityReport", "otherDocs"].map(
+      (k) => [k, project.editedOutput?.[k] || project.output?.[k] || ""],
+    ),
   );
   ensureSession({
     jobId: project.chatSessionId,
@@ -829,9 +729,7 @@ export async function chatHandler(req, res) {
   const send = (obj) => {
     try {
       res.write(`data: ${JSON.stringify(obj)}\n\n`);
-    } catch {
-      
-    }
+    } catch {}
   };
 
   await chatStream({
@@ -852,7 +750,6 @@ export async function chatHandler(req, res) {
   });
 }
 
-
 export async function resetChat(req, res) {
   let project;
   try {
@@ -872,17 +769,11 @@ export async function resetChat(req, res) {
   return ok(res, null, "Chat history cleared.");
 }
 
-
 export async function createCustomTab(req, res) {
   const { name, description, content } = req.body;
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
-    return fail(
-      res,
-      "VALIDATION_ERROR",
-      "name is required and must be a string",
-      422,
-    );
+    return fail(res, "VALIDATION_ERROR", "name is required and must be a string", 422);
   }
 
   try {

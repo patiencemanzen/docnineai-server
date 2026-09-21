@@ -1,8 +1,6 @@
-
 import { Project } from "../models/Project.js";
 import { SlackIntegration } from "../models/SlackIntegration.js";
 import { sendSecurityAlert } from "./slack.service.js";
-
 
 export async function triggerSecurityAlerts(projectId, securityData) {
   try {
@@ -13,31 +11,21 @@ export async function triggerSecurityAlerts(projectId, securityData) {
     });
 
     if (integrations.length === 0) {
-      console.log(
-        `[slack-webhook] No active Slack integrations for project ${projectId}`,
-      );
+      console.log(`[slack-webhook] No active Slack integrations for project ${projectId}`);
       return;
     }
 
-    const critical = securityData.findings.filter(
-      (f) => f.severity === "CRITICAL",
-    );
+    const critical = securityData.findings.filter((f) => f.severity === "CRITICAL");
     const high = securityData.findings.filter((f) => f.severity === "HIGH");
 
-
     if (critical.length === 0 && high.length === 0) {
-      console.log(
-        `[slack-webhook] No CRITICAL/HIGH findings for project ${projectId}`,
-      );
+      console.log(`[slack-webhook] No CRITICAL/HIGH findings for project ${projectId}`);
       return;
     }
-
 
     for (const integration of integrations) {
       try {
-
-        const shouldAlertCritical =
-          integration.enableCriticalAlerts && critical.length > 0;
+        const shouldAlertCritical = integration.enableCriticalAlerts && critical.length > 0;
         const shouldAlertHigh = integration.enableHighAlerts && high.length > 0;
 
         if (!shouldAlertCritical && !shouldAlertHigh) {
@@ -45,7 +33,6 @@ export async function triggerSecurityAlerts(projectId, securityData) {
         }
 
         await sendSecurityAlert(projectId, integration.userId, securityData);
-
 
         integration.lastAlertSentAt = new Date();
         integration.lastAlertedCriticalCount = critical.length;
@@ -61,10 +48,7 @@ export async function triggerSecurityAlerts(projectId, securityData) {
           `[slack-webhook] Failed to send alert to ${integration.workspaceName}:`,
           err.message,
         );
-        await integration.recordEvent(
-          "error",
-          `Failed to send alert: ${err.message}`,
-        );
+        await integration.recordEvent("error", `Failed to send alert: ${err.message}`);
       }
     }
   } catch (err) {
@@ -74,7 +58,6 @@ export async function triggerSecurityAlerts(projectId, securityData) {
     );
   }
 }
-
 
 export async function checkSlackHealthStatus() {
   try {
@@ -111,10 +94,7 @@ export async function checkSlackHealthStatus() {
         integration.lastHealthCheck = new Date();
         await integration.save();
 
-        await integration.recordEvent(
-          "error",
-          `Health check failed: ${err.message}`,
-        );
+        await integration.recordEvent("error", `Health check failed: ${err.message}`);
       }
     }
 

@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import crypto from "crypto";
 
@@ -21,23 +20,15 @@ function flwClient() {
   });
 }
 
-
-
 function handleFLWError(err, context) {
   const status = err.response?.status;
   const msg =
-    err.response?.data?.message ||
-    err.response?.data?.error ||
-    err.message ||
-    "Flutterwave error";
+    err.response?.data?.message || err.response?.data?.error || err.message || "Flutterwave error";
   console.error(`[FLW:${context}] ${status || ""} ${msg}`);
   const error = new Error(msg);
   error.flwStatus = status;
   throw error;
 }
-
-
-
 
 export async function initializePayment({
   txRef,
@@ -53,15 +44,13 @@ export async function initializePayment({
   try {
     const isRWF = currency === "RWF";
 
-
     const payment_options = isRWF ? "card, mobilemoneyrwanda" : "card";
 
     const { data } = await client.post("/payments", {
       tx_ref: txRef,
       amount,
       currency,
-      redirect_url:
-        redirectUrl || `${process.env.FRONTEND_URL}/billing?status=paid`,
+      redirect_url: redirectUrl || `${process.env.FRONTEND_URL}/billing?status=paid`,
       payment_options,
       customer: { email, name, phonenumber: phone || undefined },
       customizations: {
@@ -77,9 +66,6 @@ export async function initializePayment({
   }
 }
 
-
-
-
 export async function verifyTransaction(transactionId) {
   const client = flwClient();
   try {
@@ -89,7 +75,6 @@ export async function verifyTransaction(transactionId) {
     handleFLWError(err, "verifyTransaction");
   }
 }
-
 
 export async function verifyByRef(txRef) {
   const client = flwClient();
@@ -107,17 +92,7 @@ export async function verifyByRef(txRef) {
   }
 }
 
-
-
-
-export async function chargeToken({
-  token,
-  txRef,
-  amount,
-  currency = "USD",
-  email,
-  narration,
-}) {
+export async function chargeToken({ token, txRef, amount, currency = "USD", email, narration }) {
   const client = flwClient();
   try {
     const { data } = await client.post("/charges?type=tokenized", {
@@ -131,9 +106,7 @@ export async function chargeToken({
     if (data.data?.status === "successful") {
       return data.data;
     }
-    const error = new Error(
-      data.data?.processor_response || data.message || "Charge failed",
-    );
+    const error = new Error(data.data?.processor_response || data.message || "Charge failed");
     error.flwStatus = 400;
     throw error;
   } catch (err) {
@@ -142,25 +115,17 @@ export async function chargeToken({
   }
 }
 
-
-
-
 export async function refundTransaction(transactionId, amount) {
   const client = flwClient();
   try {
     const body = {};
     if (amount !== undefined) body.amount = amount;
-    const { data } = await client.post(
-      `/transactions/${transactionId}/refund`,
-      body,
-    );
+    const { data } = await client.post(`/transactions/${transactionId}/refund`, body);
     return data.data;
   } catch (err) {
     handleFLWError(err, "refundTransaction");
   }
 }
-
-
 
 let _loggedMissingFlwHash = false;
 
@@ -170,7 +135,6 @@ function isConfiguredWebhookHash(value) {
   if (!trimmed || trimmed === "...") return false;
   return true;
 }
-
 
 export function verifyWebhookSignature(headerHash) {
   const expected = process.env.FLW_WEBHOOK_HASH;
@@ -192,13 +156,9 @@ export function verifyWebhookSignature(headerHash) {
   return crypto.timingSafeEqual(a, b);
 }
 
-
-
-
 export function centsToUsd(cents) {
   return parseFloat((cents / 100).toFixed(2));
 }
-
 
 export function buildTxRef(prefix = "sub") {
   const ts = Date.now();
@@ -206,11 +166,9 @@ export function buildTxRef(prefix = "sub") {
   return `${prefix}_${ts}_${rand}`;
 }
 
-
 export function extractChargeToken(fwTransaction) {
   return fwTransaction?.card?.token || fwTransaction?.account_token || null;
 }
-
 
 export function buildPaymentMethodSnapshot(fwTransaction) {
   const card = fwTransaction?.card;

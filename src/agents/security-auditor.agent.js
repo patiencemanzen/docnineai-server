@@ -18,10 +18,8 @@ const STATIC_RULES = [
     category: "A01:BrokenAccessControl",
     severity: "HIGH",
     title: "Role check missing on admin route",
-    regex:
-      /router\.(get|post|put|patch|delete)\s*\(\s*['"`][^'"`,]*admin[^'"`,]*['"`]/gi,
-    advice:
-      "Admin routes must verify both authentication AND role/permission level.",
+    regex: /router\.(get|post|put|patch|delete)\s*\(\s*['"`][^'"`,]*admin[^'"`,]*['"`]/gi,
+    advice: "Admin routes must verify both authentication AND role/permission level.",
     cwe: "CWE-285",
   },
   {
@@ -31,8 +29,7 @@ const STATIC_RULES = [
     title: "Direct object reference without ownership check",
     regex:
       /req\.params\.(?:id|userId|user_id)\b(?!.*(?:userId|owner|createdBy|belongsTo|where.*user))/gi,
-    advice:
-      "Verify the authenticated user owns the requested resource before returning it.",
+    advice: "Verify the authenticated user owns the requested resource before returning it.",
     cwe: "CWE-639",
   },
 
@@ -64,8 +61,7 @@ const STATIC_RULES = [
     title: "Private key or certificate embedded in source",
     regex:
       /-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----|-----BEGIN CERTIFICATE-----/g,
-    advice:
-      "Never store private keys in source code. Use a secrets manager or HSM.",
+    advice: "Never store private keys in source code. Use a secrets manager or HSM.",
     cwe: "CWE-321",
   },
   {
@@ -73,8 +69,7 @@ const STATIC_RULES = [
     category: "A02:CryptographicFailures",
     severity: "HIGH",
     title: "Weak hashing algorithm used",
-    regex:
-      /createHash\s*\(\s*['"`](?:md5|sha1|sha-1)['"`]\)|hashlib\.(?:md5|sha1)\s*\(/gi,
+    regex: /createHash\s*\(\s*['"`](?:md5|sha1|sha-1)['"`]\)|hashlib\.(?:md5|sha1)\s*\(/gi,
     advice: "Replace MD5/SHA1 with SHA-256 or bcrypt/argon2 for passwords.",
     cwe: "CWE-327",
   },
@@ -83,8 +78,7 @@ const STATIC_RULES = [
     category: "A02:CryptographicFailures",
     severity: "HIGH",
     title: "JWT secret sourced from environment without startup validation",
-    regex:
-      /process\.env\.(?:JWT_SECRET|JWT_KEY|TOKEN_SECRET)(?!\s*(?:\|\||&&|\?\?|if\s*\())/g,
+    regex: /process\.env\.(?:JWT_SECRET|JWT_KEY|TOKEN_SECRET)(?!\s*(?:\|\||&&|\?\?|if\s*\())/g,
     advice:
       "Add startup guard: if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is required');",
     cwe: "CWE-320",
@@ -104,8 +98,7 @@ const STATIC_RULES = [
     severity: "MEDIUM",
     title: "Math.random() used for security-sensitive value",
     regex: /Math\.random\s*\(\s*\)/g,
-    advice:
-      "Use crypto.randomBytes() or crypto.randomUUID() for tokens, nonces, and IDs.",
+    advice: "Use crypto.randomBytes() or crypto.randomUUID() for tokens, nonces, and IDs.",
     cwe: "CWE-338",
   },
   {
@@ -113,10 +106,8 @@ const STATIC_RULES = [
     category: "A02:CryptographicFailures",
     severity: "MEDIUM",
     title: "Insecure cookie : missing Secure or HttpOnly flag",
-    regex:
-      /res\.cookie\s*\([^)]+\)(?!.*(?:httpOnly\s*:\s*true|secure\s*:\s*true))/gi,
-    advice:
-      "Set { httpOnly: true, secure: true, sameSite: 'strict' } on all cookies.",
+    regex: /res\.cookie\s*\([^)]+\)(?!.*(?:httpOnly\s*:\s*true|secure\s*:\s*true))/gi,
+    advice: "Set { httpOnly: true, secure: true, sameSite: 'strict' } on all cookies.",
     cwe: "CWE-614",
   },
 
@@ -127,8 +118,7 @@ const STATIC_RULES = [
     title: "SQL injection via string interpolation",
     regex:
       /(?:query|execute|raw|db\.run|connection\.query)\s*\([`'"]\s*(?:SELECT|INSERT|UPDATE|DELETE|DROP|CREATE)[^)]*\$\{/gi,
-    advice:
-      "Use parameterised queries or a query builder. Never interpolate user input into SQL.",
+    advice: "Use parameterised queries or a query builder. Never interpolate user input into SQL.",
     cwe: "CWE-89",
   },
   {
@@ -157,8 +147,7 @@ const STATIC_RULES = [
     severity: "HIGH",
     title: "Prototype pollution via object spread from request body",
     regex: /Object\.assign\s*\(\s*\{\s*\}\s*,\s*req\.body|\.\.\.req\.body/g,
-    advice:
-      "Validate and whitelist req.body keys. Use a DTO with class-validator or Zod.",
+    advice: "Validate and whitelist req.body keys. Use a DTO with class-validator or Zod.",
     cwe: "CWE-1321",
   },
   {
@@ -166,10 +155,8 @@ const STATIC_RULES = [
     category: "A03:Injection",
     severity: "HIGH",
     title: "NoSQL injection : MongoDB query built from user input",
-    regex:
-      /(?:findOne|find|updateOne|deleteOne)\s*\(\s*req\.(?:body|params|query)/gi,
-    advice:
-      "Sanitise MongoDB query operators. Use mongoose-sanitize or validate input schema.",
+    regex: /(?:findOne|find|updateOne|deleteOne)\s*\(\s*req\.(?:body|params|query)/gi,
+    advice: "Sanitise MongoDB query operators. Use mongoose-sanitize or validate input schema.",
     cwe: "CWE-943",
   },
   {
@@ -189,8 +176,7 @@ const STATIC_RULES = [
     severity: "HIGH",
     title: "XSS via dangerous innerHTML or document.write",
     regex: /\.innerHTML\s*=(?!=)|document\.write\s*\(/g,
-    advice:
-      "Use textContent or sanitise with DOMPurify before setting innerHTML.",
+    advice: "Use textContent or sanitise with DOMPurify before setting innerHTML.",
     cwe: "CWE-79",
   },
   {
@@ -198,10 +184,8 @@ const STATIC_RULES = [
     category: "A03:Injection",
     severity: "MEDIUM",
     title: "Server-side template injection risk",
-    regex:
-      /(?:render|compile|template)\s*\(\s*(?:req\.|res\.|user\.|`[^`]*\${)/gi,
-    advice:
-      "Never pass user-controlled strings as template source. Pre-compile all templates.",
+    regex: /(?:render|compile|template)\s*\(\s*(?:req\.|res\.|user\.|`[^`]*\${)/gi,
+    advice: "Never pass user-controlled strings as template source. Pre-compile all templates.",
     cwe: "CWE-94",
   },
 
@@ -211,8 +195,7 @@ const STATIC_RULES = [
     severity: "HIGH",
     title: "CORS wildcard origin : all origins permitted",
     regex: /origin\s*:\s*['"`]\*['"`]|cors\s*\(\s*\)/g,
-    advice:
-      "Restrict CORS to specific trusted origins. Never use '*' in production.",
+    advice: "Restrict CORS to specific trusted origins. Never use '*' in production.",
     cwe: "CWE-942",
   },
   {
@@ -222,8 +205,7 @@ const STATIC_RULES = [
     title: "No rate limiting on authentication routes",
     regex:
       /router\.post\s*\(\s*['"`][^'"`,]*(?:login|signin|register|signup|forgot.?password|reset.?password|verify|auth)/gi,
-    advice:
-      "Apply express-rate-limit or equivalent to all auth endpoints to prevent brute force.",
+    advice: "Apply express-rate-limit or equivalent to all auth endpoints to prevent brute force.",
     cwe: "CWE-307",
   },
   {
@@ -233,8 +215,7 @@ const STATIC_RULES = [
     title: "Unrestricted file upload : no MIME type validation",
     regex:
       /(?:multer|formidable|busboy|upload)\s*\((?!.*(?:mimetype|fileFilter|allowedTypes|accept))/gi,
-    advice:
-      "Validate file MIME type, extension, and size. Store uploads outside the web root.",
+    advice: "Validate file MIME type, extension, and size. Store uploads outside the web root.",
     cwe: "CWE-434",
   },
 
@@ -256,8 +237,7 @@ const STATIC_RULES = [
     title: "HTTP used instead of HTTPS for external connection",
     regex:
       /(?:fetch|axios\.get|axios\.post|http\.request|request)\s*\(\s*['"`]http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0)/gi,
-    advice:
-      "Use HTTPS for all external connections. Enforce TLS in production.",
+    advice: "Use HTTPS for all external connections. Enforce TLS in production.",
     cwe: "CWE-319",
   },
   {
@@ -275,8 +255,7 @@ const STATIC_RULES = [
     category: "A05:SecurityMisconfiguration",
     severity: "LOW",
     title: "Debug mode or verbose logging enabled",
-    regex:
-      /debug\s*:\s*true|NODE_ENV\s*[!=]=\s*['"`]development['"`]|verbose\s*:\s*true/gi,
+    regex: /debug\s*:\s*true|NODE_ENV\s*[!=]=\s*['"`]development['"`]|verbose\s*:\s*true/gi,
     advice: "Ensure debug/verbose mode is disabled in production builds.",
     cwe: "CWE-215",
   },
@@ -288,8 +267,7 @@ const STATIC_RULES = [
     title: "Password stored without hashing",
     regex:
       /(?:password|passwd)\s*[:=]\s*req\.body\.(?:password|passwd)(?![\s\S]{0,200}(?:bcrypt|argon2|hash|pbkdf2|scrypt))/gi,
-    advice:
-      "Always hash passwords with bcrypt (cost ≥ 12), argon2, or scrypt before storing.",
+    advice: "Always hash passwords with bcrypt (cost ≥ 12), argon2, or scrypt before storing.",
     cwe: "CWE-256",
   },
   {
@@ -298,8 +276,7 @@ const STATIC_RULES = [
     severity: "HIGH",
     title: "JWT verification missing : token decoded without verify",
     regex: /jwt\.decode\s*\((?![\s\S]{0,50}jwt\.verify)/gi,
-    advice:
-      "Use jwt.verify() not jwt.decode(). decode() does NOT validate the signature.",
+    advice: "Use jwt.verify() not jwt.decode(). decode() does NOT validate the signature.",
     cwe: "CWE-347",
   },
   {
@@ -332,8 +309,7 @@ const STATIC_RULES = [
     title: "Security-related TODO or FIXME left in code",
     regex:
       /(?:TODO|FIXME|HACK|XXX)\s*.*(?:auth|security|permission|validate|sanitize|encrypt|token|sql)/gi,
-    advice:
-      "Address all security-related TODO items before production deployment.",
+    advice: "Address all security-related TODO items before production deployment.",
     cwe: "CWE-1059",
   },
 
@@ -462,20 +438,14 @@ function validateLLMFinding(finding, fallbackFile) {
     impact: String(finding.impact ?? "").trim(),
     advice: String(finding.advice ?? "").trim(),
     cwe: String(finding.cwe ?? "").trim(),
-    confidence: ["HIGH", "MEDIUM", "LOW"].includes(
-      String(finding.confidence ?? "").toUpperCase(),
-    )
+    confidence: ["HIGH", "MEDIUM", "LOW"].includes(String(finding.confidence ?? "").toUpperCase())
       ? String(finding.confidence).toUpperCase()
       : "MEDIUM",
     source: "llm",
   };
 }
 
-async function llmCallWithRetry({
-  systemPrompt,
-  userContent,
-  retries = MAX_RETRIES,
-}) {
+async function llmCallWithRetry({ systemPrompt, userContent, retries = MAX_RETRIES }) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await llmCall({ systemPrompt, userContent });
@@ -490,14 +460,12 @@ function deduplicateFindings(findings) {
   const map = new Map();
 
   for (const f of findings) {
-
     const key = `${f.file}::${f.title.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
     const existing = map.get(key);
 
     if (!existing) {
       map.set(key, f);
     } else {
-
       const scoreF = scoreFinding(f);
       const scoreE = scoreFinding(existing);
       if (scoreF > scoreE) map.set(key, f);
@@ -521,35 +489,20 @@ function scoreFinding(f) {
 }
 
 function calculateScore(findings) {
-
-  const criticalCount = findings.filter(
-    (f) => f.severity === "CRITICAL",
-  ).length;
+  const criticalCount = findings.filter((f) => f.severity === "CRITICAL").length;
   const highCount = findings.filter((f) => f.severity === "HIGH").length;
   const mediumCount = findings.filter((f) => f.severity === "MEDIUM").length;
   const lowCount = findings.filter((f) => f.severity === "LOW").length;
 
-  const deductCritical =
-    Math.min(criticalCount, 3) * 25 + Math.max(0, criticalCount - 3) * 10;
-  const deductHigh =
-    Math.min(highCount, 5) * 15 + Math.max(0, highCount - 5) * 5;
-  const deductMedium =
-    Math.min(mediumCount, 8) * 7 + Math.max(0, mediumCount - 8) * 2;
+  const deductCritical = Math.min(criticalCount, 3) * 25 + Math.max(0, criticalCount - 3) * 10;
+  const deductHigh = Math.min(highCount, 5) * 15 + Math.max(0, highCount - 5) * 5;
+  const deductMedium = Math.min(mediumCount, 8) * 7 + Math.max(0, mediumCount - 8) * 2;
   const deductLow = lowCount * 2;
 
   const totalDeduction = deductCritical + deductHigh + deductMedium + deductLow;
   const score = Math.max(0, Math.min(100, 100 - totalDeduction));
 
-  const grade =
-    score >= 90
-      ? "A"
-      : score >= 80
-        ? "B"
-        : score >= 65
-          ? "C"
-          : score >= 45
-            ? "D"
-            : "F";
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 65 ? "C" : score >= 45 ? "D" : "F";
 
   return { score, grade };
 }
@@ -572,8 +525,7 @@ function countByCategory(findings) {
 function buildAffectedFiles(findings) {
   const fileMap = {};
   for (const f of findings) {
-    if (!fileMap[f.file])
-      fileMap[f.file] = { file: f.file, score: 0, count: 0 };
+    if (!fileMap[f.file]) fileMap[f.file] = { file: f.file, score: 0, count: 0 };
     fileMap[f.file].score += SEVERITY_WEIGHT[f.severity] ?? 2;
     fileMap[f.file].count += 1;
   }
@@ -606,8 +558,7 @@ function buildReport(
   md += `| Severity | Count | Risk |\n|----------|-------|------|\n`;
   for (const sev of SEVERITY_ORDER) {
     const count = counts[sev] ?? 0;
-    const bar =
-      "█".repeat(Math.min(count, 10)) + (count > 10 ? `+${count - 10}` : "");
+    const bar = "█".repeat(Math.min(count, 10)) + (count > 10 ? `+${count - 10}` : "");
     md += `| ${SEVERITY_EMOJI[sev]} **${sev}** | ${count} | ${bar || ":"} |\n`;
   }
   md += "\n";
@@ -709,9 +660,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   notify("Starting security audit…", "Agent 6 : Security Auditor");
 
-  const codeFiles = files.filter(
-    (f) => f?.path && f?.content && !SKIP_REGEX.test(f.path),
-  );
+  const codeFiles = files.filter((f) => f?.path && f?.content && !SKIP_REGEX.test(f.path));
 
   if (codeFiles.length === 0) {
     notify("No code files to scan", "Security audit skipped");
@@ -727,18 +676,12 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   for (const file of codeFiles) {
     for (const rule of STATIC_RULES) {
-
-      const re = new RegExp(
-        rule.regex.source,
-        rule.regex.flags.replace("g", "") + "g",
-      );
+      const re = new RegExp(rule.regex.source, rule.regex.flags.replace("g", "") + "g");
       const matches = [...file.content.matchAll(re)];
       if (!matches.length) continue;
 
       const firstMatchIndex = file.content.indexOf(matches[0][0]);
-      const lineNumber = file.content
-        .slice(0, firstMatchIndex)
-        .split("\n").length;
+      const lineNumber = file.content.slice(0, firstMatchIndex).split("\n").length;
 
       staticFindings.push({
         id: rule.id,
@@ -768,7 +711,9 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
   if (fastMode) {
     const findings = deduplicateFindings(staticFindings).sort((a, b) => {
       const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-      return (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3) || a.file.localeCompare(b.file);
+      return (
+        (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3) || a.file.localeCompare(b.file)
+      );
     });
     const { score, grade } = calculateScore(findings);
     const counts = countBySeverity(findings);
@@ -789,7 +734,10 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
       llmErrors: 0,
       fastMode: true,
     };
-    notify(`Audit complete (static only) : ${score}/100 (${grade})`, `${findings.length} findings · AI deep scan skipped (fast mode)`);
+    notify(
+      `Audit complete (static only) : ${score}/100 (${grade})`,
+      `${findings.length} findings · AI deep scan skipped (fast mode)`,
+    );
     return {
       findings,
       score,
@@ -798,30 +746,29 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
       categoryCounts,
       affectedFiles,
       summary,
-      reportMarkdown: buildReport(findings, score, grade, counts, categoryCounts, affectedFiles, findings.length, 0),
+      reportMarkdown: buildReport(
+        findings,
+        score,
+        grade,
+        counts,
+        categoryCounts,
+        affectedFiles,
+        findings.length,
+        0,
+      ),
       remediationMarkdown: buildRemediationPlan(findings),
     };
   }
 
   const fileRiskScore = (file) => {
     const staticHits = staticFindings.filter((f) => f.file === file.path);
-    const staticScore = staticHits.reduce(
-      (s, f) => s + (SEVERITY_WEIGHT[f.severity] ?? 2),
-      0,
-    );
+    const staticScore = staticHits.reduce((s, f) => s + (SEVERITY_WEIGHT[f.severity] ?? 2), 0);
     const pathScore = HIGH_RISK_PATH_REGEX.test(file.path) ? 10 : 0;
-    const contentScore = HIGH_RISK_CONTENT_KEYWORDS.test(
-      file.content.slice(0, 1000),
-    )
-      ? 8
-      : 0;
+    const contentScore = HIGH_RISK_CONTENT_KEYWORDS.test(file.content.slice(0, 1000)) ? 8 : 0;
     const metaScore = (() => {
       const meta = projectMap?.find((m) => m.path === file.path);
       if (!meta) return 0;
-      return (
-        (meta.flags?.includes("has_auth") ? 5 : 0) +
-        (meta.importance === "critical" ? 3 : 0)
-      );
+      return (meta.flags?.includes("has_auth") ? 5 : 0) + (meta.importance === "critical" ? 3 : 0);
     })();
     return staticScore + pathScore + contentScore + metaScore;
   };
@@ -906,8 +853,7 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
   const findings = deduplicateFindings(rawFindings).sort((a, b) => {
     const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
     return (
-      (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3) ||
-      a.file.localeCompare(b.file)
+      (sevOrder[a.severity] ?? 3) - (sevOrder[b.severity] ?? 3) || a.file.localeCompare(b.file)
     );
   });
 
@@ -982,9 +928,7 @@ function buildEmptyResult() {
     categoryCounts: {},
     affectedFiles: [],
     summary: { totalFindings: 0, score: 100, grade: "A", counts },
-    reportMarkdown:
-      "# 🔒 Security Audit Report\n\n✅ No code files found to scan.\n",
-    remediationMarkdown:
-      "# 🔧 Remediation Plan\n\n✅ No findings to remediate.\n",
+    reportMarkdown: "# 🔒 Security Audit Report\n\n✅ No code files found to scan.\n",
+    remediationMarkdown: "# 🔧 Remediation Plan\n\n✅ No findings to remediate.\n",
   };
 }

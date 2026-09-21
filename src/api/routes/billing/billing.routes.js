@@ -1,4 +1,3 @@
-
 import { Router } from "express";
 import { protect } from "../../../middleware/auth.middleware.js";
 import { wrap } from "../../../utils/response.util.js";
@@ -7,9 +6,7 @@ import { apiLimiter } from "../../../middleware/rateLimiter.middleware.js";
 
 const router = Router();
 
-
 router.get("/plans", wrap(ctrl.getPlans));
-
 
 router.use(protect, apiLimiter);
 
@@ -24,10 +21,7 @@ router.post("/seats", wrap(ctrl.addSeatsHandler));
 
 router.get("/payment-methods", wrap(ctrl.getPaymentMethods));
 router.delete("/payment-methods/:id", wrap(ctrl.deletePaymentMethod));
-router.patch(
-  "/payment-methods/:id/default",
-  wrap(ctrl.setDefaultPaymentMethod),
-);
+router.patch("/payment-methods/:id/default", wrap(ctrl.setDefaultPaymentMethod));
 
 router.get("/history", wrap(ctrl.getBillingHistoryHandler));
 router.get("/invoices/:id/pdf", ctrl.downloadInvoicePdf);

@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import crypto from "crypto";
 
@@ -8,8 +7,6 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-
 
 const HIGH_PRIORITY = [
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|go\.mod|pom\.xml|build\.gradle|Cargo\.toml|pyproject\.toml|setup\.py|composer\.json)$/i,
@@ -45,19 +42,13 @@ function selectRelevantFiles(files, cap) {
     .map(({ f }) => f);
 }
 
-
-
 function glHeaders(accessToken) {
   return { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
 }
 
-
 function encodePath(owner, repo) {
   return encodeURIComponent(`${owner}/${repo}`);
 }
-
-
-
 
 export function parseRepoUrl(url) {
   const s = String(url || "")
@@ -80,9 +71,6 @@ export function parseRepoUrl(url) {
   throw err;
 }
 
-
-
-
 export function getOAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: process.env.GITLAB_CLIENT_ID,
@@ -93,7 +81,6 @@ export function getOAuthUrl(state) {
   });
   return `https://gitlab.com/oauth/authorize?${params}`;
 }
-
 
 export async function exchangeCode(code) {
   const { data } = await axios.post("https://gitlab.com/oauth/token", {
@@ -106,7 +93,6 @@ export async function exchangeCode(code) {
   return data;
 }
 
-
 export async function refreshAccessToken(refreshToken) {
   const { data } = await axios.post("https://gitlab.com/oauth/token", {
     client_id: process.env.GITLAB_CLIENT_ID,
@@ -117,7 +103,6 @@ export async function refreshAccessToken(refreshToken) {
   });
   return data;
 }
-
 
 export async function getAuthenticatedUser(accessToken) {
   const { data } = await axios.get(`${GL_API}/user`, {
@@ -132,11 +117,10 @@ export async function getAuthenticatedUser(accessToken) {
   };
 }
 
-
 export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   try {
     console.log("[gitlab.service] Fetching repositories", { page, perPage });
-    
+
     const { data } = await axios.get(`${GL_API}/projects`, {
       headers: glHeaders(accessToken),
       params: {
@@ -147,10 +131,12 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
         page,
       },
     });
-    
+
     console.log("[gitlab.service] Raw GitLab API response", {
       projectCount: data?.length || 0,
-      firstProject: data?.[0] ? { id: data[0].id, name: data[0].name, path_with_namespace: data[0].path_with_namespace } : null,
+      firstProject: data?.[0]
+        ? { id: data[0].id, name: data[0].name, path_with_namespace: data[0].path_with_namespace }
+        : null,
     });
 
     const repos = data.map((p) => {
@@ -187,14 +173,10 @@ export async function listUserRepos(accessToken, page = 1, perPage = 30) {
   }
 }
 
-
-
-
 export async function getRepoMeta(owner, repo, accessToken) {
-  const { data } = await axios.get(
-    `${GL_API}/projects/${encodePath(owner, repo)}`,
-    { headers: glHeaders(accessToken) },
-  );
+  const { data } = await axios.get(`${GL_API}/projects/${encodePath(owner, repo)}`, {
+    headers: glHeaders(accessToken),
+  });
   return {
     name: data.name,
     description: data.description,
@@ -207,9 +189,6 @@ export async function getRepoMeta(owner, repo, accessToken) {
   };
 }
 
-
-
-
 export async function getCommitSha(owner, repo, branch, accessToken) {
   const { data } = await axios.get(
     `${GL_API}/projects/${encodePath(owner, repo)}/repository/branches/${encodeURIComponent(branch)}`,
@@ -218,22 +197,16 @@ export async function getCommitSha(owner, repo, branch, accessToken) {
   return data.commit.id;
 }
 
-
-
-
 export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
   const pid = encodePath(owner, repo);
   const all = [];
   let page = 1;
 
   while (true) {
-    const { data, headers: res } = await axios.get(
-      `${GL_API}/projects/${pid}/repository/tree`,
-      {
-        headers: glHeaders(accessToken),
-        params: { ref: branch, recursive: true, per_page: 100, page },
-      },
-    );
+    const { data, headers: res } = await axios.get(`${GL_API}/projects/${pid}/repository/tree`, {
+      headers: glHeaders(accessToken),
+      params: { ref: branch, recursive: true, per_page: 100, page },
+    });
     all.push(...data.filter((i) => i.type === "blob"));
     const total = parseInt(res["x-total-pages"] || "1");
     if (page >= total) break;
@@ -245,28 +218,13 @@ export async function getFileTreeWithSha(owner, repo, branch, accessToken) {
     .map((i) => ({ path: i.path, sha: i.id, size: null }));
 }
 
-
 export async function getFileTree(owner, repo, branch, accessToken) {
   const items = await getFileTreeWithSha(owner, repo, branch, accessToken);
   return items.map((i) => ({ path: i.path, size: i.size }));
 }
 
-
-
-
-export async function computeFileDiff(
-  owner,
-  repo,
-  branch,
-  storedManifest,
-  accessToken,
-) {
-  const currentTree = await getFileTreeWithSha(
-    owner,
-    repo,
-    branch,
-    accessToken,
-  );
+export async function computeFileDiff(owner, repo, branch, storedManifest, accessToken) {
+  const currentTree = await getFileTreeWithSha(owner, repo, branch, accessToken);
   const eligible = currentTree.filter((f) => !SKIP_EXT.test(f.path));
 
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
@@ -280,8 +238,7 @@ export async function computeFileDiff(
   for (const [path, cur] of currentMap) {
     const stored = manifestMap.get(path);
     if (!stored) added.push({ path, sha: cur.sha, status: "added" });
-    else if (stored.sha !== cur.sha)
-      modified.push({ path, sha: cur.sha, status: "modified" });
+    else if (stored.sha !== cur.sha) modified.push({ path, sha: cur.sha, status: "modified" });
     else unchanged.push({ path });
   }
   for (const [path] of manifestMap) {
@@ -291,16 +248,7 @@ export async function computeFileDiff(
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
 
-
-
-
-export async function getFileContent(
-  owner,
-  repo,
-  filePath,
-  accessToken,
-  ref = "HEAD",
-) {
+export async function getFileContent(owner, repo, filePath, accessToken, ref = "HEAD") {
   const pid = encodePath(owner, repo);
   try {
     const { data } = await axios.get(
@@ -319,14 +267,7 @@ export async function getFileContent(
   }
 }
 
-
-export async function fetchFileContents(
-  owner,
-  repo,
-  filePaths,
-  onProgress,
-  accessToken,
-) {
+export async function fetchFileContents(owner, repo, filePaths, onProgress, accessToken) {
   const files = [];
   for (const [i, path] of filePaths.entries()) {
     const content = await getFileContent(owner, repo, path, accessToken);
@@ -338,59 +279,33 @@ export async function fetchFileContents(
   return files;
 }
 
-
-
-
 export async function fetchRepoFiles(repoUrl, accessToken) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, repo, accessToken);
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path)),
     MAX_FILES,
   );
 
-  console.log(
-    `📂 Fetching ${eligible.length} files from ${owner}/${repo} (GitLab)…`,
-  );
+  console.log(`📂 Fetching ${eligible.length} files from ${owner}/${repo} (GitLab)…`);
 
   const files = [];
   for (const file of eligible) {
-    const content = await getFileContent(
-      owner,
-      repo,
-      file.path,
-      accessToken,
-      meta.defaultBranch,
-    );
+    const content = await getFileContent(owner, repo, file.path, accessToken, meta.defaultBranch);
     if (content.trim()) files.push({ path: file.path, content });
   }
   return { meta, files, owner, repo };
 }
 
-
-export async function fetchRepoFilesWithProgress(
-  repoUrl,
-  onProgress,
-  accessToken,
-) {
+export async function fetchRepoFilesWithProgress(repoUrl, onProgress, accessToken) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   onProgress?.(`Reading repo info for ${owner}/${repo}…`);
 
   const meta = await getRepoMeta(owner, repo, accessToken);
   onProgress?.(`Reading file tree on branch "${meta.defaultBranch}"…`);
 
-  const allFiles = await getFileTree(
-    owner,
-    repo,
-    meta.defaultBranch,
-    accessToken,
-  );
+  const allFiles = await getFileTree(owner, repo, meta.defaultBranch, accessToken);
   const eligible = selectRelevantFiles(
     allFiles.filter((f) => !SKIP_EXT.test(f.path)),
     MAX_FILES,
@@ -399,13 +314,7 @@ export async function fetchRepoFilesWithProgress(
 
   const files = [];
   for (const [i, file] of eligible.entries()) {
-    const content = await getFileContent(
-      owner,
-      repo,
-      file.path,
-      accessToken,
-      meta.defaultBranch,
-    );
+    const content = await getFileContent(owner, repo, file.path, accessToken, meta.defaultBranch);
     if (content.trim()) files.push({ path: file.path, content });
     if ((i + 1) % 20 === 0 || i === eligible.length - 1) {
       onProgress?.(`Downloaded ${i + 1} / ${eligible.length} files…`);
@@ -414,11 +323,7 @@ export async function fetchRepoFilesWithProgress(
   return { meta, files, owner, repo };
 }
 
-
-
-
 export function validateWebhookToken(incomingToken, expectedSecret) {
-
   if (!expectedSecret) return false;
   if (!incomingToken) return false;
   const a = Buffer.from(String(incomingToken));
@@ -427,14 +332,7 @@ export function validateWebhookToken(incomingToken, expectedSecret) {
   return crypto.timingSafeEqual(a, b);
 }
 
-
-export async function registerWebhook(
-  owner,
-  repo,
-  accessToken,
-  webhookUrl,
-  secret,
-) {
+export async function registerWebhook(owner, repo, accessToken, webhookUrl, secret) {
   const { data } = await axios.post(
     `${GL_API}/projects/${encodePath(owner, repo)}/hooks`,
     {
@@ -448,13 +346,11 @@ export async function registerWebhook(
   return { hookId: data.id };
 }
 
-
 export async function deleteWebhook(owner, repo, accessToken, hookId) {
   try {
-    await axios.delete(
-      `${GL_API}/projects/${encodePath(owner, repo)}/hooks/${hookId}`,
-      { headers: glHeaders(accessToken) },
-    );
+    await axios.delete(`${GL_API}/projects/${encodePath(owner, repo)}/hooks/${hookId}`, {
+      headers: glHeaders(accessToken),
+    });
   } catch (err) {
     if (err.response?.status !== 404) throw err;
   }

@@ -1,11 +1,9 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
 const SlackIntegrationSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -19,7 +17,6 @@ const SlackIntegrationSchema = new Schema(
       index: true,
     },
 
-
     workspaceId: {
       type: String,
 
@@ -30,16 +27,13 @@ const SlackIntegrationSchema = new Schema(
       trim: true,
     },
     teamId: {
-
       type: String,
       trim: true,
     },
 
-
     isCustomApp: {
       type: Boolean,
       default: false,
-
     },
     slackClientId: {
       type: String,
@@ -55,17 +49,13 @@ const SlackIntegrationSchema = new Schema(
     },
     slackClientIdEncrypted: {
       type: String,
-
     },
     slackClientSecretEncrypted: {
       type: String,
-
     },
     slackSigningSecretEncrypted: {
       type: String,
-
     },
-
 
     botUserId: {
       type: String,
@@ -79,7 +69,6 @@ const SlackIntegrationSchema = new Schema(
     },
     botTokenEncrypted: {
       type: String,
-
     },
     appId: {
       type: String,
@@ -88,12 +77,10 @@ const SlackIntegrationSchema = new Schema(
     installedAt: Date,
     installedBy: String,
 
-
     oauthState: {
       type: String,
       trim: true,
     },
-
 
     alertChannelId: {
       type: String,
@@ -103,7 +90,6 @@ const SlackIntegrationSchema = new Schema(
       type: String,
       trim: true,
     },
-
 
     enableCriticalAlerts: {
       type: Boolean,
@@ -126,7 +112,6 @@ const SlackIntegrationSchema = new Schema(
       default: true,
     },
 
-
     lastAlertedSecurityScore: {
       type: Number,
       default: 100,
@@ -141,7 +126,6 @@ const SlackIntegrationSchema = new Schema(
     },
     lastAlertSentAt: Date,
 
-
     isActive: {
       type: Boolean,
       default: true,
@@ -154,7 +138,6 @@ const SlackIntegrationSchema = new Schema(
       default: "healthy",
     },
     healthMessage: String,
-
 
     events: [
       {
@@ -185,16 +168,13 @@ const SlackIntegrationSchema = new Schema(
   },
 );
 
-
 SlackIntegrationSchema.pre("validate", async function (next) {
   try {
     const { encrypt } = await import("../utils/crypto.util.js");
-    
 
     if (this.isModified("botAccessToken")) {
       this.botTokenEncrypted = encrypt(this.botAccessToken);
     }
-    
 
     if (this.isModified("slackClientId")) {
       this.slackClientIdEncrypted = encrypt(this.slackClientId);
@@ -205,7 +185,7 @@ SlackIntegrationSchema.pre("validate", async function (next) {
     if (this.isModified("slackSigningSecret")) {
       this.slackSigningSecretEncrypted = encrypt(this.slackSigningSecret);
     }
-    
+
     next();
   } catch (err) {
     next(err);
@@ -213,7 +193,6 @@ SlackIntegrationSchema.pre("validate", async function (next) {
 });
 
 SlackIntegrationSchema.pre("save", function (next) {
-
   if (this.isModified("botAccessToken")) {
     this.botAccessToken = undefined;
   }
@@ -268,10 +247,7 @@ SlackIntegrationSchema.methods.getDecryptedSigningSecret = async function () {
   }
 };
 
-SlackIntegrationSchema.methods.recordEvent = async function (
-  type,
-  message,
-) {
+SlackIntegrationSchema.methods.recordEvent = async function (type, message) {
   this.events.push({ type, message, timestamp: new Date() });
   if (this.events.length > 100) {
     this.events = this.events.slice(-100);
@@ -279,7 +255,4 @@ SlackIntegrationSchema.methods.recordEvent = async function (
   await this.save();
 };
 
-export const SlackIntegration = model(
-  "SlackIntegration",
-  SlackIntegrationSchema,
-);
+export const SlackIntegration = model("SlackIntegration", SlackIntegrationSchema);

@@ -25,7 +25,6 @@ function serializeLogs(logs) {
   }));
 }
 
-
 export const listActivityLogs = wrap(async (req, res) => {
   const userId = req.user.userId;
 
@@ -59,7 +58,6 @@ export const listActivityLogs = wrap(async (req, res) => {
     hasMore: skip + logs.length < total,
   });
 });
-
 
 export const listProjectActivityLogs = wrap(async (req, res) => {
   const userId = req.user.userId;

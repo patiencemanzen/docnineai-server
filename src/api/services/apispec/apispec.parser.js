@@ -1,6 +1,4 @@
-
 import yaml from "js-yaml";
-
 
 function parseRaw(text) {
   const trimmed = text.trim();
@@ -24,7 +22,6 @@ function parseRaw(text) {
   }
 }
 
-
 function detectVersion(doc) {
   if (doc.openapi) {
     const v = String(doc.openapi);
@@ -33,13 +30,10 @@ function detectVersion(doc) {
     return "3.0";
   }
   if (doc.swagger && String(doc.swagger).startsWith("2")) return "2.0";
-  if (doc.info?.schema && String(doc.info.schema).includes("postman"))
-    return "postman";
+  if (doc.info?.schema && String(doc.info.schema).includes("postman")) return "postman";
   if (doc.item) return "postman";
   return "unknown";
 }
-
-
 
 function parseOas3(doc, version) {
   const info = {
@@ -70,19 +64,9 @@ function parseOas3(doc, version) {
   for (const [path, pathItem] of Object.entries(paths)) {
     if (!pathItem || typeof pathItem !== "object") continue;
 
-
     const pathParams = pathItem.parameters ?? [];
 
-    const HTTP_METHODS = [
-      "get",
-      "post",
-      "put",
-      "patch",
-      "delete",
-      "options",
-      "head",
-      "trace",
-    ];
+    const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head", "trace"];
 
     for (const method of HTTP_METHODS) {
       const op = pathItem[method];
@@ -99,9 +83,7 @@ function parseOas3(doc, version) {
         tags: op.tags ?? [],
         operationId: op.operationId ?? "",
         parameters: allParams.map(normaliseOas3Param),
-        requestBody: op.requestBody
-          ? normaliseRequestBody3(op.requestBody)
-          : null,
+        requestBody: op.requestBody ? normaliseRequestBody3(op.requestBody) : null,
         responses: normaliseResponses3(op.responses ?? {}),
         security: op.security ?? doc.security ?? [],
         deprecated: op.deprecated ?? false,
@@ -122,7 +104,6 @@ function parseOas3(doc, version) {
 }
 
 function mergeParams(pathParams, opParams) {
-
   const opKeys = new Set(opParams.map((p) => `${p.in}:${p.name}`));
   const merged = pathParams.filter((p) => !opKeys.has(`${p.in}:${p.name}`));
   return [...merged, ...opParams];
@@ -135,9 +116,7 @@ function normaliseOas3Param(p) {
     name: p.name ?? "",
     required: p.required ?? p.in === "path",
     description: p.description ?? "",
-    schema:
-      p.schema ??
-      (p.content ? (Object.values(p.content)[0]?.schema ?? {}) : {}),
+    schema: p.schema ?? (p.content ? (Object.values(p.content)[0]?.schema ?? {}) : {}),
     example: p.example ?? p.schema?.example ?? null,
   };
 }
@@ -179,8 +158,6 @@ function normaliseResponses3(responses) {
   );
 }
 
-
-
 function parseSwagger2(doc) {
   const info = {
     title: doc.info?.title ?? "Untitled API",
@@ -190,7 +167,6 @@ function parseSwagger2(doc) {
     license: doc.info?.license ?? null,
     termsOfService: doc.info?.termsOfService ?? "",
   };
-
 
   let baseUrl = "";
   if (doc.host) {
@@ -216,15 +192,7 @@ function parseSwagger2(doc) {
     if (!pathItem || typeof pathItem !== "object") continue;
 
     const pathParams = pathItem.parameters ?? [];
-    const HTTP_METHODS = [
-      "get",
-      "post",
-      "put",
-      "patch",
-      "delete",
-      "options",
-      "head",
-    ];
+    const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "options", "head"];
 
     for (const method of HTTP_METHODS) {
       const op = pathItem[method];
@@ -232,12 +200,9 @@ function parseSwagger2(doc) {
 
       const allParams = mergeParams(pathParams, op.parameters ?? []);
 
-
       const bodyParam = allParams.find((p) => p.in === "body");
       const formParams = allParams.filter((p) => p.in === "formData");
-      const regularParams = allParams.filter(
-        (p) => p.in !== "body" && p.in !== "formData",
-      );
+      const regularParams = allParams.filter((p) => p.in !== "body" && p.in !== "formData");
 
       let requestBody = null;
       if (bodyParam) {
@@ -246,10 +211,7 @@ function parseSwagger2(doc) {
           required: bodyParam.required ?? false,
           description: bodyParam.description ?? "",
           content: Object.fromEntries(
-            consumes.map((ct) => [
-              ct,
-              { schema: bodyParam.schema ?? {}, example: null },
-            ]),
+            consumes.map((ct) => [ct, { schema: bodyParam.schema ?? {}, example: null }]),
           ),
         };
       } else if (formParams.length > 0) {
@@ -264,10 +226,7 @@ function parseSwagger2(doc) {
               schema: {
                 type: "object",
                 properties: Object.fromEntries(
-                  formParams.map((fp) => [
-                    fp.name,
-                    fp.schema ?? { type: fp.type ?? "string" },
-                  ]),
+                  formParams.map((fp) => [fp.name, fp.schema ?? { type: fp.type ?? "string" }]),
                 ),
               },
               example: null,
@@ -276,16 +235,13 @@ function parseSwagger2(doc) {
         };
       }
 
-
       const produces = op.produces ?? doc.produces ?? ["application/json"];
       const responses = {};
       for (const [code, r] of Object.entries(op.responses ?? {})) {
         responses[code] = {
           description: r.description ?? "",
           content: r.schema
-            ? Object.fromEntries(
-                produces.map((ct) => [ct, { schema: r.schema, example: null }]),
-              )
+            ? Object.fromEntries(produces.map((ct) => [ct, { schema: r.schema, example: null }]))
             : {},
         };
       }
@@ -326,8 +282,6 @@ function parseSwagger2(doc) {
   };
 }
 
-
-
 function parsePostman(doc) {
   const colInfo = doc.info ?? {};
   const info = {
@@ -342,25 +296,20 @@ function parsePostman(doc) {
     termsOfService: "",
   };
 
-
   const servers = [];
   const allItems = flattenPostmanItems(doc.item ?? []);
   const firstUrl = allItems[0]?.request?.url;
   if (firstUrl) {
-    const rawUrl =
-      typeof firstUrl === "string" ? firstUrl : (firstUrl.raw ?? "");
+    const rawUrl = typeof firstUrl === "string" ? firstUrl : (firstUrl.raw ?? "");
     try {
       const u = new URL(rawUrl.replace(/{{[^}]+}}/g, "placeholder"));
       servers.push({
         url: `${u.protocol}//${u.host}`,
         description: "Inferred from first request",
       });
-    } catch {
-
-    }
+    } catch {}
   }
   if (servers.length === 0) servers.push({ url: "/", description: "" });
-
 
   const folderTags = (doc.item ?? [])
     .filter((i) => Array.isArray(i.item))
@@ -375,7 +324,6 @@ function parsePostman(doc) {
     const rawUrl = typeof req.url === "string" ? req.url : (req.url?.raw ?? "");
     const methodStr = (req.method ?? "GET").toUpperCase();
 
-
     let path = "/";
     try {
       const urlObj = req.url;
@@ -387,7 +335,6 @@ function parsePostman(doc) {
     } catch {
       path = rawUrl.replace(/https?:\/\/[^/]+/, "") || "/";
     }
-
 
     const parameters = [];
     const urlObj = typeof req.url === "object" ? req.url : {};
@@ -422,15 +369,11 @@ function parsePostman(doc) {
       });
     }
 
-
     let requestBody = null;
     if (req.body) {
       const mode = req.body.mode ?? "raw";
       if (mode === "raw") {
-        const ct =
-          req.body.options?.raw?.language === "json"
-            ? "application/json"
-            : "text/plain";
+        const ct = req.body.options?.raw?.language === "json" ? "application/json" : "text/plain";
         requestBody = {
           required: true,
           description: "",
@@ -438,9 +381,7 @@ function parsePostman(doc) {
         };
       } else if (mode === "formdata" || mode === "urlencoded") {
         const ct =
-          mode === "formdata"
-            ? "multipart/form-data"
-            : "application/x-www-form-urlencoded";
+          mode === "formdata" ? "multipart/form-data" : "application/x-www-form-urlencoded";
         requestBody = {
           required: true,
           description: "",
@@ -462,13 +403,11 @@ function parsePostman(doc) {
       }
     }
 
-
     const responses = {};
     for (const r of item.response ?? []) {
       const code = String(r.code ?? 200);
       const ct =
-        r.header?.find((h) => h.key?.toLowerCase() === "content-type")?.value ??
-        "application/json";
+        r.header?.find((h) => h.key?.toLowerCase() === "content-type")?.value ?? "application/json";
       responses[code] = {
         description: r.name ?? r.status ?? "",
         content: { [ct]: { schema: {}, example: r.body ?? null } },
@@ -506,12 +445,10 @@ function parsePostman(doc) {
   };
 }
 
-
 function flattenPostmanItems(items, folderName = "") {
   const result = [];
   for (const item of items) {
     if (Array.isArray(item.item)) {
-
       result.push(...flattenPostmanItems(item.item, item.name ?? folderName));
     } else {
       result.push({ ...item, _folderName: folderName });
@@ -519,9 +456,6 @@ function flattenPostmanItems(items, folderName = "") {
   }
   return result;
 }
-
-
-
 
 export function parseSpec(text) {
   const doc = parseRaw(text);
@@ -536,7 +470,6 @@ export function parseSpec(text) {
     case "postman":
       return parsePostman(doc);
     default:
-
       try {
         return parseOas3(doc, "unknown");
       } catch {

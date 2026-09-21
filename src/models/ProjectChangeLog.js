@@ -2,8 +2,6 @@ import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
-
-
 const ProjectChangeLogSchema = new Schema(
   {
     projectId: {

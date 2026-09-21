@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 import { Notification, NOTIFICATION_TYPES } from "../models/Notification.js";
@@ -11,11 +10,7 @@ import {
 
 const VALID_TYPES = new Set(NOTIFICATION_TYPES);
 
-
 const DEDUP_WINDOW_MS = 5 * 60 * 1000;
-
-
-
 
 async function _write(opts) {
   try {
@@ -39,7 +34,6 @@ async function _write(opts) {
       return;
     }
 
-
     const dedupSince = new Date(Date.now() - DEDUP_WINDOW_MS);
     const query = {
       userId,
@@ -50,7 +44,6 @@ async function _write(opts) {
 
     const existing = await Notification.exists(query);
     if (existing) return;
-
 
     const ctx = metadata ?? {};
     const resolvedTitle = title ?? resolveTitle(type, ctx);
@@ -78,15 +71,11 @@ async function _write(opts) {
   }
 }
 
-
-
 class _NotificationService {
-  
   create(opts) {
     setImmediate(() => _write(opts));
   }
 
-  
   createForMany(userIds, opts) {
     if (!Array.isArray(userIds) || userIds.length === 0) return;
     for (const userId of userIds) {
@@ -94,7 +83,6 @@ class _NotificationService {
     }
   }
 
-  
   createBatch(items) {
     if (!Array.isArray(items) || items.length === 0) return;
     for (const item of items) {
@@ -102,7 +90,6 @@ class _NotificationService {
     }
   }
 
-  
   async getUserNotifications(
     userId,
     { page = 1, limit = 20, unreadOnly = false, archived = false } = {},
@@ -113,11 +100,7 @@ class _NotificationService {
     const skip = (page - 1) * limit;
 
     const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       Notification.countDocuments(query),
       Notification.countDocuments({ userId, isRead: false, isArchived: false }),
     ]);
@@ -125,7 +108,6 @@ class _NotificationService {
     return { notifications, total, unreadCount };
   }
 
-  
   async markAsRead(userId, notificationId) {
     return Notification.findOneAndUpdate(
       { _id: notificationId, userId },
@@ -134,16 +116,11 @@ class _NotificationService {
     ).lean();
   }
 
-  
   async markAllAsRead(userId) {
-    const result = await Notification.updateMany(
-      { userId, isRead: false },
-      { isRead: true },
-    );
+    const result = await Notification.updateMany({ userId, isRead: false }, { isRead: true });
     return { modifiedCount: result.modifiedCount };
   }
 
-  
   async archive(userId, notificationId) {
     return Notification.findOneAndUpdate(
       { _id: notificationId, userId },
@@ -152,7 +129,6 @@ class _NotificationService {
     ).lean();
   }
 
-  
   async getUnreadCount(userId) {
     return Notification.countDocuments({
       userId,
@@ -161,7 +137,6 @@ class _NotificationService {
     });
   }
 
-  
   async deleteOne(userId, notificationId) {
     const result = await Notification.deleteOne({
       _id: notificationId,
@@ -170,13 +145,9 @@ class _NotificationService {
     return result.deletedCount === 1;
   }
 
-  
   async cleanup(before) {
     const result = await Notification.deleteMany({
-      $or: [
-        { expiresAt: { $lt: before } },
-        { isArchived: true, createdAt: { $lt: before } },
-      ],
+      $or: [{ expiresAt: { $lt: before } }, { isArchived: true, createdAt: { $lt: before } }],
     });
     return result.deletedCount;
   }

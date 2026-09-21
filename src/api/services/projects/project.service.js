@@ -1,4 +1,3 @@
-
 import { randomUUID, randomBytes, createHash } from "crypto";
 
 import { Project } from "../../../models/Project.js";
@@ -22,8 +21,6 @@ import {
   normaliseRepoUrl,
 } from "../../../adapters/provider.adapter.js";
 
-
-
 const ALL_OUTPUT_SECTIONS = [
   "readme",
   "internalDocs",
@@ -34,8 +31,6 @@ const ALL_OUTPUT_SECTIONS = [
   "securityReport",
   "remediationReport",
 ];
-
-
 
 let _orchestrate = null;
 let _incrementalSync = null;
@@ -49,26 +44,20 @@ async function getOrchestrate() {
 
 async function getIncrementalSync() {
   if (_incrementalSync) return _incrementalSync;
-  const m =
-    await import("../../../services/incremental-orchestrator.service.js");
+  const m = await import("../../../services/incremental-orchestrator.service.js");
   _incrementalSync = m.incrementalSync;
   return _incrementalSync;
 }
-
-
-
 
 function parseRepoUrl(raw) {
   const provider = detectProvider(raw);
   try {
     const parsed = adapterParseRepoUrl(provider, raw);
 
-
     let repoName, owner;
     if (provider === "azure") {
       owner = parsed.owner;
       repoName = parsed.repo;
-
     } else {
       owner = parsed.owner;
       repoName = parsed.repo;
@@ -93,7 +82,6 @@ function parseRepoUrl(raw) {
   }
 }
 
-
 function domainError(msg, code, status = 400) {
   const e = new Error(msg);
   e.code = code;
@@ -101,40 +89,30 @@ function domainError(msg, code, status = 400) {
   return e;
 }
 
-
 async function assertOwnership(projectId, userId) {
   const project = await Project.findOne({ _id: projectId, userId });
-  if (!project)
-    throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
+  if (!project) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
   return project;
 }
 
-
 async function assertAccess(projectId, userId, requiredRole = "viewer") {
-
   const ownedProject = await Project.findOne({ _id: projectId, userId });
   if (ownedProject) {
     ownedProject._shareRole = "owner";
     return ownedProject;
   }
 
-
   const project = await Project.findById(projectId);
-  if (!project)
-    throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
+  if (!project) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
 
   const user = await User.findById(userId).select("email").lean();
   const share = await ProjectShare.findOne({
     projectId,
     status: "accepted",
-    $or: [
-      { inviteeUserId: userId },
-      ...(user?.email ? [{ inviteeEmail: user.email }] : []),
-    ],
+    $or: [{ inviteeUserId: userId }, ...(user?.email ? [{ inviteeEmail: user.email }] : [])],
   }).lean();
 
   if (!share) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
-
 
   const ROLE_RANK = { owner: 3, editor: 2, viewer: 1 };
   if ((ROLE_RANK[share.role] ?? 0) < (ROLE_RANK[requiredRole] ?? 0)) {
@@ -149,21 +127,13 @@ async function assertAccess(projectId, userId, requiredRole = "viewer") {
   return project;
 }
 
-
 function parseSortParam(sort = "-createdAt") {
-  const ALLOWED = new Set([
-    "createdAt",
-    "updatedAt",
-    "repoName",
-    "status",
-    "security.score",
-  ]);
+  const ALLOWED = new Set(["createdAt", "updatedAt", "repoName", "status", "security.score"]);
   const desc = sort.startsWith("-");
   const field = desc ? sort.slice(1) : sort;
   if (!ALLOWED.has(field)) return { createdAt: -1 };
   return { [field]: desc ? -1 : 1 };
 }
-
 
 function normaliseSecurity(security) {
   if (!security) return {};
@@ -176,7 +146,6 @@ function normaliseSecurity(security) {
     findings: (security.findings ?? []).slice(0, 50),
   };
 }
-
 
 function normaliseStats(stats, result) {
   return {
@@ -193,7 +162,6 @@ function normaliseStats(stats, result) {
   };
 }
 
-
 function buildManifestFromTree(tree, projectMap) {
   const roleMap = new Map((projectMap || []).map((p) => [p.path, p.role]));
   const layerMap = new Map((projectMap || []).map((p) => [p.path, p.layer]));
@@ -205,23 +173,15 @@ function buildManifestFromTree(tree, projectMap) {
   }));
 }
 
-
 function makeProgressHandler(projectId, jobId) {
   let lastCheckpointTime = Date.now();
 
   return async (event) => {
-
     pushEvent(jobId, event);
 
-
-    if (
-      event.status === "done" ||
-      event.status === "error" ||
-      event.status === "running"
-    ) {
+    if (event.status === "done" || event.status === "error" || event.status === "running") {
       lastCheckpointTime = Date.now();
     }
-
 
     try {
       await Project.updateOne(
@@ -235,12 +195,9 @@ function makeProgressHandler(projectId, jobId) {
           "meta.lastProgressStep": event.step,
         },
       );
-    } catch {
-      
-    }
+    } catch {}
   };
 }
-
 
 async function createInitialVersions(projectId, output, commitSha) {
   const promises = ALL_OUTPUT_SECTIONS.map(async (section) => {
@@ -266,16 +223,11 @@ async function createInitialVersions(projectId, output, commitSha) {
         },
       });
     } catch (err) {
-
-      console.warn(
-        `[versions] Failed to create version for ${section}:`,
-        err.message,
-      );
+      console.warn(`[versions] Failed to create version for ${section}:`, err.message);
     }
   });
   await Promise.all(promises);
 }
-
 
 function buildFullRunUpdate(result, commitSha, freshTree) {
   return {
@@ -304,9 +256,6 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
   };
 }
 
-
-
-
 export async function recoverOrphanedJobs() {
   try {
     const { jobs, isVercelTimedOut, getStaleJobs } =
@@ -327,7 +276,6 @@ export async function recoverOrphanedJobs() {
     let recovered = 0;
 
     for (const p of orphans) {
-
       if (p.jobId && jobs.has(p.jobId)) {
         console.log(`[recovery] Job ${p.jobId} still in memory, not orphaned`);
         continue;
@@ -359,10 +307,7 @@ export async function recoverOrphanedJobs() {
         `[recovery] Marked ${orphanIds.length} orphaned project(s) as error (recovered: ${recovered}).`,
         orphans
           .filter((p) => orphanIds.some((id) => id.equals(p._id)))
-          .map(
-            (p) =>
-              `${p.repoName} (${p.jobId}) · age: ${Date.now() - p.createdAt.getTime()}ms`,
-          )
+          .map((p) => `${p.repoName} (${p.jobId}) · age: ${Date.now() - p.createdAt.getTime()}ms`)
           .join(", "),
       );
     }
@@ -371,13 +316,8 @@ export async function recoverOrphanedJobs() {
   }
 }
 
-
-
-
-
 export async function createProject({ userId, repoUrl }) {
   try {
-
     const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
 
     console.log("[createProject] Parsed repo URL", {
@@ -386,7 +326,6 @@ export async function createProject({ userId, repoUrl }) {
       repoName,
       repoUrl: normalised,
     });
-
 
     const active = await Project.findOne({
       userId,
@@ -407,7 +346,6 @@ export async function createProject({ userId, repoUrl }) {
       );
     }
 
-
     let providerToken = null;
     if (provider === "gitlab") {
       const user = await User.findById(userId).select("+gitlabTokenEncrypted");
@@ -420,17 +358,13 @@ export async function createProject({ userId, repoUrl }) {
         );
       }
 
-      const { encrypt, decrypt } =
-        await import("../../../utils/crypto.util.js");
+      const { encrypt, decrypt } = await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.gitlabTokenEncrypted));
       console.log("[createProject] GitLab token prepared for project");
     }
 
-
     if (provider === "azure") {
-      const user = await User.findById(userId).select(
-        "+azureDevOpsTokenEncrypted",
-      );
+      const user = await User.findById(userId).select("+azureDevOpsTokenEncrypted");
       if (!user?.azureDevOpsTokenEncrypted) {
         console.warn("[createProject] Azure DevOps token not found", {
           userId,
@@ -442,17 +376,13 @@ export async function createProject({ userId, repoUrl }) {
         );
       }
 
-      const { encrypt, decrypt } =
-        await import("../../../utils/crypto.util.js");
+      const { encrypt, decrypt } = await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.azureDevOpsTokenEncrypted));
       console.log("[createProject] Azure DevOps token prepared for project");
     }
 
-
     if (provider === "bitbucket") {
-      const user = await User.findById(userId).select(
-        "+bitbucketTokenEncrypted",
-      );
+      const user = await User.findById(userId).select("+bitbucketTokenEncrypted");
       if (!user?.bitbucketTokenEncrypted) {
         console.warn("[createProject] Bitbucket token not found", { userId });
         throw domainError(
@@ -461,23 +391,16 @@ export async function createProject({ userId, repoUrl }) {
           400,
         );
       }
-      const { encrypt, decrypt } =
-        await import("../../../utils/crypto.util.js");
+      const { encrypt, decrypt } = await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.bitbucketTokenEncrypted));
       console.log("[createProject] Bitbucket token prepared for project");
     }
 
-
     if (provider === "github") {
-      const { GitHubToken } =
-        await import("../../../models/GitHubToken.js");
-      const githubToken = await GitHubToken.findOne({ userId }).select(
-        "+accessTokenEncrypted",
-      );
+      const { GitHubToken } = await import("../../../models/GitHubToken.js");
+      const githubToken = await GitHubToken.findOne({ userId }).select("+accessTokenEncrypted");
       if (githubToken?.accessTokenEncrypted) {
-
-        const { encrypt, decrypt } =
-          await import("../../../utils/crypto.util.js");
+        const { encrypt, decrypt } = await import("../../../utils/crypto.util.js");
         providerToken = encrypt(decrypt(githubToken.accessTokenEncrypted));
         console.log("[createProject] GitHub token prepared for project");
       } else {
@@ -523,10 +446,8 @@ export async function createProject({ userId, repoUrl }) {
       metadata: { provider, owner, repoName, repoUrl: normalised },
     });
 
-
     try {
-      const { logProjectChange } =
-        await import("../../../services/changelog.service.js");
+      const { logProjectChange } = await import("../../../services/changelog.service.js");
       await logProjectChange(project._id, userId, "pipeline_started", {
         details: `Analysis pipeline started for ${owner}/${repoName}`,
       });
@@ -548,15 +469,12 @@ export async function createProject({ userId, repoUrl }) {
   }
 }
 
-
 export async function createFromScratchProject({ userId, projectName }) {
   if (!projectName || projectName.trim().length === 0) {
     throw domainError("Project name is required.", "INVALID_PROJECT_NAME", 400);
   }
 
-
   const cleanName = projectName.trim().replace(/\s+/g, "-").toLowerCase();
-
 
   const existing = await Project.findOne({
     userId,
@@ -566,11 +484,7 @@ export async function createFromScratchProject({ userId, projectName }) {
   });
 
   if (existing) {
-    throw domainError(
-      `A project named "${projectName}" already exists.`,
-      "DUPLICATE_PROJECT",
-      409,
-    );
+    throw domainError(`A project named "${projectName}" already exists.`, "DUPLICATE_PROJECT", 409);
   }
 
   const project = await Project.create({
@@ -606,21 +520,15 @@ export async function createFromScratchProject({ userId, projectName }) {
   return project;
 }
 
-
 export async function retryProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
   if (project.status === "running" || project.status === "queued")
     throw domainError("Pipeline is already running.", "PROJECT_RUNNING", 409);
   if (project.status === "archived")
-    throw domainError(
-      "Cannot retry an archived project.",
-      "PROJECT_ARCHIVED",
-      409,
-    );
+    throw domainError("Cannot retry an archived project.", "PROJECT_ARCHIVED", 409);
 
   const jobId = randomUUID();
-
 
   await Project.findByIdAndUpdate(project._id, {
     $set: {
@@ -658,7 +566,6 @@ export async function retryProject({ projectId, userId }) {
   return Project.findById(project._id);
 }
 
-
 export async function listProjects({
   userId,
   page = 1,
@@ -679,9 +586,7 @@ export async function listProjects({
       .skip((page - 1) * limit)
       .limit(limit)
 
-      .select(
-        "-output -events -editedOutput -fileManifest -agentOutputs -pipelineReport",
-      ),
+      .select("-output -events -editedOutput -fileManifest -agentOutputs -pipelineReport"),
     Project.countDocuments(query),
   ]);
 
@@ -694,20 +599,15 @@ export async function listProjects({
   };
 }
 
-
 export async function getProjectById({ projectId, userId }) {
   return assertAccess(projectId, userId, "viewer");
 }
 
-
 export async function getProjectEvents({ projectId, userId }) {
   await assertAccess(projectId, userId, "viewer");
 
-  const project = await Project.findById(projectId).select(
-    "status jobId events",
-  );
-  if (!project)
-    throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
+  const project = await Project.findById(projectId).select("status jobId events");
+  if (!project) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
 
   return {
     events: project.events || [],
@@ -716,23 +616,17 @@ export async function getProjectEvents({ projectId, userId }) {
   };
 }
 
-
 export async function deleteProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
   if (project.status === "running" || project.status === "queued")
-    throw domainError(
-      "Cannot delete a running project.",
-      "PROJECT_RUNNING",
-      409,
-    );
+    throw domainError("Cannot delete a running project.", "PROJECT_RUNNING", 409);
 
   await Promise.all([
     Project.findByIdAndDelete(projectId),
     DocumentVersion.deleteMany({ projectId }),
   ]);
 }
-
 
 export async function updateProject({ projectId, userId, updates }) {
   const project = await assertOwnership(projectId, userId);
@@ -741,11 +635,7 @@ export async function updateProject({ projectId, userId, updates }) {
   if (typeof updates?.name === "string") {
     const name = updates.name.trim();
     if (!name) {
-      throw domainError(
-        "Project name is required.",
-        "INVALID_PROJECT_NAME",
-        422,
-      );
+      throw domainError("Project name is required.", "INVALID_PROJECT_NAME", 422);
     }
     if (name.length > 80) {
       throw domainError(
@@ -768,11 +658,7 @@ export async function updateProject({ projectId, userId, updates }) {
 
   if (updates.status === "archived") {
     if (project.status === "running" || project.status === "queued")
-      throw domainError(
-        "Cannot archive a running project.",
-        "PROJECT_RUNNING",
-        409,
-      );
+      throw domainError("Cannot archive a running project.", "PROJECT_RUNNING", 409);
 
     project.status = "archived";
     project.archivedAt = new Date();
@@ -786,38 +672,24 @@ export async function updateProject({ projectId, userId, updates }) {
   return project;
 }
 
-
-
-
-
 export async function syncProject({
   projectId,
   userId,
   forceFullRun = false,
   webhookChangedFiles = null,
 }) {
-
   const project = await Project.findOne({ _id: projectId, userId }).select(
     "+agentOutputs +fileManifest +events",
   );
 
-  if (!project)
-    throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
+  if (!project) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
 
   if (project.status === "running" || project.status === "queued")
     throw domainError("A pipeline is already running.", "PROJECT_RUNNING", 409);
   if (project.status === "archived")
-    throw domainError(
-      "Cannot sync an archived project.",
-      "PROJECT_ARCHIVED",
-      409,
-    );
+    throw domainError("Cannot sync an archived project.", "PROJECT_ARCHIVED", 409);
   if (project.status !== "done" && project.status !== "error")
-    throw domainError(
-      "Project must be in done or error state to sync.",
-      "PROJECT_NOT_READY",
-      409,
-    );
+    throw domainError("Project must be in done or error state to sync.", "PROJECT_NOT_READY", 409);
 
   const jobId = randomUUID();
   project.jobId = jobId;
@@ -827,19 +699,14 @@ export async function syncProject({
 
   registerJob(jobId);
 
-
   try {
-    const { logProjectChange } =
-      await import("../../../services/changelog.service.js");
+    const { logProjectChange } = await import("../../../services/changelog.service.js");
     await logProjectChange(projectId, userId, "pipeline_started", {
-      details: forceFullRun
-        ? "Full re-analysis started"
-        : "Incremental sync started",
+      details: forceFullRun ? "Full re-analysis started" : "Incremental sync started",
     });
   } catch (err) {
     console.warn("[changelog] Failed to log sync:", err.message);
   }
-
 
   runSync({ project, jobId, forceFullRun, webhookChangedFiles }).catch((err) =>
     console.error(`❌ Sync crash [${jobId}]:`, err.message),
@@ -850,9 +717,6 @@ export async function syncProject({
     streamUrl: `/projects/${project._id}/stream`,
   };
 }
-
-
-
 
 export async function editDocSection({ projectId, userId, section, content }) {
   if (!SECTIONS.includes(section))
@@ -871,13 +735,9 @@ export async function editDocSection({ projectId, userId, section, content }) {
       409,
     );
 
+  const currentContent = project.editedOutput?.[section] || project.output?.[section] || "";
 
-  const currentContent =
-    project.editedOutput?.[section] || project.output?.[section] || "";
-
-  const snapshotSource = project.editedSections?.some(
-    (s) => s.section === section,
-  )
+  const snapshotSource = project.editedSections?.some((s) => s.section === section)
     ? "user"
     : "ai_full";
 
@@ -891,10 +751,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
 
-
-  const editedSections = (project.editedSections || []).filter(
-    (s) => s.section !== section,
-  );
+  const editedSections = (project.editedSections || []).filter((s) => s.section !== section);
   editedSections.push({ section, editedAt: new Date(), stale: false });
 
   await Project.findByIdAndUpdate(project._id, {
@@ -902,21 +759,16 @@ export async function editDocSection({ projectId, userId, section, content }) {
     editedSections,
   });
 
-
   await DocumentVersion.createVersion({
     projectId: project._id,
     section,
     content,
     source: "user",
     meta: { changeSummary: "User edit" },
-  }).catch((err) =>
-    console.warn("[versions] Version save failed:", err.message),
-  );
-
+  }).catch((err) => console.warn("[versions] Version save failed:", err.message));
 
   try {
-    const { logSectionEdit } =
-      await import("../../../services/changelog.service.js");
+    const { logSectionEdit } = await import("../../../services/changelog.service.js");
     await logSectionEdit(projectId, userId, section, currentContent, content);
   } catch (err) {
     console.warn("[changelog] Failed to log section edit:", err.message);
@@ -924,7 +776,6 @@ export async function editDocSection({ projectId, userId, section, content }) {
 
   return getProjectById({ projectId, userId });
 }
-
 
 export async function revertDocSection({ projectId, userId, section }) {
   if (!SECTIONS.includes(section))
@@ -937,9 +788,9 @@ export async function revertDocSection({ projectId, userId, section }) {
   await assertAccess(projectId, userId, "editor");
 
   const editedSections =
-    (
-      await Project.findById(projectId).select("editedSections").lean()
-    )?.editedSections?.filter((s) => s.section !== section) || [];
+    (await Project.findById(projectId).select("editedSections").lean())?.editedSections?.filter(
+      (s) => s.section !== section,
+    ) || [];
 
   await Project.findByIdAndUpdate(projectId, {
     [`editedOutput.${section}`]: "",
@@ -949,7 +800,6 @@ export async function revertDocSection({ projectId, userId, section }) {
   return getProjectById({ projectId, userId });
 }
 
-
 export async function acceptAISection({ projectId, userId, section }) {
   if (!SECTIONS.includes(section))
     throw domainError(
@@ -957,7 +807,6 @@ export async function acceptAISection({ projectId, userId, section }) {
       "INVALID_SECTION",
       400,
     );
-
 
   const project = await assertAccess(projectId, userId, "editor");
   const userContent = project.editedOutput?.[section];
@@ -972,10 +821,8 @@ export async function acceptAISection({ projectId, userId, section }) {
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
 
-
   try {
-    const { logSectionAccept } =
-      await import("../../../services/changelog.service.js");
+    const { logSectionAccept } = await import("../../../services/changelog.service.js");
     await logSectionAccept(projectId, userId, section);
   } catch (err) {
     console.warn("[changelog] Failed to log section accept:", err.message);
@@ -984,16 +831,7 @@ export async function acceptAISection({ projectId, userId, section }) {
   return revertDocSection({ projectId, userId, section });
 }
 
-
-
-
-export async function listVersions({
-  projectId,
-  userId,
-  section,
-  page = 1,
-  limit = 20,
-}) {
+export async function listVersions({ projectId, userId, section, page = 1, limit = 20 }) {
   if (!SECTIONS.includes(section))
     throw domainError(
       `Invalid section. Must be one of: ${SECTIONS.join(", ")}`,
@@ -1015,23 +853,19 @@ export async function listVersions({
   return { versions, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-
 export async function getVersion({ projectId, userId, versionId }) {
   await assertAccess(projectId, userId, "viewer");
 
   const version = await DocumentVersion.findOne({ _id: versionId, projectId });
-  if (!version)
-    throw domainError("Version not found.", "VERSION_NOT_FOUND", 404);
+  if (!version) throw domainError("Version not found.", "VERSION_NOT_FOUND", 404);
 
   return version;
 }
 
-
 export async function restoreVersion({ projectId, userId, versionId }) {
   const project = await assertAccess(projectId, userId, "editor");
   const version = await DocumentVersion.findOne({ _id: versionId, projectId });
-  if (!version)
-    throw domainError("Version not found.", "VERSION_NOT_FOUND", 404);
+  if (!version) throw domainError("Version not found.", "VERSION_NOT_FOUND", 404);
 
   if (project.status !== "done")
     throw domainError(
@@ -1040,11 +874,8 @@ export async function restoreVersion({ projectId, userId, versionId }) {
       409,
     );
 
-
   const currentContent =
-    project.editedOutput?.[version.section] ||
-    project.output?.[version.section] ||
-    "";
+    project.editedOutput?.[version.section] || project.output?.[version.section] || "";
 
   if (currentContent) {
     await DocumentVersion.createVersion({
@@ -1057,7 +888,6 @@ export async function restoreVersion({ projectId, userId, versionId }) {
       },
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
-
 
   const editedSections = (project.editedSections || []).filter(
     (s) => s.section !== version.section,
@@ -1073,7 +903,6 @@ export async function restoreVersion({ projectId, userId, versionId }) {
     editedSections,
   });
 
-
   await DocumentVersion.createVersion({
     projectId: project._id,
     section: version.section,
@@ -1082,23 +911,15 @@ export async function restoreVersion({ projectId, userId, versionId }) {
     meta: {
       changeSummary: `Restored from version ${version._id} (${version.source} · ${version.createdAt.toISOString()})`,
     },
-  }).catch((err) =>
-    console.warn("[versions] Restore version save failed:", err.message),
-  );
+  }).catch((err) => console.warn("[versions] Restore version save failed:", err.message));
 
   return getProjectById({ projectId, userId });
 }
 
-
-
-
-
 async function runPipeline({ project, normalised, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
-  const isVercel =
-    !!process.env.VERCEL && process.env.NODE_ENV === "production";
-
+  const isVercel = !!process.env.VERCEL && process.env.NODE_ENV === "production";
 
   let providerTokenDecrypted = null;
   if (project.providerToken) {
@@ -1119,7 +940,6 @@ async function runPipeline({ project, normalised, jobId }) {
       metadata: { jobId, provider: project.provider },
     });
 
-
     let result;
     if (isVercel) {
       result = await Promise.race([
@@ -1127,9 +947,8 @@ async function runPipeline({ project, normalised, jobId }) {
           provider: project.provider,
           token: providerTokenDecrypted,
         }),
-        new Promise(
-          (_, reject) =>
-            setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000),
         ),
       ]);
     } else {
@@ -1156,27 +975,19 @@ async function runPipeline({ project, normalised, jobId }) {
         type: "PIPELINE_FAILED",
         projectId: project._id,
         actionUrl: `/projects/${project._id}`,
-        metadata: { projectName: `${project.repoOwner}/${project.repoName}`, reason: result.error || "an unexpected error" },
+        metadata: {
+          projectName: `${project.repoOwner}/${project.repoName}`,
+          reason: result.error || "an unexpected error",
+        },
       });
       failJob(jobId, new Error(result.error || "Unknown pipeline error"));
       return;
     }
 
-
-    const update = buildFullRunUpdate(
-      result,
-      result.lastDocumentedCommit,
-      null,
-    );
+    const update = buildFullRunUpdate(result, result.lastDocumentedCommit, null);
     await Project.findByIdAndUpdate(project._id, { $set: update });
 
-
-    await createInitialVersions(
-      project._id,
-      result.output,
-      result.lastDocumentedCommit,
-    );
-
+    await createInitialVersions(project._id, result.output, result.lastDocumentedCommit);
 
     if (result.agentErrors?.length) {
       console.warn(
@@ -1212,18 +1023,12 @@ async function runPipeline({ project, normalised, jobId }) {
       routing: result.routing,
     });
 
-
     try {
-      const { triggerSecurityAlerts } =
-        await import("../../../services/slack-webhook.service.js");
+      const { triggerSecurityAlerts } = await import("../../../services/slack-webhook.service.js");
       await triggerSecurityAlerts(project._id, result.security);
     } catch (err) {
-      console.warn(
-        `[pipeline:${jobId}] Slack alert trigger failed (non-fatal):`,
-        err.message,
-      );
+      console.warn(`[pipeline:${jobId}] Slack alert trigger failed (non-fatal):`, err.message);
     }
-
 
     if (result.security?.findings?.length) {
       const projectName = `${project.repoOwner}/${project.repoName}`;
@@ -1235,7 +1040,10 @@ async function runPipeline({ project, normalised, jobId }) {
           type: "SECURITY_CRITICAL_FINDING",
           projectId: project._id,
           actionUrl: `/projects/${project._id}#security`,
-          metadata: { projectName, finding: finding.title ?? finding.rule ?? "a critical vulnerability" },
+          metadata: {
+            projectName,
+            finding: finding.title ?? finding.rule ?? "a critical vulnerability",
+          },
         });
       }
       for (const finding of highs) {
@@ -1244,7 +1052,10 @@ async function runPipeline({ project, normalised, jobId }) {
           type: "SECURITY_HIGH_FINDING",
           projectId: project._id,
           actionUrl: `/projects/${project._id}#security`,
-          metadata: { projectName, finding: finding.title ?? finding.rule ?? "a high-severity vulnerability" },
+          metadata: {
+            projectName,
+            finding: finding.title ?? finding.rule ?? "a high-severity vulnerability",
+          },
         });
       }
       NotificationService.create({
@@ -1256,11 +1067,11 @@ async function runPipeline({ project, normalised, jobId }) {
       });
     }
   } catch (err) {
-
     if (err.message === "VERCEL_HTTP_TIMEOUT") {
-      console.warn(`[pipeline:${jobId}] Vercel 55s timeout : marking project as error (retryable).`);
-      const { flagVercelTimeout } =
-        await import("../../../services/job-registry.service.js");
+      console.warn(
+        `[pipeline:${jobId}] Vercel 55s timeout : marking project as error (retryable).`,
+      );
+      const { flagVercelTimeout } = await import("../../../services/job-registry.service.js");
       flagVercelTimeout(jobId);
       await Project.findByIdAndUpdate(project._id, {
         status: "error",
@@ -1285,7 +1096,6 @@ async function runPipeline({ project, normalised, jobId }) {
       return;
     }
 
-
     console.error(`[pipeline:${jobId}] Fatal error:`, err);
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
@@ -1309,11 +1119,9 @@ async function runPipeline({ project, normalised, jobId }) {
   }
 }
 
-
 async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   const incrementalSync = await getIncrementalSync();
   const onProgress = makeProgressHandler(project._id, jobId);
-
 
   let providerTokenDecrypted = null;
   if (project.providerToken) {
@@ -1348,7 +1156,6 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       error: syncResult.error,
     });
 
-
     if (!syncResult.success) {
       const errorMsg = syncResult.error || "Sync failed";
       console.error(`[sync:${jobId}] Sync failed: ${errorMsg}`);
@@ -1360,11 +1167,8 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-
     if (syncResult.skipped) {
-      console.log(
-        `[sync:${jobId}] Sync skipped (${syncResult.reason}), marking done`,
-      );
+      console.log(`[sync:${jobId}] Sync skipped (${syncResult.reason}), marking done`);
       await Project.findByIdAndUpdate(project._id, {
         status: "done",
         lastDocumentedCommit: syncResult.currentCommit,
@@ -1378,11 +1182,8 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-
     if (syncResult.isFullRun) {
-      console.log(
-        `[sync:${jobId}] Fell back to full run : applying full pipeline result`,
-      );
+      console.log(`[sync:${jobId}] Fell back to full run : applying full pipeline result`);
       const result = syncResult._fullResult;
 
       if (!result?.success) {
@@ -1404,12 +1205,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
 
       await Project.findByIdAndUpdate(project._id, { $set: update });
 
-
-      await createInitialVersions(
-        project._id,
-        result.output,
-        syncResult.currentCommit,
-      );
+      await createInitialVersions(project._id, result.output, syncResult.currentCommit);
 
       finishJob(jobId, {
         success: true,
@@ -1421,12 +1217,9 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-
-
     const { _update, ...syncMeta } = syncResult;
 
     if (!_update) {
-
       const errorMsg = "Sync returned no update payload";
       console.error(`[sync:${jobId}] ${errorMsg}`);
       await Project.findByIdAndUpdate(project._id, {
@@ -1449,18 +1242,14 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
 
         techStack: project.techStack || _update.techStack || [],
         testFrameworks: project.testFrameworks || [],
-        architectureHint:
-          project.architectureHint || _update.architectureHint || "",
+        architectureHint: project.architectureHint || _update.architectureHint || "",
       },
     });
-
 
     if (syncResult.errors?.length) {
       console.warn(
         `[sync:${jobId}] ${syncResult.errors.length} non-fatal error(s):`,
-        syncResult.errors
-          .map((e) => `${e.agent ?? e.phase}: ${e.error}`)
-          .join("; "),
+        syncResult.errors.map((e) => `${e.agent ?? e.phase}: ${e.error}`).join("; "),
       );
     }
 
@@ -1485,34 +1274,28 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   }
 }
 
-
 export async function runZipPipeline({ project, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
 
-  console.log(
-    `[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`,
-  );
+  console.log(`[zip-pipeline:${jobId}] 🚀 Starting ZIP pipeline for ${project.repoUrl}`);
 
   try {
-
     const { extractedFiles = [] } = project.zipMetadata || {};
 
     if (!extractedFiles.length) {
       throw new Error("No extracted files found in ZIP metadata");
     }
 
-    console.log(
-      `[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`,
-    );
-
+    console.log(`[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`);
 
     const normalised = {
       owner: project.repoOwner || "local",
       repo: project.repoName || "zip-project",
       meta: {
         name: project.meta?.name || project.repoName || "zip-project",
-        description: project.meta?.description || `Uploaded ZIP project (${extractedFiles.length} files)`,
+        description:
+          project.meta?.description || `Uploaded ZIP project (${extractedFiles.length} files)`,
         language: project.meta?.language || "unknown",
         defaultBranch: "main",
         stars: 0,
@@ -1541,14 +1324,12 @@ export async function runZipPipeline({ project, jobId }) {
       topics: project.meta?.topics || [],
       isArchived: false,
       isFork: false,
-      README:
-        extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
+      README: extractedFiles.find((f) => /^README/i.test(f.path))?.content || "",
     };
 
     console.log(
       `[zip-pipeline:${jobId}] Normalised ZIP project: ${extractedFiles.length} files, languages: ${normalised.language}`,
     );
-
 
     const result = await orchestrate(normalised, onProgress);
 
@@ -1563,17 +1344,10 @@ export async function runZipPipeline({ project, jobId }) {
 
     console.log(`[zip-pipeline:${jobId}] Pipeline completed successfully`);
 
-
     const update = buildFullRunUpdate(result, normalised.lastCommitSha, null);
     await Project.findByIdAndUpdate(project._id, { $set: update });
 
-
-    await createInitialVersions(
-      project._id,
-      result.output,
-      normalised.lastCommitSha,
-    );
-
+    await createInitialVersions(project._id, result.output, normalised.lastCommitSha);
 
     if (result.agentErrors?.length) {
       console.warn(
@@ -1590,9 +1364,7 @@ export async function runZipPipeline({ project, jobId }) {
       routing: result.routing,
     });
 
-    console.log(
-      `[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`,
-    );
+    console.log(`[zip-pipeline:${jobId}] ✅ ZIP pipeline successfully completed`);
   } catch (err) {
     console.error(`[zip-pipeline:${jobId}] Fatal error:`, err.message);
     await Project.findByIdAndUpdate(project._id, {
@@ -1602,7 +1374,6 @@ export async function runZipPipeline({ project, jobId }) {
     failJob(jobId, err);
   }
 }
-
 
 function buildFileTree(files) {
   const tree = {};
@@ -1622,18 +1393,8 @@ function buildFileTree(files) {
   return tree;
 }
 
-
-
-
-export async function createCustomTab({
-  projectId,
-  userId,
-  name,
-  description,
-  content = "",
-}) {
+export async function createCustomTab({ projectId, userId, name, description, content = "" }) {
   const project = await assertAccess(projectId, userId, "editor");
-
 
   if (!name || name.trim().length === 0) {
     throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
@@ -1641,24 +1402,16 @@ export async function createCustomTab({
 
   const trimmedName = name.trim();
 
-
   const isDuplicate = project.customTabs?.some(
     (t) => t.name.toLowerCase() === trimmedName.toLowerCase(),
   );
 
   if (isDuplicate) {
-    throw domainError(
-      `A tab named "${trimmedName}" already exists`,
-      "DUPLICATE_TAB",
-      409,
-    );
+    throw domainError(`A tab named "${trimmedName}" already exists`, "DUPLICATE_TAB", 409);
   }
 
-
   const maxOrder =
-    project.customTabs?.length > 0
-      ? Math.max(...project.customTabs.map((t) => t.order))
-      : 0;
+    project.customTabs?.length > 0 ? Math.max(...project.customTabs.map((t) => t.order)) : 0;
 
   const newTab = {
     name: trimmedName,
@@ -1680,35 +1433,22 @@ export async function createCustomTab({
   return getProjectById({ projectId, userId });
 }
 
-
-export async function updateCustomTab({
-  projectId,
-  userId,
-  tabId,
-  name,
-  description,
-  content,
-}) {
+export async function updateCustomTab({ projectId, userId, tabId, name, description, content }) {
   const project = await assertAccess(projectId, userId, "editor");
 
-  const tab = project.customTabs?.find(
-    (t) => t._id?.toString() === tabId?.toString(),
-  );
+  const tab = project.customTabs?.find((t) => t._id?.toString() === tabId?.toString());
 
   if (!tab) {
     throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
   }
 
-
   const updates = { updatedAt: new Date() };
-
 
   if (name !== undefined && name !== null) {
     const trimmedName = name.trim();
     if (trimmedName.length === 0) {
       throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
     }
-
 
     const isDuplicate = project.customTabs?.some(
       (t) =>
@@ -1717,26 +1457,19 @@ export async function updateCustomTab({
     );
 
     if (isDuplicate) {
-      throw domainError(
-        `A tab named "${trimmedName}" already exists`,
-        "DUPLICATE_TAB",
-        409,
-      );
+      throw domainError(`A tab named "${trimmedName}" already exists`, "DUPLICATE_TAB", 409);
     }
 
     updates.name = trimmedName;
   }
 
-
   if (description !== undefined) {
     updates.description = description?.trim() || "";
   }
 
-
   if (content !== undefined) {
     const oldContent = tab.content;
     updates.content = content?.trim() || "";
-
 
     if (oldContent !== updates.content) {
       const snapshotSource = project.editedCustomTabs?.some(
@@ -1752,11 +1485,8 @@ export async function updateCustomTab({
           content: oldContent,
           source: snapshotSource,
           meta: { changeSummary: "Snapshot before content edit" },
-        }).catch((err) =>
-          console.warn("[versions] Custom tab snapshot failed:", err.message),
-        );
+        }).catch((err) => console.warn("[versions] Custom tab snapshot failed:", err.message));
       }
-
 
       await DocumentVersion.createVersion({
         projectId: project._id,
@@ -1764,10 +1494,7 @@ export async function updateCustomTab({
         content: updates.content,
         source: "user",
         meta: { changeSummary: "Custom tab edit" },
-      }).catch((err) =>
-        console.warn("[versions] Custom tab version save failed:", err.message),
-      );
-
+      }).catch((err) => console.warn("[versions] Custom tab version save failed:", err.message));
 
       let editedCustomTabs = (project.editedCustomTabs || []).filter(
         (e) => e.tabId?.toString() !== tabId?.toString(),
@@ -1781,7 +1508,6 @@ export async function updateCustomTab({
     }
   }
 
-
   await Project.updateOne(
     { _id: projectId, "customTabs._id": tabId },
     {
@@ -1794,42 +1520,30 @@ export async function updateCustomTab({
   return getProjectById({ projectId, userId });
 }
 
-
 export async function deleteCustomTab({ projectId, userId, tabId }) {
   const project = await assertAccess(projectId, userId, "owner");
 
-  const tab = project.customTabs?.find(
-    (t) => t._id?.toString() === tabId?.toString(),
-  );
+  const tab = project.customTabs?.find((t) => t._id?.toString() === tabId?.toString());
 
   if (!tab) {
     throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
   }
 
-
   await Project.findByIdAndUpdate(projectId, {
     $pull: { customTabs: { _id: tabId } },
   });
-
 
   await Project.findByIdAndUpdate(projectId, {
     $pull: { editedCustomTabs: { tabId } },
   });
 
-
   await DocumentVersion.deleteMany({
     projectId,
     section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
-  }).catch((err) =>
-    console.warn(
-      "[versions] Failed to delete custom tab versions:",
-      err.message,
-    ),
-  );
+  }).catch((err) => console.warn("[versions] Failed to delete custom tab versions:", err.message));
 
   return getProjectById({ projectId, userId });
 }
-
 
 export async function listCustomTabs({ projectId, userId }) {
   const project = await assertAccess(projectId, userId, "viewer");
@@ -1839,14 +1553,12 @@ export async function listCustomTabs({ projectId, userId }) {
   return { tabs };
 }
 
-
 export async function reorderCustomTabs({ projectId, userId, orders }) {
   const project = await assertAccess(projectId, userId, "editor");
 
   if (!Array.isArray(orders)) {
     throw domainError("orders must be an array", "VALIDATION_ERROR", 422);
   }
-
 
   for (const { tabId, order } of orders) {
     await Project.updateOne(

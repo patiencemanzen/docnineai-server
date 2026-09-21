@@ -1,12 +1,8 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
-
-
 export const NOTIFICATION_TYPES = [
-
   "PIPELINE_COMPLETED",
   "PIPELINE_FAILED",
   "PIPELINE_TIMEOUT",
@@ -46,7 +42,6 @@ export const NOTIFICATION_TYPES = [
   "WELCOME",
 ];
 
-
 export const ENTITY_TYPES = [
   "PROJECT",
   "DOCUMENTATION",
@@ -61,22 +56,18 @@ export const ENTITY_TYPES = [
   "EXPORT",
 ];
 
-
 export const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-
 
 const TTL_SECONDS = 90 * 24 * 60 * 60;
 
 const NotificationSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
       index: true,
     },
-
 
     type: {
       type: String,
@@ -94,7 +85,6 @@ const NotificationSchema = new Schema(
       default: null,
     },
 
-
     title: {
       type: String,
       required: true,
@@ -106,7 +96,6 @@ const NotificationSchema = new Schema(
       maxlength: 500,
     },
 
-
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -117,12 +106,10 @@ const NotificationSchema = new Schema(
       default: null,
     },
 
-
     actionUrl: {
       type: String,
       default: null,
     },
-
 
     isRead: {
       type: Boolean,
@@ -133,12 +120,10 @@ const NotificationSchema = new Schema(
       default: false,
     },
 
-
     metadata: {
       type: Schema.Types.Mixed,
       default: {},
     },
-
 
     expiresAt: {
       type: Date,
@@ -151,23 +136,15 @@ const NotificationSchema = new Schema(
   },
 );
 
-
-
-
 NotificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
-
 
 NotificationSchema.index({ userId: 1, createdAt: -1 });
 
-
 NotificationSchema.index({ userId: 1, isArchived: 1, createdAt: -1 });
-
 
 NotificationSchema.index({ projectId: 1, createdAt: -1 });
 
-
 NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-
 
 NotificationSchema.index({ userId: 1, type: 1, projectId: 1, createdAt: -1 });
 

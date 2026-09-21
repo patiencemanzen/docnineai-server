@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import { randomUUID } from "crypto";
 
@@ -50,7 +49,7 @@ const ProjectShareSchema = new mongoose.Schema(
       default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const ProjectShare = mongoose.model("ProjectShare", ProjectShareSchema);

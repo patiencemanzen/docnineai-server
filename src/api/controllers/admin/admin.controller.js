@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 import { User } from "../../../models/User.js";
 import { Project } from "../../../models/Project.js";
@@ -21,26 +20,14 @@ import { SlackIntegration } from "../../../models/SlackIntegration.js";
 import ActivityLog, { ACTIVITY_ACTIONS } from "../../../models/ActivityLog.js";
 import ProjectChangeLog from "../../../models/ProjectChangeLog.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
-import {
-  computeMonthlyPrice,
-  PLAN_IDS,
-  PLAN_LEVEL,
-  TRIAL_DAYS,
-} from "../../../config/plans.js";
+import { computeMonthlyPrice, PLAN_IDS, PLAN_LEVEL, TRIAL_DAYS } from "../../../config/plans.js";
 import { getOrCreateSubscription } from "../../../services/billing.service.js";
 import { SESSION_NOISE_ACTIONS } from "../../../services/activity-copy.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 
 const USER_LIST_FIELDS =
   "name email role provider isEmailVerified createdAt githubUsername gitlabUsername bitbucketUsername";
-const SUB_STATUSES = [
-  "free",
-  "trialing",
-  "active",
-  "past_due",
-  "cancelled",
-  "paused",
-];
+const SUB_STATUSES = ["free", "trialing", "active", "past_due", "cancelled", "paused"];
 const PAID_STATUSES = ["trialing", "active", "past_due", "cancelled", "paused"];
 
 function publicSubscription(s) {
@@ -88,40 +75,33 @@ async function cascadeDeleteProjects(projectIds) {
   ]);
 }
 
-
 export async function getStats(req, res) {
   try {
-    const [
-      totalUsers,
-      totalProjects,
-      usersByPlan,
-      recentUsers,
-      recentProjects,
-    ] = await Promise.all([
-      User.countDocuments(),
-      Project.countDocuments(),
-      Subscription.aggregate([
-        {
-          $group: {
-            _id: "$plan",
-            count: { $sum: 1 },
+    const [totalUsers, totalProjects, usersByPlan, recentUsers, recentProjects] = await Promise.all(
+      [
+        User.countDocuments(),
+        Project.countDocuments(),
+        Subscription.aggregate([
+          {
+            $group: {
+              _id: "$plan",
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
-      User.countDocuments({
-        createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-      }),
-      Project.countDocuments({
-        createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-      }),
-    ]);
-
+        ]),
+        User.countDocuments({
+          createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        }),
+        Project.countDocuments({
+          createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        }),
+      ],
+    );
 
     const planBreakdown = { free: 0, starter: 0, pro: 0, team: 0 };
     for (const { _id, count } of usersByPlan) {
       if (_id in planBreakdown) planBreakdown[_id] = count;
     }
-
 
     const paidSubs = await Subscription.find({
       plan: { $in: ["starter", "pro", "team"] },
@@ -131,14 +111,8 @@ export async function getStats(req, res) {
     let mrrCents = 0;
     for (const sub of paidSubs) {
       try {
-        mrrCents += computeMonthlyPrice(
-          sub.plan,
-          sub.billingCycle || "monthly",
-          sub.seats || 1,
-        );
-      } catch {
-        
-      }
+        mrrCents += computeMonthlyPrice(sub.plan, sub.billingCycle || "monthly", sub.seats || 1);
+      } catch {}
     }
 
     return ok(res, {
@@ -154,7 +128,6 @@ export async function getStats(req, res) {
     return serverError(res, err, "admin.getStats");
   }
 }
-
 
 export async function listUsers(req, res) {
   try {
@@ -182,15 +155,12 @@ export async function listUsers(req, res) {
       User.countDocuments(filter),
     ]);
 
-
     const userIds = users.map((u) => u._id);
     const subs = await Subscription.find({ userId: { $in: userIds } })
       .select("userId plan status billingCycle seats currentPeriodEnd trialEndsAt")
       .lean();
 
-    const subMap = Object.fromEntries(
-      subs.map((s) => [s.userId.toString(), s]),
-    );
+    const subMap = Object.fromEntries(subs.map((s) => [s.userId.toString(), s]));
 
     const enriched = users.map((u) => ({
       ...u,
@@ -206,19 +176,12 @@ export async function listUsers(req, res) {
   }
 }
 
-
 export async function deleteUser(req, res) {
   try {
     const { id } = req.params;
 
-
     if (id === req.user.userId) {
-      return fail(
-        res,
-        "SELF_DELETE",
-        "You cannot delete your own account.",
-        400,
-      );
+      return fail(res, "SELF_DELETE", "You cannot delete your own account.", 400);
     }
 
     const user = await User.findById(id);
@@ -253,7 +216,6 @@ export async function deleteUser(req, res) {
   }
 }
 
-
 export async function listProjects(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -285,7 +247,6 @@ export async function listProjects(req, res) {
   }
 }
 
-
 export async function deleteProject(req, res) {
   try {
     const { id } = req.params;
@@ -297,7 +258,6 @@ export async function deleteProject(req, res) {
     return serverError(res, err, "admin.deleteProject");
   }
 }
-
 
 export async function listSubscriptions(req, res) {
   try {
@@ -329,7 +289,6 @@ export async function listSubscriptions(req, res) {
     return serverError(res, err, "admin.listSubscriptions");
   }
 }
-
 
 export async function updateUser(req, res) {
   try {
@@ -364,12 +323,7 @@ export async function updateUser(req, res) {
         _id: { $ne: id },
       });
       if (otherAdmins === 0) {
-        return fail(
-          res,
-          "LAST_ADMIN",
-          "Cannot demote the last super-admin.",
-          400,
-        );
+        return fail(res, "LAST_ADMIN", "Cannot demote the last super-admin.", 400);
       }
     }
 
@@ -420,7 +374,6 @@ export async function updateUser(req, res) {
   }
 }
 
-
 export async function updateUserSubscription(req, res) {
   try {
     const { id } = req.params;
@@ -441,12 +394,7 @@ export async function updateUserSubscription(req, res) {
       billingCycle !== "monthly" &&
       billingCycle !== "annual"
     ) {
-      return fail(
-        res,
-        "INVALID_CYCLE",
-        "Billing cycle must be monthly or annual.",
-        400,
-      );
+      return fail(res, "INVALID_CYCLE", "Billing cycle must be monthly or annual.", 400);
     }
 
     const user = await User.findById(id).select("_id").lean();
@@ -471,8 +419,7 @@ export async function updateUserSubscription(req, res) {
       sub.dunningAttemptCount = 0;
       sub.dunningStartedAt = null;
     } else {
-      let nextStatus =
-        status && PAID_STATUSES.includes(status) ? status : "active";
+      let nextStatus = status && PAID_STATUSES.includes(status) ? status : "active";
       if (nextStatus === "free") nextStatus = "active";
       sub.status = nextStatus;
       sub.billingCycle =
@@ -559,16 +506,11 @@ export async function updateUserSubscription(req, res) {
       req,
     });
 
-    return ok(
-      res,
-      { subscription: publicSubscription(sub.toObject()) },
-      "Subscription updated.",
-    );
+    return ok(res, { subscription: publicSubscription(sub.toObject()) }, "Subscription updated.");
   } catch (err) {
     return serverError(res, err, "admin.updateUserSubscription");
   }
 }
-
 
 export async function listActivity(req, res) {
   try {

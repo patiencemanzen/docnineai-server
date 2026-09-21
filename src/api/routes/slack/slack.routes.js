@@ -1,4 +1,3 @@
-
 import express from "express";
 import {
   setCustomSlackCredentials,
@@ -14,36 +13,19 @@ import { protect } from "../../../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-
-
-
-
 router.post("/credentials/:projectId", protect, setCustomSlackCredentials);
-
-
-
 
 router.post("/oauth/start", protect, initiateSlackOAuth);
 
-
 router.get("/oauth/callback", handleSlackCallback);
-
-
-
 
 router.post("/commands", handleSlashCommand);
 
-
 router.post("/events", handleSlackEvent);
-
-
-
 
 router.get("/config/:projectId", protect, getSlackConfig);
 
-
 router.put("/config/:projectId", protect, updateSlackConfig);
-
 
 router.delete("/:projectId", protect, disconnectSlack);
 

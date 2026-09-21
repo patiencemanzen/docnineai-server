@@ -1,5 +1,3 @@
-
-
 import { Router } from "express";
 import * as tokenService from "../../../services/token.service.js";
 import { protect } from "../../../middleware/auth.middleware.js";
@@ -8,9 +6,7 @@ import { ok, fail, serverError } from "../../../utils/response.util.js";
 
 const router = Router();
 
-
 router.use(protect);
-
 
 export async function createTokenHandler(req, res) {
   const userId = req.user.userId;
@@ -29,18 +25,12 @@ export async function createTokenHandler(req, res) {
       expiresAt,
     });
 
-    return ok(
-      res,
-      result,
-      "Token created. Save it now : you won't see it again!",
-      201
-    );
+    return ok(res, result, "Token created. Save it now : you won't see it again!", 201);
   } catch (err) {
     if (err.code) return fail(res, err.code, err.message, err.status);
     return serverError(res, err, "createToken");
   }
 }
-
 
 export async function listTokensHandler(req, res) {
   const userId = req.user.userId;
@@ -58,7 +48,6 @@ export async function listTokensHandler(req, res) {
   }
 }
 
-
 export async function getTokenHandler(req, res) {
   const userId = req.user.userId;
   const { id } = req.params;
@@ -71,7 +60,6 @@ export async function getTokenHandler(req, res) {
     return serverError(res, err, "getToken");
   }
 }
-
 
 export async function revokeTokenHandler(req, res) {
   const userId = req.user.userId;
@@ -86,7 +74,6 @@ export async function revokeTokenHandler(req, res) {
   }
 }
 
-
 export async function deleteTokenHandler(req, res) {
   const userId = req.user.userId;
   const { id } = req.params;
@@ -100,7 +87,6 @@ export async function deleteTokenHandler(req, res) {
   }
 }
 
-
 router.post(
   "/",
   autoLog("API_TOKEN_CREATED", (req, body) => ({
@@ -110,15 +96,9 @@ router.post(
 );
 router.get("/", listTokensHandler);
 router.get("/:id", getTokenHandler);
-router.delete(
-  "/:id",
-  autoLog("API_TOKEN_REVOKED"),
-  (req, res) => {
-    const isPermanent = req.query.permanent === "true";
-    return isPermanent
-      ? deleteTokenHandler(req, res)
-      : revokeTokenHandler(req, res);
-  },
-);
+router.delete("/:id", autoLog("API_TOKEN_REVOKED"), (req, res) => {
+  const isPermanent = req.query.permanent === "true";
+  return isPermanent ? deleteTokenHandler(req, res) : revokeTokenHandler(req, res);
+});
 
 export default router;

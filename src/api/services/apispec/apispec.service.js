@@ -1,11 +1,9 @@
-
 import axios from "axios";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { ApiSpec } from "../../../models/ApiSpec.js";
 import { parseSpec } from "./apispec.parser.js";
 import { getShareRole } from "../projects/share.service.js";
-
 
 function isPrivateUrl(urlString) {
   let parsed;
@@ -106,8 +104,6 @@ function sanitiseForwardHeaders(headers = {}) {
   return out;
 }
 
-
-
 function makeError(msg, code, status = 400) {
   const e = new Error(msg);
   e.code = code;
@@ -124,13 +120,9 @@ async function assertRead(projectId, userId) {
 async function assertWrite(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw makeError("Project not found.", "PROJECT_NOT_FOUND", 404);
-  if (role === "viewer")
-    throw makeError("Viewers cannot modify the API spec.", "FORBIDDEN", 403);
+  if (role === "viewer") throw makeError("Viewers cannot modify the API spec.", "FORBIDDEN", 403);
   return role;
 }
-
-
-
 
 export async function importSpec(projectId, userId, opts) {
   await assertWrite(projectId, userId);
@@ -168,24 +160,14 @@ export async function importSpec(projectId, userId, opts) {
           Accept: "application/json, application/yaml, text/yaml, text/plain",
         },
       });
-      rawText =
-        typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
+      rawText = typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data);
       sourceUrl = url.trim();
     } catch (err) {
-      throw makeError(
-        `Failed to fetch spec from URL: ${err.message}`,
-        "FETCH_FAILED",
-        422,
-      );
+      throw makeError(`Failed to fetch spec from URL: ${err.message}`, "FETCH_FAILED", 422);
     }
   } else {
-    throw makeError(
-      "Invalid import method. Use file, url, or raw.",
-      "BAD_METHOD",
-      400,
-    );
+    throw makeError("Invalid import method. Use file, url, or raw.", "BAD_METHOD", 400);
   }
-
 
   let parsed;
   try {
@@ -193,7 +175,6 @@ export async function importSpec(projectId, userId, opts) {
   } catch (err) {
     throw makeError(err.message, "PARSE_FAILED", 422);
   }
-
 
   const doc = await ApiSpec.findOneAndUpdate(
     { projectId },
@@ -214,8 +195,6 @@ export async function importSpec(projectId, userId, opts) {
   return doc;
 }
 
-
-
 export async function getSpec(projectId, userId) {
   await assertRead(projectId, userId);
 
@@ -223,21 +202,14 @@ export async function getSpec(projectId, userId) {
   return spec;
 }
 
-
-
 export async function syncSpec(projectId, userId) {
   await assertWrite(projectId, userId);
 
   const existing = await ApiSpec.findOne({ projectId });
   if (!existing) throw makeError("No spec imported yet.", "NO_SPEC", 404);
   if (existing.source !== "url" || !existing.sourceUrl) {
-    throw makeError(
-      "Spec was not imported from a URL; cannot sync.",
-      "SYNC_NOT_AVAILABLE",
-      400,
-    );
+    throw makeError("Spec was not imported from a URL; cannot sync.", "SYNC_NOT_AVAILABLE", 400);
   }
-
 
   return importSpec(projectId, userId, {
     method: "url",
@@ -246,14 +218,10 @@ export async function syncSpec(projectId, userId) {
   });
 }
 
-
-
 export async function deleteSpec(projectId, userId) {
   await assertWrite(projectId, userId);
   await ApiSpec.deleteOne({ projectId });
 }
-
-
 
 export async function updateEndpointNote(projectId, userId, endpointId, note) {
   await assertWrite(projectId, userId);
@@ -269,30 +237,17 @@ export async function updateEndpointNote(projectId, userId, endpointId, note) {
   return spec;
 }
 
-
-
-
 export async function tryRequest(projectId, userId, opts) {
   await assertRead(projectId, userId);
 
-  const {
-    method,
-    baseUrl,
-    path: epPath,
-    headers = {},
-    queryParams = {},
-    body,
-  } = opts;
+  const { method, baseUrl, path: epPath, headers = {}, queryParams = {}, body } = opts;
 
   if (!baseUrl) throw makeError("baseUrl is required.", "BAD_REQUEST", 400);
   if (!epPath) throw makeError("path is required.", "BAD_REQUEST", 400);
 
-
   let targetUrl;
   try {
-    targetUrl = new URL(
-      epPath.startsWith("http") ? epPath : baseUrl.replace(/\/$/, "") + epPath,
-    );
+    targetUrl = new URL(epPath.startsWith("http") ? epPath : baseUrl.replace(/\/$/, "") + epPath);
   } catch {
     throw makeError("Invalid endpoint URL.", "BAD_URL", 400);
   }
@@ -324,10 +279,7 @@ export async function tryRequest(projectId, userId, opts) {
     return {
       status: resp.status,
       headers: resp.headers,
-      body:
-        typeof resp.data === "string"
-          ? resp.data
-          : JSON.stringify(resp.data, null, 2),
+      body: typeof resp.data === "string" ? resp.data : JSON.stringify(resp.data, null, 2),
     };
   } catch (err) {
     throw makeError(`Proxy request failed: ${err.message}`, "PROXY_ERROR", 502);

@@ -1,4 +1,3 @@
-
 import cron from "node-cron";
 import { Subscription } from "../models/Subscription.js";
 import { PlanUsage } from "../models/PlanUsage.js";
@@ -7,30 +6,21 @@ import { NotificationService } from "./notification.service.js";
 
 let _started = false;
 
-
 export function startNotificationScheduler() {
   if (_started) return;
   _started = true;
   console.log("-- Notification scheduler starting…");
-
 
   cron.schedule("0 9 * * *", runNotificationJobs, { timezone: "UTC" });
 
   console.log("-- Notification scheduler registered (daily @ 09:00 UTC)");
 }
 
-
-
 async function runNotificationJobs() {
   console.log("[cron/notifications] Daily notification jobs starting");
-  await Promise.allSettled([
-    runSubscriptionExpiryReminders(),
-    runPlanLimitAlerts(),
-  ]);
+  await Promise.allSettled([runSubscriptionExpiryReminders(), runPlanLimitAlerts()]);
   console.log("[cron/notifications] Daily notification jobs complete");
 }
-
-
 
 async function runSubscriptionExpiryReminders() {
   try {
@@ -50,7 +40,9 @@ async function runSubscriptionExpiryReminders() {
         status: { $in: ["active", "trialing"] },
         cancelAtPeriodEnd: true,
         currentPeriodEnd: { $gte: windowStart, $lt: windowEnd },
-      }).select("userId plan").lean();
+      })
+        .select("userId plan")
+        .lean();
 
       for (const sub of expiringSubs) {
         const plan = PLANS[sub.plan];
@@ -66,7 +58,6 @@ async function runSubscriptionExpiryReminders() {
       }
     }
 
-
     const expiredStart = new Date(startOfToday);
     const expiredEnd = new Date(startOfToday);
     expiredEnd.setUTCDate(expiredEnd.getUTCDate() + 1);
@@ -75,7 +66,9 @@ async function runSubscriptionExpiryReminders() {
       status: { $in: ["active", "trialing"] },
       cancelAtPeriodEnd: true,
       currentPeriodEnd: { $gte: expiredStart, $lt: expiredEnd },
-    }).select("userId plan").lean();
+    })
+      .select("userId plan")
+      .lean();
 
     for (const sub of expiredSubs) {
       const plan = PLANS[sub.plan];
@@ -93,11 +86,8 @@ async function runSubscriptionExpiryReminders() {
   }
 }
 
-
-
 async function runPlanLimitAlerts() {
   try {
-
     const allUsage = await PlanUsage.find({}).select("userId projectCount").lean();
     if (!allUsage.length) return;
 
@@ -109,7 +99,6 @@ async function runPlanLimitAlerts() {
     })
       .select("userId plan")
       .lean();
-
 
     const subByUser = new Map();
     for (const sub of subscriptions) {

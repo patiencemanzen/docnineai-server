@@ -1,11 +1,9 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
 const PlanUsageSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -13,7 +11,6 @@ const PlanUsageSchema = new Schema(
       unique: true,
       index: true,
     },
-
 
     aiChatsUsed: {
       type: Number,
@@ -26,20 +23,17 @@ const PlanUsageSchema = new Schema(
       index: true,
     },
 
-
     projectCount: {
       type: Number,
       default: 0,
       min: 0,
     },
 
-
     portalCount: {
       type: Number,
       default: 0,
       min: 0,
     },
-
 
     activeShareCount: {
       type: Number,
@@ -52,7 +46,6 @@ const PlanUsageSchema = new Schema(
     versionKey: false,
   },
 );
-
 
 PlanUsageSchema.statics.increment = async function (userId, delta) {
   const inc = {};

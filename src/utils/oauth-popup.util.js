@@ -21,9 +21,10 @@ export function sendOAuthPopupResult(res, { provider, status, message, user }) {
   const ok = status === "success";
   const heading = ok ? "Successfully Connected" : "Connection Failed";
   const title = ok ? `${label} Connected` : `${label} Connection Failed`;
-  const bodyText = ok && user
-    ? `${label} account connected as <strong>${escapeHtml(user)}</strong>`
-    : escapeHtml(message || (ok ? "Connected." : "Connection failed."));
+  const bodyText =
+    ok && user
+      ? `${label} account connected as <strong>${escapeHtml(user)}</strong>`
+      : escapeHtml(message || (ok ? "Connected." : "Connection failed."));
 
   const payload = {
     type: `${provider}-oauth-complete`,

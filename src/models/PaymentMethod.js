@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -24,7 +23,6 @@ const MobileMoneyDetailsSchema = new Schema(
 
 const PaymentMethodSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -32,18 +30,14 @@ const PaymentMethodSchema = new Schema(
       index: true,
     },
 
-
     type: {
       type: String,
       enum: ["card", "mobile_money", "bank_transfer"],
       required: true,
     },
 
-
     card: { type: CardDetailsSchema, default: null },
     mobileMoney: { type: MobileMoneyDetailsSchema, default: null },
-
-
 
     isDefault: {
       type: Boolean,
@@ -51,20 +45,17 @@ const PaymentMethodSchema = new Schema(
       index: true,
     },
 
-
     flutterwaveToken: {
       type: String,
       required: true,
       select: false,
     },
 
-
     currency: {
       type: String,
       default: "USD",
       uppercase: true,
     },
-
 
     deletedAt: {
       type: Date,
@@ -76,7 +67,6 @@ const PaymentMethodSchema = new Schema(
     versionKey: false,
   },
 );
-
 
 PaymentMethodSchema.virtual("displayLabel").get(function () {
   if (this.type === "card" && this.card) {

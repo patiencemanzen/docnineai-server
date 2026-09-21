@@ -63,10 +63,7 @@ function stripComments(code) {
         i++;
         continue;
       }
-      if (
-        (state === "squote" && c === "'") ||
-        (state === "dquote" && c === '"')
-      ) {
+      if ((state === "squote" && c === "'") || (state === "dquote" && c === '"')) {
         state = "code";
       }
       i++;
@@ -113,7 +110,7 @@ function stripComments(code) {
         i++;
         continue;
       }
-      if (c === "[" ) regexClass = true;
+      if (c === "[") regexClass = true;
       else if (c === "]" && regexClass) regexClass = false;
       else if (c === "/" && !regexClass) {
         state = "code";

@@ -1,4 +1,3 @@
-
 import jwt from "jsonwebtoken";
 import axios from "axios";
 
@@ -8,9 +7,6 @@ import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 
 const GH_API = "https://api.github.com";
 const GH_AUTH = "https://github.com/login/oauth";
-
-
-
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
@@ -26,7 +22,6 @@ function getOAuthConfig() {
 
   return { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI };
 }
-
 
 function getStateSecret() {
   const secret = process.env.JWT_ACCESS_SECRET;
@@ -50,9 +45,7 @@ async function fetchGitHubUser(accessToken) {
 }
 
 async function getDecryptedToken(userId) {
-  const record = await GitHubToken.findOne({ userId }).select(
-    "+accessTokenEncrypted",
-  );
+  const record = await GitHubToken.findOne({ userId }).select("+accessTokenEncrypted");
   if (!record) {
     const err = new Error(
       "No GitHub account connected. Please connect via GET /github/oauth/start.",
@@ -63,9 +56,6 @@ async function getDecryptedToken(userId) {
   }
   return decrypt(record.accessTokenEncrypted);
 }
-
-
-
 
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
@@ -83,28 +73,21 @@ export function buildOAuthUrl(userId) {
   return `${GH_AUTH}/authorize?${params.toString()}`;
 }
 
-
-
-
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
-
 
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
   } catch {
-    const err = new Error(
-      "Invalid or expired OAuth state. Please start the OAuth flow again.",
-    );
+    const err = new Error("Invalid or expired OAuth state. Please start the OAuth flow again.");
     err.code = "INVALID_OAUTH_STATE";
     err.status = 400;
     throw err;
   }
 
   const userId = statePayload.userId;
-
 
   const tokenRes = await axios.post(
     `${GH_AUTH}/access_token`,
@@ -119,23 +102,18 @@ export async function handleOAuthCallback({ code, state }) {
 
   const { access_token, scope, error } = tokenRes.data;
   if (error || !access_token) {
-    const err = new Error(
-      `GitHub OAuth error: ${error || "no access token returned"}`,
-    );
+    const err = new Error(`GitHub OAuth error: ${error || "no access token returned"}`);
     err.code = "OAUTH_EXCHANGE_FAILED";
     err.status = 400;
     throw err;
   }
 
-
   const ghUser = await fetchGitHubUser(access_token);
-
 
   await User.findByIdAndUpdate(userId, {
     githubId: String(ghUser.id),
     githubUsername: ghUser.login,
   });
-
 
   await GitHubToken.findOneAndUpdate(
     { userId },
@@ -157,24 +135,14 @@ export async function handleOAuthCallback({ code, state }) {
   return { githubUsername: ghUser.login };
 }
 
-
-
-
 export async function getUserRepos(
   userId,
-  {
-    page = 1,
-    perPage = 30,
-    type = "all",
-    sort = "updated",
-    org = null,
-  } = {},
+  { page = 1, perPage = 30, type = "all", sort = "updated", org = null } = {},
 ) {
   try {
     console.log("[github.service] Fetching repositories", { page, perPage, type, sort, org });
-    
-    const token = await getDecryptedToken(userId);
 
+    const token = await getDecryptedToken(userId);
 
     const endpoint = org
       ? `${GH_API}/orgs/${encodeURIComponent(org)}/repos`
@@ -190,7 +158,9 @@ export async function getUserRepos(
 
     console.log("[github.service] Raw GitHub API response", {
       repoCount: res.data?.length || 0,
-      firstRepo: res.data?.[0] ? { id: res.data[0].id, name: res.data[0].name, full_name: res.data[0].full_name } : null,
+      firstRepo: res.data?.[0]
+        ? { id: res.data[0].id, name: res.data[0].name, full_name: res.data[0].full_name }
+        : null,
     });
 
     const repos = res.data.map((r) => ({
@@ -209,11 +179,13 @@ export async function getUserRepos(
       updated_at: r.updated_at,
     }));
 
-
     const linkHeader = res.headers.link || "";
     const hasNextPage = linkHeader.includes('rel="next"');
 
-    console.log("[github.service] Mapped repositories successfully", { count: repos.length, hasNextPage });
+    console.log("[github.service] Mapped repositories successfully", {
+      count: repos.length,
+      hasNextPage,
+    });
     return { repos, page, perPage, hasNextPage };
   } catch (err) {
     console.error("[github.service] Error fetching repositories", {
@@ -226,9 +198,6 @@ export async function getUserRepos(
   }
 }
 
-
-
-
 export async function getConnectionStatus(userId) {
   const record = await GitHubToken.findOne({ userId });
   if (!record) return null;
@@ -239,9 +208,6 @@ export async function getConnectionStatus(userId) {
     connectedAt: record.connectedAt,
   };
 }
-
-
-
 
 export async function getUserOrgs(userId) {
   const token = await getDecryptedToken(userId);
@@ -256,9 +222,6 @@ export async function getUserOrgs(userId) {
     avatarUrl: org.avatar_url,
   }));
 }
-
-
-
 
 export async function disconnectGitHub(userId) {
   await GitHubToken.findOneAndDelete({ userId });

@@ -1,18 +1,13 @@
-
 import AdmZip from "adm-zip";
 import path from "path";
 import crypto from "crypto";
 
 const MAX_FILES = parseInt(process.env.MAX_FILES_PER_REPO || "100");
 const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
-const MAX_ZIP_SIZE =
-  parseInt(process.env.MAX_ZIP_SIZE_MB || "50") * 1024 * 1024;
+const MAX_ZIP_SIZE = parseInt(process.env.MAX_ZIP_SIZE_MB || "50") * 1024 * 1024;
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-
-
 
 export function validateZipBuffer(buffer) {
   if (!buffer || buffer.length === 0) {
@@ -20,19 +15,13 @@ export function validateZipBuffer(buffer) {
   }
 
   if (buffer.length > MAX_ZIP_SIZE) {
-    throw new Error(
-      `ZIP file exceeds maximum size of ${MAX_ZIP_SIZE / 1024 / 1024}MB`,
-    );
+    throw new Error(`ZIP file exceeds maximum size of ${MAX_ZIP_SIZE / 1024 / 1024}MB`);
   }
-
 
   if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
     throw new Error("File is not a valid ZIP archive");
   }
 }
-
-
-
 
 export function extractZipFiles(buffer, zipFilename = "upload.zip") {
   validateZipBuffer(buffer);
@@ -48,7 +37,6 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
   const files = [];
   let totalSize = 0;
 
-
   const topLevelDirs = new Set();
   entries.forEach((e) => {
     if (e.isDirectory) return;
@@ -60,20 +48,16 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
   const rootPrefix = hasRootFolder ? `${Array.from(topLevelDirs)[0]}/` : "";
 
   for (const entry of entries) {
-
     if (entry.isDirectory) continue;
-
 
     let filePath = entry.entryName;
     if (hasRootFolder && filePath.startsWith(rootPrefix)) {
       filePath = filePath.slice(rootPrefix.length);
     }
 
-
     if (SKIP_EXT.test(filePath) || entry.header.size > MAX_KB * 1024) {
       continue;
     }
-
 
     const filename = path.basename(filePath);
     if (isSecretDotfile(filename)) {
@@ -87,23 +71,18 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
       const data = entry.getData();
       const content = data.toString("utf-8");
 
-
       if (!content.trim()) continue;
 
       files.push({ path: filePath, content });
       totalSize += content.length;
     } catch {
-
       continue;
     }
   }
 
-
   files.sort((a, b) => a.path.localeCompare(b.path));
 
-
   const truncated = files.slice(0, MAX_FILES);
-
 
   const projectName = zipFilename
     .replace(/\.zip$/i, "")
@@ -123,8 +102,6 @@ export function extractZipFiles(buffer, zipFilename = "upload.zip") {
   };
 }
 
-
-
 function isImportantDotfile(filename) {
   const important = [
     ".gitignore",
@@ -143,9 +120,6 @@ function isSecretDotfile(filename) {
   if (filename === ".env.example" || filename === ".env.sample") return false;
   return filename === ".env" || filename.startsWith(".env.");
 }
-
-
-
 
 export function inferProjectMetadata(files) {
   const paths = files.map((f) => f.path);
@@ -174,9 +148,7 @@ export function inferProjectMetadata(files) {
       if (pkg.devDependencies?.vite) {
         techStack.push("vite");
       }
-    } catch {
-      
-    }
+    } catch {}
   } else if (pyproject) {
     language = "python";
     techStack.push("python");
@@ -191,7 +163,6 @@ export function inferProjectMetadata(files) {
     language = "go";
     techStack.push("go");
   }
-
 
   if (paths.some((p) => p.includes("docker"))) {
     techStack.push("docker");
@@ -209,8 +180,6 @@ export function inferProjectMetadata(files) {
     fileCount: files.length,
   };
 }
-
-
 
 export function formatZipError(error) {
   if (error.message.includes("ZIP")) {

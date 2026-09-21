@@ -1,4 +1,3 @@
-
 import axios from "axios";
 import dotenv from "dotenv";
 
@@ -10,8 +9,6 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
-
-
 
 const HIGH_PRIORITY = [
   /^(?:src\/)?(?:main|app|server|index)\.[jt]sx?$/i,
@@ -72,7 +69,6 @@ function scoreFilePath(path) {
   return 1;
 }
 
-
 function selectRelevantFiles(files, cap) {
   return files
     .map((f) => ({ ...f, _score: scoreFilePath(f.path) }))
@@ -81,7 +77,6 @@ function selectRelevantFiles(files, cap) {
     .slice(0, cap)
     .map(({ _score, ...f }) => f);
 }
-
 
 const DOWNLOAD_CONCURRENCY = 10;
 let _dlActive = 0;
@@ -113,13 +108,11 @@ function ghHeaders(token = null) {
   };
 }
 
-
 export function parseRepoUrl(url) {
   const match = url.match(/github\.com\/([^/]+)\/([^/?.]+)/);
   if (!match) throw new Error(`Invalid GitHub URL: ${url}`);
   return { owner: match[1], repo: match[2] };
 }
-
 
 export async function getRepoMeta(owner, repo, token = null) {
   const { data } = await axios.get(`${GH_API}/repos/${owner}/${repo}`, {
@@ -137,16 +130,12 @@ export async function getRepoMeta(owner, repo, token = null) {
   };
 }
 
-
 export async function getCommitSha(owner, repo, branch, token = null) {
-  const { data } = await axios.get(
-    `${GH_API}/repos/${owner}/${repo}/commits/${branch}`,
-    { headers: ghHeaders(token) },
-  );
+  const { data } = await axios.get(`${GH_API}/repos/${owner}/${repo}/commits/${branch}`, {
+    headers: ghHeaders(token),
+  });
   return data.sha;
 }
-
-
 
 export async function getFileTree(owner, repo, branch, token = null) {
   const { data } = await axios.get(
@@ -154,15 +143,12 @@ export async function getFileTree(owner, repo, branch, token = null) {
     { headers: ghHeaders(token) },
   );
   if (data.truncated) {
-    console.warn(
-      "-- Tree truncated : repo is very large, some files may be skipped.",
-    );
+    console.warn("-- Tree truncated : repo is very large, some files may be skipped.");
   }
   return data.tree
     .filter((item) => item.type === "blob")
     .map((item) => ({ path: item.path, size: item.size }));
 }
-
 
 export async function getFileTreeWithSha(owner, repo, branch, token = null) {
   const { data } = await axios.get(
@@ -177,19 +163,9 @@ export async function getFileTreeWithSha(owner, repo, branch, token = null) {
     .map((item) => ({ path: item.path, sha: item.sha, size: item.size }));
 }
 
-
-export async function computeFileDiff(
-  owner,
-  repo,
-  branch,
-  storedManifest,
-  token = null,
-) {
+export async function computeFileDiff(owner, repo, branch, storedManifest, token = null) {
   const currentTree = await getFileTreeWithSha(owner, repo, branch, token);
-  const eligible = currentTree.filter(
-    (f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024,
-  );
-
+  const eligible = currentTree.filter((f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024);
 
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
   const currentMap = new Map(eligible.map((f) => [f.path, f]));
@@ -198,7 +174,6 @@ export async function computeFileDiff(
   const modified = [];
   const removed = [];
   const unchanged = [];
-
 
   for (const [path, cur] of currentMap) {
     const stored = manifestMap.get(path);
@@ -211,7 +186,6 @@ export async function computeFileDiff(
     }
   }
 
-
   for (const [path] of manifestMap) {
     if (!currentMap.has(path)) {
       removed.push({ path, status: "removed" });
@@ -220,8 +194,6 @@ export async function computeFileDiff(
 
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
-
-
 
 export async function getFileContent(owner, repo, filePath, token = null) {
   try {
@@ -239,14 +211,7 @@ export async function getFileContent(owner, repo, filePath, token = null) {
   }
 }
 
-
-export async function fetchFileContents(
-  owner,
-  repo,
-  filePaths,
-  onProgress,
-  token = null,
-) {
+export async function fetchFileContents(owner, repo, filePaths, onProgress, token = null) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };
@@ -261,7 +226,6 @@ export async function fetchFileContents(
   }
   return files;
 }
-
 
 export async function fetchRepoFiles(repoUrl, token = null) {
   const { owner, repo } = parseRepoUrl(repoUrl);
@@ -291,12 +255,7 @@ export async function fetchRepoFiles(repoUrl, token = null) {
   return { meta, files, owner, repo };
 }
 
-
-export async function fetchRepoFilesWithProgress(
-  repoUrl,
-  onProgress,
-  token = null,
-) {
+export async function fetchRepoFilesWithProgress(repoUrl, onProgress, token = null) {
   const notify = (msg) => {
     if (onProgress) onProgress(msg);
   };

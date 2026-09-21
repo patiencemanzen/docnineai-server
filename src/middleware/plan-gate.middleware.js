@@ -1,4 +1,3 @@
-
 import { Subscription } from "../models/Subscription.js";
 import { PlanUsage } from "../models/PlanUsage.js";
 import { getPlan, PLAN_LEVEL, PLANS, effectivePlanId } from "../config/plans.js";
@@ -6,13 +5,10 @@ import { fail } from "../utils/response.util.js";
 import { Project } from "../models/Project.js";
 import { Portal } from "../models/Portal.js";
 
-
-
 async function loadSubscription(req) {
   if (req.subscription) return req.subscription;
   const sub = await Subscription.findOne({ userId: req.user.userId }).lean();
   if (!sub) {
-
     req.subscription = { plan: "free", status: "free", seats: 1 };
     return req.subscription;
   }
@@ -23,9 +19,6 @@ async function loadSubscription(req) {
 function effectivePlan(sub) {
   return effectivePlanId(sub);
 }
-
-
-
 
 export function requirePlan(minPlan) {
   return async (req, res, next) => {
@@ -46,7 +39,6 @@ export function requirePlan(minPlan) {
   };
 }
 
-
 export function requireFeature(featureKey) {
   return async (req, res, next) => {
     try {
@@ -55,21 +47,16 @@ export function requireFeature(featureKey) {
       const planConfig = getPlan(plan);
       if (planConfig.features[featureKey]) return next();
 
-
       const requiredPlan = findMinPlanForFeature(featureKey);
-      return fail(
-        res,
-        "PLAN_GATE",
-        `This feature is not available on your current plan.`,
-        403,
-        { requiredPlan, featureKey },
-      );
+      return fail(res, "PLAN_GATE", `This feature is not available on your current plan.`, 403, {
+        requiredPlan,
+        featureKey,
+      });
     } catch (err) {
       next(err);
     }
   };
 }
-
 
 export async function checkProjectLimit(req, res, next) {
   try {
@@ -80,7 +67,6 @@ export async function checkProjectLimit(req, res, next) {
 
     if (maxProjects === null) return next();
 
-
     if (maxProjects === 0) {
       return fail(
         res,
@@ -90,7 +76,6 @@ export async function checkProjectLimit(req, res, next) {
         { requiredPlan: "starter", limit: maxProjects },
       );
     }
-
 
     let reserved = null;
     try {
@@ -119,14 +104,12 @@ export async function checkProjectLimit(req, res, next) {
       );
     }
 
-
     req._projectSlotReserved = true;
     return next();
   } catch (err) {
     next(err);
   }
 }
-
 
 export async function checkPortalPublishLimit(req, res, next) {
   try {
@@ -137,12 +120,10 @@ export async function checkPortalPublishLimit(req, res, next) {
 
     if (maxPortals === null) return next();
 
-
     const currentPortal = await Portal.findOne({ projectId: req.params.id })
       .select("isPublished")
       .lean();
     if (currentPortal?.isPublished) return next();
-
 
     if (maxPortals === 0) {
       return fail(
@@ -154,10 +135,7 @@ export async function checkPortalPublishLimit(req, res, next) {
       );
     }
 
-
-    const userProjectIds = await Project.find({ userId: req.user.userId })
-      .select("_id")
-      .lean();
+    const userProjectIds = await Project.find({ userId: req.user.userId }).select("_id").lean();
     const projectIds = userProjectIds.map((p) => p._id);
     const publishedCount = await Portal.countDocuments({
       projectId: { $in: projectIds },
@@ -178,7 +156,6 @@ export async function checkPortalPublishLimit(req, res, next) {
   }
 }
 
-
 export function checkFileSizeLimit(fileSizeBytes) {
   return async (req, res, next) => {
     try {
@@ -187,8 +164,7 @@ export function checkFileSizeLimit(fileSizeBytes) {
       const maxMb = getPlan(plan).limits.maxFileSizeMb;
       const maxBytes = maxMb * 1024 * 1024;
 
-      const size =
-        fileSizeBytes || req.headers["content-length"] || req.file?.size || 0;
+      const size = fileSizeBytes || req.headers["content-length"] || req.file?.size || 0;
 
       if (size <= maxBytes) return next();
 
@@ -205,15 +181,11 @@ export function checkFileSizeLimit(fileSizeBytes) {
   };
 }
 
-
 export const requireApiImporter = requireFeature("openApiImporter");
-
 
 export const requireGithubSync = requireFeature("githubSync");
 
-
 export const requireCustomDomain = requireFeature("customDomain");
-
 
 export function requireExportFormat(format) {
   return async (req, res, next) => {
@@ -237,7 +209,6 @@ export function requireExportFormat(format) {
   };
 }
 
-
 export async function checkAiChatLimit(req, res, next) {
   try {
     const sub = await loadSubscription(req);
@@ -260,7 +231,6 @@ export async function checkAiChatLimit(req, res, next) {
     const used = usage?.aiChatsUsed ?? 0;
 
     if (used < limit) {
-
       req.aiChatAllowed = true;
       return next();
     }
@@ -276,7 +246,6 @@ export async function checkAiChatLimit(req, res, next) {
     next(err);
   }
 }
-
 
 export async function checkPortalLimit(req, res, next) {
   try {
@@ -312,8 +281,6 @@ export async function checkPortalLimit(req, res, next) {
     next(err);
   }
 }
-
-
 
 function findMinPlanForFeature(featureKey) {
   for (const planId of ["free", "starter", "pro", "team"]) {

@@ -1,11 +1,9 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
 const SubscriptionSchema = new Schema(
   {
-
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -13,7 +11,6 @@ const SubscriptionSchema = new Schema(
       unique: true,
       index: true,
     },
-
 
     plan: {
       type: String,
@@ -38,14 +35,12 @@ const SubscriptionSchema = new Schema(
       min: 0,
     },
 
-
     status: {
       type: String,
       enum: ["free", "trialing", "active", "past_due", "cancelled", "paused"],
       default: "free",
       index: true,
     },
-
 
     trialEndsAt: {
       type: Date,
@@ -57,7 +52,6 @@ const SubscriptionSchema = new Schema(
       default: null,
     },
 
-
     currentPeriodStart: {
       type: Date,
       default: null,
@@ -68,7 +62,6 @@ const SubscriptionSchema = new Schema(
       index: true,
     },
 
-
     cancelAtPeriodEnd: {
       type: Boolean,
       default: false,
@@ -77,7 +70,6 @@ const SubscriptionSchema = new Schema(
       type: Date,
       default: null,
     },
-
 
     pendingPlan: {
       type: String,
@@ -90,7 +82,6 @@ const SubscriptionSchema = new Schema(
       default: null,
     },
 
-
     pausedAt: {
       type: Date,
       default: null,
@@ -99,7 +90,6 @@ const SubscriptionSchema = new Schema(
       type: Date,
       default: null,
     },
-
 
     dunningAttemptCount: {
       type: Number,
@@ -111,13 +101,11 @@ const SubscriptionSchema = new Schema(
       index: true,
     },
 
-
     flutterwaveCustomerId: {
       type: String,
       default: null,
       select: false,
     },
-
 
     retentionOfferUsed: {
       type: Boolean,

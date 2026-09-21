@@ -1,6 +1,4 @@
-
 import rateLimit from "express-rate-limit";
-
 
 const onLimitReached = (req, res) => {
   res.status(429).json({
@@ -13,7 +11,6 @@ const onLimitReached = (req, res) => {
   });
 };
 
-
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -23,7 +20,6 @@ export const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-
 export const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
@@ -31,7 +27,6 @@ export const signupLimiter = rateLimit({
   legacyHeaders: false,
   handler: onLimitReached,
 });
-
 
 export const apiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -41,7 +36,6 @@ export const apiLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-
 export const refreshLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -49,7 +43,6 @@ export const refreshLimiter = rateLimit({
   legacyHeaders: false,
   handler: onLimitReached,
 });
-
 
 export const verifyEmailLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -59,7 +52,6 @@ export const verifyEmailLimiter = rateLimit({
   handler: onLimitReached,
 });
 
-
 export const cliPollLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 30,
@@ -67,7 +59,6 @@ export const cliPollLimiter = rateLimit({
   legacyHeaders: false,
   handler: onLimitReached,
 });
-
 
 export const portalAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

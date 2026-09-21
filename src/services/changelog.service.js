@@ -1,15 +1,7 @@
-
-
 import ProjectChangeLog from "../models/ProjectChangeLog.js";
 import crypto from "crypto";
 
-
-export async function logProjectChange(
-  projectId,
-  userId,
-  changeType,
-  options = {},
-) {
+export async function logProjectChange(projectId, userId, changeType, options = {}) {
   try {
     const changeLog = new ProjectChangeLog({
       projectId,
@@ -37,14 +29,7 @@ export async function logProjectChange(
   }
 }
 
-
-export async function logExport(
-  projectId,
-  userId,
-  exportType,
-  exportData,
-  result = {},
-) {
+export async function logExport(projectId, userId, exportType, exportData, result = {}) {
   const changeTypeMap = {
     pdf: "export_pdf",
     yaml: "export_yaml",
@@ -54,8 +39,7 @@ export async function logExport(
 
   try {
     const changeType = changeTypeMap[exportType] || `export_${exportType}`;
-    const nativeTabs =
-      exportData?.tabs?.filter((t) => !t.isCustom)?.length || 0;
+    const nativeTabs = exportData?.tabs?.filter((t) => !t.isCustom)?.length || 0;
     const customTabs = exportData?.tabs?.filter((t) => t.isCustom)?.length || 0;
 
     await logProjectChange(projectId, userId, changeType, {
@@ -71,10 +55,8 @@ export async function logExport(
     });
   } catch (err) {
     console.error("Error logging export:", err);
-
   }
 }
-
 
 export async function logSectionEdit(
   projectId,
@@ -84,10 +66,7 @@ export async function logSectionEdit(
   newContent = "",
 ) {
   try {
-    const contentHash = crypto
-      .createHash("sha256")
-      .update(newContent)
-      .digest("hex");
+    const contentHash = crypto.createHash("sha256").update(newContent).digest("hex");
 
     await logProjectChange(projectId, userId, "section_edited", {
       section,
@@ -101,7 +80,6 @@ export async function logSectionEdit(
   }
 }
 
-
 export async function logSectionAccept(projectId, userId, section) {
   try {
     await logProjectChange(projectId, userId, "section_accepted", {
@@ -112,7 +90,6 @@ export async function logSectionAccept(projectId, userId, section) {
     console.error("Error logging section accept:", err);
   }
 }
-
 
 export async function getProjectHistory(projectId, limit = 50, skip = 0) {
   try {
@@ -130,7 +107,6 @@ export async function getProjectHistory(projectId, limit = 50, skip = 0) {
     return { logs: [], total: 0 };
   }
 }
-
 
 export async function clearOldLogs(beforeDate) {
   try {

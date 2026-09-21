@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -13,24 +12,20 @@ const GitHubTokenSchema = new Schema(
       index: true,
     },
 
-
     accessTokenEncrypted: {
       type: String,
       required: true,
       select: false,
     },
 
-
     scopes: {
       type: [String],
       default: [],
     },
 
-
     githubUserId: String,
     githubUsername: String,
     githubEmail: String,
-
 
     connectedAt: {
       type: Date,

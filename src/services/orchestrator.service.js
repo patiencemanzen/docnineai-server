@@ -19,31 +19,29 @@ const isProduction = process.env.NODE_ENV === "production";
 
 const fastMode = isVercel && isProduction;
 
-const TIMEOUTS =
-  fastMode
-    ? {
-        fetch: 15_000,
-        scan: 5_000,
-        api: 5_000,
-        schema: 5_000,
-        components: 5_000,
-        security: 5_000,
-        write: 30_000,
-        chat: 10_000,
-      }
-    : {
-        fetch: 120_000,
-        scan: 240_000,
-        api: 180_000,
-        schema: 180_000,
-        components: 180_000,
-        security: 240_000,
-        write: 300_000,
-        chat: 30_000,
-      };
+const TIMEOUTS = fastMode
+  ? {
+      fetch: 15_000,
+      scan: 5_000,
+      api: 5_000,
+      schema: 5_000,
+      components: 5_000,
+      security: 5_000,
+      write: 30_000,
+      chat: 10_000,
+    }
+  : {
+      fetch: 120_000,
+      scan: 240_000,
+      api: 180_000,
+      schema: 180_000,
+      components: 180_000,
+      security: 240_000,
+      write: 300_000,
+      chat: 30_000,
+    };
 
 const ROUTING = {
-
   minRouteFiles: 1,
 
   minSchemaFiles: 1,
@@ -82,9 +80,7 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
   const duration = Date.now() - start;
 
   if (error) {
-    const reason = timedOut
-      ? `${label} timed out after ${timeout / 1000}s`
-      : error.message;
+    const reason = timedOut ? `${label} timed out after ${timeout / 1000}s` : error.message;
 
     emit(step, "error", `${label} failed : using fallback`, reason);
 
@@ -105,9 +101,12 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
 }
 
 const ROUTING_PATH_PATTERNS = {
-  route: /route[s]?\/|controller[s]?\/|handler[s]?\/|endpoint[s]?\/|\.route\.[jt]sx?$|\.controller\.[jt]sx?$|pages\/api\/|app\/api\//i,
-  schema: /model[s]?\/|schema[s]?\/|entit(?:y|ies)\/|migration[s]?\/|database\/|db\/|orm\/|\.model\.[jt]sx?$|\.schema\.[jt]sx?$|\.entity\.[jt]sx?$/i,
-  component: /service[s]?\/|middleware[s]?\/|util[s]?\/|helper[s]?\/|hook[s]?\/|config[s]?\/|provider[s]?\/|store[s]?\//i,
+  route:
+    /route[s]?\/|controller[s]?\/|handler[s]?\/|endpoint[s]?\/|\.route\.[jt]sx?$|\.controller\.[jt]sx?$|pages\/api\/|app\/api\//i,
+  schema:
+    /model[s]?\/|schema[s]?\/|entit(?:y|ies)\/|migration[s]?\/|database\/|db\/|orm\/|\.model\.[jt]sx?$|\.schema\.[jt]sx?$|\.entity\.[jt]sx?$/i,
+  component:
+    /service[s]?\/|middleware[s]?\/|util[s]?\/|helper[s]?\/|hook[s]?\/|config[s]?\/|provider[s]?\/|store[s]?\//i,
 };
 
 function computeRouting(projectMap, structure, files) {
@@ -115,13 +114,9 @@ function computeRouting(projectMap, structure, files) {
     Object.entries(structure).map(([role, paths]) => [role, paths.length]),
   );
 
-  const routeFileCount =
-    (roles.route ?? 0) + (roles.controller ?? 0) + (roles.entry ?? 0);
+  const routeFileCount = (roles.route ?? 0) + (roles.controller ?? 0) + (roles.entry ?? 0);
   const schemaFileCount =
-    (roles.model ?? 0) +
-    (roles.schema ?? 0) +
-    (roles.migration ?? 0) +
-    (roles.entity ?? 0);
+    (roles.model ?? 0) + (roles.schema ?? 0) + (roles.migration ?? 0) + (roles.entity ?? 0);
   const componentFileCount =
     (roles.service ?? 0) +
     (roles.middleware ?? 0) +
@@ -169,18 +164,12 @@ function computeRouting(projectMap, structure, files) {
     runComponents,
     runSecurity,
     reasons: {
-      api: runApi
-        ? null
-        : `Only ${effectiveRouteCount} route/controlleer files found`,
-      schema: runSchema
-        ? null
-        : `Only ${effectiveSchemaCount} model/schema files found`,
+      api: runApi ? null : `Only ${effectiveRouteCount} route/controlleer files found`,
+      schema: runSchema ? null : `Only ${effectiveSchemaCount} model/schema files found`,
       components: runComponents
         ? null
         : `Only ${effectiveComponentCount} component/service files found`,
-      security: runSecurity
-        ? null
-        : `Only ${codeFileCount} code files : below threshold`,
+      security: runSecurity ? null : `Only ${codeFileCount} code files : below threshold`,
     },
     counts: {
       routeFiles: effectiveRouteCount,
@@ -265,8 +254,7 @@ function buildPipelineReport(steps) {
         running: "⏳",
       }[step.status] || ":";
 
-    const dur =
-      step.duration != null ? `${(step.duration / 1000).toFixed(1)}s` : ":";
+    const dur = step.duration != null ? `${(step.duration / 1000).toFixed(1)}s` : ":";
     md += `| **${step.label}** | ${statusEmoji} ${step.status} | ${dur} | ${step.detail || ":"} |\n`;
   }
 
@@ -298,11 +286,9 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
 
   let meta, files, owner, repo;
 
-  const isPrefetched =
-    typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
+  const isPrefetched = typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
 
   if (isPrefetched) {
-
     emit("fetch", "running", "Using pre-extracted files…");
     const fetchStart = Date.now();
     ({ meta, files, owner, repo } = repoUrl);
@@ -314,14 +300,8 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       `${owner}/${repo}`,
       fetchDuration,
     );
-    trackStep(
-      "Fetch Repo",
-      "done",
-      `${files.length} files (pre-extracted)`,
-      fetchDuration,
-    );
+    trackStep("Fetch Repo", "done", `${files.length} files (pre-extracted)`, fetchDuration);
   } else {
-
     const provider = authContext.provider || detectProvider(repoUrl);
     const adapter = getAdapter(provider);
     emit("fetch", "running", `Connecting to ${provider}…`);
@@ -329,31 +309,23 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
 
     try {
       const fetched = await Promise.race([
-        adapter.fetchRepoFilesWithProgress(repoUrl, (msg) =>
-          emit("fetch", "running", msg),
-        authContext.token),
+        adapter.fetchRepoFilesWithProgress(
+          repoUrl,
+          (msg) => emit("fetch", "running", msg),
+          authContext.token,
+        ),
         new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Repository fetch timed out")),
-            TIMEOUTS.fetch,
-          ),
+          setTimeout(() => reject(new Error("Repository fetch timed out")), TIMEOUTS.fetch),
         ),
       ]);
       ({ meta, files, owner, repo } = fetched);
     } catch (err) {
-
       emit("fetch", "error", "Failed to fetch repository", err.message);
       return { success: false, error: err.message, phase: "fetch" };
     }
 
     const fetchDuration = Date.now() - fetchStart;
-    emit(
-      "fetch",
-      "done",
-      `${files.length} files downloaded`,
-      `${owner}/${repo}`,
-      fetchDuration,
-    );
+    emit("fetch", "done", `${files.length} files downloaded`, `${owner}/${repo}`, fetchDuration);
     trackStep("Fetch Repo", "done", `${files.length} files`, fetchDuration);
   }
 
@@ -361,7 +333,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   let treeWithSha = repoUrl.fileTree || [];
 
   if (!isPrefetched) {
-
     const provider = authContext.provider || detectProvider(repoUrl);
     const ra = createRepoAdapter(provider, repoUrl);
     [currentCommitSha, treeWithSha] = await Promise.all([
@@ -370,12 +341,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     ]);
   }
 
-  emit(
-    "scan",
-    "running",
-    "Classifying and analysing repository…",
-    "Agent : Repo Scanner",
-  );
+  emit("scan", "running", "Classifying and analysing repository…", "Agent : Repo Scanner");
   const scanStart = Date.now();
 
   let scanResult;
@@ -392,7 +358,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   );
 
   if (scanErr) {
-
     emit(
       "scan",
       "error",
@@ -440,17 +405,10 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     "scan",
     scanErr ? "error" : "done",
     `${projectMap.length} files classified`,
-    [techStack.join(" · ") || "Stack unknown", architectureHint || ""]
-      .filter(Boolean)
-      .join(" · "),
+    [techStack.join(" · ") || "Stack unknown", architectureHint || ""].filter(Boolean).join(" · "),
     scanDuration,
   );
-  trackStep(
-    "Repo Scanner",
-    scanErr ? "error" : "done",
-    architectureHint,
-    scanDuration,
-  );
+  trackStep("Repo Scanner", scanErr ? "error" : "done", architectureHint, scanDuration);
 
   const routing = computeRouting(projectMap, structure, files);
 
@@ -459,12 +417,8 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     "done",
     "Pipeline routing determined",
     [
-      routing.runApi
-        ? "✅ API Extractor"
-        : `⏭️  API Extractor (${routing.reasons.api})`,
-      routing.runSchema
-        ? "✅ Schema Analyser"
-        : `⏭️  Schema Analyser (${routing.reasons.schema})`,
+      routing.runApi ? "✅ API Extractor" : `⏭️  API Extractor (${routing.reasons.api})`,
+      routing.runSchema ? "✅ Schema Analyser" : `⏭️  Schema Analyser (${routing.reasons.schema})`,
       routing.runComponents
         ? "✅ Component Mapper"
         : `⏭️  Component Mapper (${routing.reasons.components})`,
@@ -490,88 +444,80 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     }
   }
 
-  emit(
-    "parallel",
-    "running",
-    "Running analysis agents in parallel…",
-    "Agents 2, 3, 4, 6",
-  );
+  emit("parallel", "running", "Running analysis agents in parallel…", "Agents 2, 3, 4, 6");
 
   const parallelStart = Date.now();
 
-  const [apiResult, schemaResult, componentResult, securityResult] =
-    await Promise.all([
+  const [apiResult, schemaResult, componentResult, securityResult] = await Promise.all([
+    routing.runApi
+      ? runAgent({
+          label: "API Extractor",
+          step: "api",
+          timeout: TIMEOUTS.api,
+          fallback: FALLBACKS.api,
+          emit,
+          fn: () =>
+            apiExtractorAgent({
+              files,
+              projectMap,
+              fastMode,
+              emit: (msg, detail) => emit("api", "running", msg, detail),
+            }),
+        })
+      : Promise.resolve({ ...FALLBACKS.api, _skipped: true }),
 
-      routing.runApi
-        ? runAgent({
-            label: "API Extractor",
-            step: "api",
-            timeout: TIMEOUTS.api,
-            fallback: FALLBACKS.api,
-            emit,
-            fn: () =>
-              apiExtractorAgent({
-                files,
-                projectMap,
-                fastMode,
-                emit: (msg, detail) => emit("api", "running", msg, detail),
-              }),
-          })
-        : Promise.resolve({ ...FALLBACKS.api, _skipped: true }),
+    routing.runSchema
+      ? runAgent({
+          label: "Schema Analyser",
+          step: "schema",
+          timeout: TIMEOUTS.schema,
+          fallback: FALLBACKS.schema,
+          emit,
+          fn: () =>
+            schemaAnalyserAgent({
+              files,
+              projectMap,
+              fastMode,
+              emit: (msg, detail) => emit("schema", "running", msg, detail),
+            }),
+        })
+      : Promise.resolve({ ...FALLBACKS.schema, _skipped: true }),
 
-      routing.runSchema
-        ? runAgent({
-            label: "Schema Analyser",
-            step: "schema",
-            timeout: TIMEOUTS.schema,
-            fallback: FALLBACKS.schema,
-            emit,
-            fn: () =>
-              schemaAnalyserAgent({
-                files,
-                projectMap,
-                fastMode,
-                emit: (msg, detail) => emit("schema", "running", msg, detail),
-              }),
-          })
-        : Promise.resolve({ ...FALLBACKS.schema, _skipped: true }),
+    routing.runComponents
+      ? runAgent({
+          label: "Component Mapper",
+          step: "components",
+          timeout: TIMEOUTS.components,
+          fallback: FALLBACKS.components,
+          emit,
+          fn: () =>
+            componentMapperAgent({
+              files,
+              projectMap,
+              structure,
+              fastMode,
+              emit: (msg, detail) => emit("components", "running", msg, detail),
+            }),
+        })
+      : Promise.resolve({ ...FALLBACKS.components, _skipped: true }),
 
-      routing.runComponents
-        ? runAgent({
-            label: "Component Mapper",
-            step: "components",
-            timeout: TIMEOUTS.components,
-            fallback: FALLBACKS.components,
-            emit,
-            fn: () =>
-              componentMapperAgent({
-                files,
-                projectMap,
-                structure,
-                fastMode,
-                emit: (msg, detail) =>
-                  emit("components", "running", msg, detail),
-              }),
-          })
-        : Promise.resolve({ ...FALLBACKS.components, _skipped: true }),
-
-      routing.runSecurity
-        ? runAgent({
-            label: "Security Auditor",
-            step: "security",
-            timeout: TIMEOUTS.security,
-            fallback: FALLBACKS.security,
-            emit,
-            fn: () =>
-              securityAuditorAgent({
-                files,
-                projectMap,
-                fastMode,
-                emit: (msg, detail) => emit("security", "running", msg, detail),
-              }),
-          })
-        : Promise.resolve({ ...FALLBACKS.security, _skipped: true }),
-    ]);
+    routing.runSecurity
+      ? runAgent({
+          label: "Security Auditor",
+          step: "security",
+          timeout: TIMEOUTS.security,
+          fallback: FALLBACKS.security,
+          emit,
+          fn: () =>
+            securityAuditorAgent({
+              files,
+              projectMap,
+              fastMode,
+              emit: (msg, detail) => emit("security", "running", msg, detail),
+            }),
+        })
+      : Promise.resolve({ ...FALLBACKS.security, _skipped: true }),
+  ]);
 
   const parallelDuration = Date.now() - parallelStart;
 
@@ -616,12 +562,9 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   } = securityResult;
 
   if (apiFailed) agentErrors.push({ agent: "api", error: apiResult._error });
-  if (schemaFailed)
-    agentErrors.push({ agent: "schema", error: schemaResult._error });
-  if (componentFailed)
-    agentErrors.push({ agent: "components", error: componentResult._error });
-  if (securityFailed)
-    agentErrors.push({ agent: "security", error: securityResult._error });
+  if (schemaFailed) agentErrors.push({ agent: "schema", error: schemaResult._error });
+  if (componentFailed) agentErrors.push({ agent: "components", error: componentResult._error });
+  if (securityFailed) agentErrors.push({ agent: "security", error: securityResult._error });
 
   if (!apiSkipped)
     trackStep(
@@ -722,8 +665,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     _failed: writeFailed,
   } = writeResult;
 
-  if (writeFailed)
-    agentErrors.push({ agent: "write", error: writeResult._error });
+  if (writeFailed) agentErrors.push({ agent: "write", error: writeResult._error });
   trackStep(
     "Doc Writer",
     writeFailed ? "error" : "done",
@@ -735,7 +677,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const chatStart = Date.now();
 
   const docOutput = {
-
     readme,
     internalDocs,
     componentRef,
@@ -760,34 +701,20 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
         };
       })(),
       new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("Chat setup timed out")),
-          TIMEOUTS.chat,
-        ),
+        setTimeout(() => reject(new Error("Chat setup timed out")), TIMEOUTS.chat),
       ),
     ]);
     sessionId = chatResult.sessionId;
     suggestedQuestions = chatResult.suggestedQuestions;
   } catch (err) {
-    emit(
-      "chat",
-      "error",
-      "Chat setup failed : docs still available",
-      err.message,
-    );
+    emit("chat", "error", "Chat setup failed : docs still available", err.message);
     agentErrors.push({ agent: "chat", error: err.message });
     sessionId = `${owner}-${repo}-${Date.now()}`;
     suggestedQuestions = [];
   }
 
   const chatDuration = Date.now() - chatStart;
-  emit(
-    "chat",
-    "done",
-    "Chat ready : ask anything about this codebase",
-    null,
-    chatDuration,
-  );
+  emit("chat", "done", "Chat ready : ask anything about this codebase", null, chatDuration);
   trackStep(
     "Chat Session",
     "done",
@@ -817,8 +744,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     totalDuration,
   };
 
-  const { md: pipelineReportMd, ...pipelineReportStats } =
-    buildPipelineReport(pipelineSteps);
+  const { md: pipelineReportMd, ...pipelineReportStats } = buildPipelineReport(pipelineSteps);
 
   emit(
     "done",
@@ -831,9 +757,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       `${components?.length ?? 0} components`,
       `Security: ${securityScore}/100`,
       `${(totalDuration / 1000).toFixed(1)}s`,
-      agentErrors.length
-        ? `⚠ ${agentErrors.length} agent error(s)`
-        : "✅ no errors",
+      agentErrors.length ? `⚠ ${agentErrors.length} agent error(s)` : "✅ no errors",
     ].join(" · "),
     null,
     totalDuration,

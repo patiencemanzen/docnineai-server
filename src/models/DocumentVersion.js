@@ -1,20 +1,12 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
-export const SECTIONS = [
-  "readme",
-  "internalDocs",
-  "apiReference",
-  "schemaDocs",
-  "securityReport",
-];
+export const SECTIONS = ["readme", "internalDocs", "apiReference", "schemaDocs", "securityReport"];
 export const MAX_VERSIONS_PER_SECTION = 20;
 
 const DocumentVersionSchema = new Schema(
   {
-
     projectId: {
       type: Schema.Types.ObjectId,
       ref: "Project",
@@ -22,19 +14,16 @@ const DocumentVersionSchema = new Schema(
       index: true,
     },
 
-
     section: {
       type: String,
       enum: SECTIONS,
       required: true,
     },
 
-
     content: {
       type: String,
       required: true,
     },
-
 
     source: {
       type: String,
@@ -42,9 +31,7 @@ const DocumentVersionSchema = new Schema(
       required: true,
     },
 
-
     meta: {
-
       commitSha: String,
 
       changedFiles: [String],
@@ -60,7 +47,6 @@ const DocumentVersionSchema = new Schema(
   },
 );
 
-
 DocumentVersionSchema.statics.createVersion = async function ({
   projectId,
   section,
@@ -69,7 +55,6 @@ DocumentVersionSchema.statics.createVersion = async function ({
   meta = {},
 }) {
   await this.create({ projectId, section, content, source, meta });
-
 
   const versions = await this.find({ projectId, section })
     .sort({ createdAt: -1 })

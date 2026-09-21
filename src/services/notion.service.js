@@ -1,14 +1,7 @@
-
 import { NotionSettings } from "../models/NotionSettings.js";
 import { encrypt, decrypt } from "../utils/crypto.util.js";
 
-
-export async function saveNotionSettings({
-  userId,
-  apiKey,
-  parentPageId,
-  workspaceName = null,
-}) {
+export async function saveNotionSettings({ userId, apiKey, parentPageId, workspaceName = null }) {
   const apiKeyEncrypted = encrypt(apiKey.trim());
 
   const doc = await NotionSettings.findOneAndUpdate(
@@ -30,7 +23,6 @@ export async function saveNotionSettings({
   };
 }
 
-
 export async function getNotionStatus(userId) {
   const doc = await NotionSettings.findOne({ userId });
   if (!doc) return { connected: false };
@@ -43,11 +35,8 @@ export async function getNotionStatus(userId) {
   };
 }
 
-
 export async function getDecryptedNotionSettings(userId) {
-  const doc = await NotionSettings.findOne({ userId }).select(
-    "+apiKeyEncrypted",
-  );
+  const doc = await NotionSettings.findOne({ userId }).select("+apiKeyEncrypted");
   if (!doc) throw new Error("NOTION_NOT_CONNECTED");
 
   return {
@@ -55,7 +44,6 @@ export async function getDecryptedNotionSettings(userId) {
     parentPageId: doc.parentPageId,
   };
 }
-
 
 export async function disconnectNotion(userId) {
   await NotionSettings.deleteOne({ userId });

@@ -1,7 +1,5 @@
-
 import dns from "node:dns";
 import mongoose from "mongoose";
-
 
 function ensureSrvDnsWorks(uri) {
   if (!uri.startsWith("mongodb+srv://")) return;
@@ -11,24 +9,19 @@ function ensureSrvDnsWorks(uri) {
   );
   if (!onlyLoopback) return;
   dns.setServers(["8.8.8.8", "1.1.1.1"]);
-  console.warn(
-    "[Database] Node DNS was 127.0.0.1 (SRV lookups refused). Using 8.8.8.8 for Atlas.",
-  );
+  console.warn("[Database] Node DNS was 127.0.0.1 (SRV lookups refused). Using 8.8.8.8 for Atlas.");
 }
-
 
 let _connectionPromise = null;
 
 export async function connectDB() {
   const URI = process.env.MONGODB_URI;
-  
+
   if (!URI) {
     throw new Error("MONGODB_URI is required in environment variables.\n");
   }
 
-
   if (mongoose.connection.readyState === 1) return;
-
 
   if (_connectionPromise) return _connectionPromise;
 
@@ -42,7 +35,6 @@ export async function connectDB() {
 async function _connect(URI) {
   ensureSrvDnsWorks(URI);
 
-
   mongoose.set("bufferCommands", false);
 
   await mongoose.connect(URI, {
@@ -51,7 +43,6 @@ async function _connect(URI) {
     maxPoolSize: 10,
     minPoolSize: 1,
   });
-
 
   if (mongoose.connection.readyState !== 1) {
     await new Promise((resolve, reject) => {
@@ -65,17 +56,12 @@ async function _connect(URI) {
   await migrateIndexes();
 }
 
-
 async function migrateIndexes() {
   try {
-
     let db = mongoose.connection.db;
     if (!db) {
       await new Promise((resolve, reject) => {
-        const deadline = setTimeout(
-          () => reject(new Error("db not ready after 3s")),
-          3000,
-        );
+        const deadline = setTimeout(() => reject(new Error("db not ready after 3s")), 3000);
         mongoose.connection.once("connected", () => {
           clearTimeout(deadline);
           resolve();
@@ -99,42 +85,29 @@ async function migrateIndexes() {
     const textIdx = indexes.find((idx) => idx.name === "project_search");
 
     if (!textIdx) {
-
       return;
     }
 
     if (textIdx.language_override === "search_language") {
-
       return;
     }
 
-    console.log(
-      "🔧 Dropping stale project_search index (missing language_override)…",
-    );
+    console.log("🔧 Dropping stale project_search index (missing language_override)…");
     await collection.dropIndex("project_search");
-    console.log(
-      "Stale index dropped : will be recreated with language_override",
-    );
+    console.log("Stale index dropped : will be recreated with language_override");
 
     const { Project } = await import("../models/Project.js");
     await Project.ensureIndexes();
     console.log("✅ project_search index recreated");
   } catch (err) {
-
     console.warn("Index migration skipped:", err.message);
   }
 }
 
-mongoose.connection.on("disconnected", () =>
-  console.warn("[Database] Database disconnected"),
-);
+mongoose.connection.on("disconnected", () => console.warn("[Database] Database disconnected"));
 
-mongoose.connection.on("reconnected", () =>
-  console.log("[Database] Database reconnected"),
-);
+mongoose.connection.on("reconnected", () => console.log("[Database] Database reconnected"));
 
-mongoose.connection.on("error", (err) =>
-  console.error("[Database] Database error:", err.message),
-);
+mongoose.connection.on("error", (err) => console.error("[Database] Database error:", err.message));
 
 export default mongoose;

@@ -12,9 +12,7 @@ import { startNotificationScheduler } from "./services/notification.scheduler.js
 
 const app = express();
 
-
 app.set("trust proxy", 1);
-
 
 app.use(
   helmet({
@@ -34,27 +32,21 @@ app.use(
 
 let initialized = false;
 
-
 async function initOnce() {
   if (initialized) return;
 
   await connectDB();
 
-
   await recoverOrphanedJobs();
-
 
   await loadServices();
 
-
   startBillingCron();
-
 
   startNotificationScheduler();
 
   initialized = true;
 }
-
 
 app.use(async (req, res, next) => {
   try {
@@ -64,7 +56,6 @@ app.use(async (req, res, next) => {
     next(err);
   }
 });
-
 
 const FRONTEND_ORIGIN = process.env.FRONTEND_URL || "";
 
@@ -79,12 +70,9 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (incomingOrigin, callback) => {
-
       if (!incomingOrigin) return callback(null, true);
 
-
       if (incomingOrigin === FRONTEND_ORIGIN) return callback(null, true);
-
 
       if (allowedOrigins.includes(incomingOrigin)) {
         return callback(null, true);
@@ -96,11 +84,7 @@ app.use(
   }),
 );
 
-
-
-
 app.use("/webhook/github", express.raw({ type: "*/*", limit: "10mb" }));
-
 
 app.use(
   "/slack/commands",
@@ -131,10 +115,7 @@ const jsonParser = express.json({
 });
 
 app.use((req, res, next) => {
-  if (
-    req.path.startsWith("/slack/commands") ||
-    req.path.startsWith("/slack/events")
-  ) {
+  if (req.path.startsWith("/slack/commands") || req.path.startsWith("/slack/events")) {
     return next();
   }
   return jsonParser(req, res, next);
@@ -142,11 +123,9 @@ app.use((req, res, next) => {
 app.use(cookieParser());
 app.use(morgan("dev"));
 
-
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
-
 
 app.get("/", (_req, res) => {
   res.json({
@@ -157,7 +136,6 @@ app.get("/", (_req, res) => {
 
 app.use("/", apiRouter);
 
-
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -165,13 +143,12 @@ app.use((req, res) => {
   });
 });
 
-
 app.use((err, req, res, _next) => {
   console.error("[Error]: ", err);
   const isProd = process.env.NODE_ENV === "production";
   res.status(err.status || 500).json({
     success: false,
-    error: isProd ? "Internal server error" : (err.message || "Internal error"),
+    error: isProd ? "Internal server error" : err.message || "Internal error",
   });
 });
 

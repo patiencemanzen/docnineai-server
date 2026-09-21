@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
@@ -13,19 +12,16 @@ const NotionSettingsSchema = new Schema(
       index: true,
     },
 
-
     apiKeyEncrypted: {
       type: String,
       required: true,
       select: false,
     },
 
-
     parentPageId: {
       type: String,
       required: true,
     },
-
 
     workspaceName: {
       type: String,

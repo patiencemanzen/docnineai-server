@@ -1,11 +1,8 @@
-
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import { User } from "../../../models/User.js";
 import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 import * as bbService from "../../../services/bitbucket.service.js";
-
-
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.BITBUCKET_CLIENT_ID;
@@ -25,9 +22,6 @@ function getStateSecret() {
   return secret;
 }
 
-
-
-
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
@@ -44,13 +38,9 @@ export function buildOAuthUrl(userId) {
   return `https://bitbucket.org/site/oauth2/authorize?${params.toString()}`;
 }
 
-
-
-
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
-
 
   let statePayload;
   try {
@@ -62,9 +52,7 @@ export async function handleOAuthCallback({ code, state }) {
     console.error("[Bitbucket OAuth Service] State verification failed", {
       message: err.message,
     });
-    const e = new Error(
-      "Invalid or expired OAuth state. Please start the OAuth flow again.",
-    );
+    const e = new Error("Invalid or expired OAuth state. Please start the OAuth flow again.");
     e.code = "INVALID_OAUTH_STATE";
     e.status = 400;
     throw e;
@@ -72,11 +60,9 @@ export async function handleOAuthCallback({ code, state }) {
 
   const userId = statePayload.userId;
 
-
   console.log("[Bitbucket OAuth Service] Exchanging code for token...");
   let tokenRes;
   try {
-
     const params = new URLSearchParams({
       grant_type: "authorization_code",
       code,
@@ -111,18 +97,13 @@ export async function handleOAuthCallback({ code, state }) {
       error,
       hasToken: !!access_token,
     });
-    const e = new Error(
-      `Bitbucket OAuth error: ${error || "no access token returned"}`,
-    );
+    const e = new Error(`Bitbucket OAuth error: ${error || "no access token returned"}`);
     e.code = "OAUTH_EXCHANGE_FAILED";
     e.status = 400;
     throw e;
   }
 
-  console.log(
-    "[Bitbucket OAuth Service] Got access token, fetching user profile...",
-  );
-
+  console.log("[Bitbucket OAuth Service] Got access token, fetching user profile...");
 
   const bbUser = await bbService.getAuthenticatedUser(access_token);
 
@@ -131,25 +112,18 @@ export async function handleOAuthCallback({ code, state }) {
     bitbucketUsername: bbUser.username,
   });
 
-
-  console.log(
-    "[Bitbucket OAuth Service] Updating user with Bitbucket identity...",
-  );
+  console.log("[Bitbucket OAuth Service] Updating user with Bitbucket identity...");
   const updated1 = await User.findByIdAndUpdate(userId, {
     bitbucketId: bbUser.id,
     bitbucketUsername: bbUser.username,
   });
 
   if (!updated1) {
-    console.error(
-      "[Bitbucket OAuth Service] User not found when updating identity",
-      {
-        userId,
-      },
-    );
+    console.error("[Bitbucket OAuth Service] User not found when updating identity", {
+      userId,
+    });
     throw new Error("User not found in database. Please log in again and try.");
   }
-
 
   console.log("[Bitbucket OAuth Service] Encrypting and storing token...");
   const encryptedToken = encrypt(access_token);
@@ -166,12 +140,9 @@ export async function handleOAuthCallback({ code, state }) {
   );
 
   if (!updated2) {
-    console.error(
-      "[Bitbucket OAuth Service] User not found when storing token",
-      {
-        userId,
-      },
-    );
+    console.error("[Bitbucket OAuth Service] User not found when storing token", {
+      userId,
+    });
     throw new Error("Failed to store Bitbucket token. Please try again.");
   }
 
@@ -183,8 +154,6 @@ export async function handleOAuthCallback({ code, state }) {
 
   return { bitbucketUsername: bbUser.username, userId };
 }
-
-
 
 export function encryptProvidersToken(token) {
   return encrypt(token);

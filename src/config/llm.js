@@ -95,7 +95,6 @@ function _release() {
 }
 
 export async function llmCall({ systemPrompt, userContent, temperature = 0 }) {
-
   const estimatedInput = estimateTokens(systemPrompt, userContent);
   const estimatedTotal = estimatedInput + 512;
 
@@ -124,7 +123,6 @@ export async function llmCall({ systemPrompt, userContent, temperature = 0 }) {
 }
 
 async function executeCall({ systemPrompt, userContent, temperature, estimatedTotal }) {
-
   const response = await client.chat.completions.create({
     model: MODEL,
     messages: [
@@ -139,9 +137,7 @@ async function executeCall({ systemPrompt, userContent, temperature, estimatedTo
   recordTokens(actualTokens);
 
   const remaining = TPM_LIMIT - tokensUsedInWindow();
-  console.log(
-    `✓ LLM call done (${actualTokens} tokens | ${remaining} remaining in window)`,
-  );
+  console.log(`✓ LLM call done (${actualTokens} tokens | ${remaining} remaining in window)`);
 
   return response.choices[0].message.content.trim();
 }

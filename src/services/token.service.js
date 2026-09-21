@@ -1,13 +1,7 @@
-
-
 import { APIToken } from "../models/APIToken.js";
 import { hashToken } from "../utils/crypto.util.js";
 
-
-export async function createToken(
-  userId,
-  { name, description, scope, projectIds, expiresAt },
-) {
+export async function createToken(userId, { name, description, scope, projectIds, expiresAt }) {
   if (!name) {
     const err = new Error("Token name is required");
     err.code = "INVALID_TOKEN_NAME";
@@ -39,18 +33,14 @@ export async function createToken(
   };
 }
 
-
 export async function getTokens(userId, { includeRevoked = false } = {}) {
   const query = { userId };
   if (!includeRevoked) query.isRevoked = false;
 
-  const tokens = await APIToken.find(query)
-    .select("-tokenHash")
-    .sort({ createdAt: -1 });
+  const tokens = await APIToken.find(query).select("-tokenHash").sort({ createdAt: -1 });
 
   return tokens.map((t) => t.toSafeJSON());
 }
-
 
 export async function getToken(userId, tokenId) {
   const token = await APIToken.findOne({
@@ -67,7 +57,6 @@ export async function getToken(userId, tokenId) {
 
   return token.toSafeJSON();
 }
-
 
 export async function revokeToken(userId, tokenId) {
   const token = await APIToken.findOne({
@@ -96,7 +85,6 @@ export async function revokeToken(userId, tokenId) {
   return token.toSafeJSON();
 }
 
-
 export async function deleteToken(userId, tokenId) {
   const result = await APIToken.deleteOne({
     _id: tokenId,
@@ -113,7 +101,6 @@ export async function deleteToken(userId, tokenId) {
   return { deleted: true };
 }
 
-
 export async function validateToken(plainToken, options = {}) {
   if (!plainToken) {
     const err = new Error("Token is required");
@@ -121,7 +108,6 @@ export async function validateToken(plainToken, options = {}) {
     err.status = 401;
     throw err;
   }
-
 
   if (!plainToken.startsWith("docnine_")) {
     const err = new Error("Invalid token format");
@@ -147,7 +133,6 @@ export async function validateToken(plainToken, options = {}) {
     throw err;
   }
 
-
   if (options.ipAddress && token.ipWhitelist?.length > 0) {
     if (!token.ipWhitelist.includes(options.ipAddress)) {
       const err = new Error("IP address not whitelisted");
@@ -156,7 +141,6 @@ export async function validateToken(plainToken, options = {}) {
       throw err;
     }
   }
-
 
   await token.recordUsage(options.ipAddress);
 
@@ -169,7 +153,6 @@ export async function validateToken(plainToken, options = {}) {
   };
 }
 
-
 export async function checkProjectAccess(tokenId, projectId) {
   const token = await APIToken.findById(tokenId);
 
@@ -180,7 +163,6 @@ export async function checkProjectAccess(tokenId, projectId) {
   return token.hasProjectAccess(projectId);
 }
 
-
 export async function cleanupExpiredTokens() {
   const result = await APIToken.deleteMany({
     expiresAt: { $lt: new Date() },
@@ -190,7 +172,6 @@ export async function cleanupExpiredTokens() {
     deletedCount: result.deletedCount,
   };
 }
-
 
 export async function getTokenStats(userId) {
   const [total, active, revoked, expiringSoon] = await Promise.all([
