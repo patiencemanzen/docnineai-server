@@ -1,6 +1,3 @@
-// ===================================================================
-// Incremental Sync Pipeline : Enhanced
-// ===================================================================
 
 import { getAdapter, createRepoAdapter } from "../adapters/provider.adapter.js";
 import { decrypt } from "../utils/crypto.util.js";
@@ -19,7 +16,7 @@ import {
 
 import { DocumentVersion } from "../models/DocumentVersion.js";
 
-// ─── Configuration ────────────────────────────────────────────────
+
 
 const TIMEOUTS = {
   fetch: 45_000,
@@ -31,11 +28,10 @@ const TIMEOUTS = {
   docs: 120_000,
 };
 
-// If more than this many files changed → full run
-// Large diffs make incremental merging unreliable
+
 const FULL_RUN_THRESHOLD = 80;
 
-// Sections that can be rebuilt statically (no LLM call)
+
 const STATIC_SECTIONS = new Set([
   "apiReference",
   "schemaDocs",
@@ -44,14 +40,14 @@ const STATIC_SECTIONS = new Set([
   "componentIndex",
 ]);
 
-// Sections that require an LLM call
+
 const LLM_SECTIONS = new Set(["readme", "internalDocs", "componentRef"]);
 
 const SEVERITY_WEIGHT = { CRITICAL: 25, HIGH: 15, MEDIUM: 7, LOW: 2 };
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🔵" };
 
-// ─── Lazy doc writer ──────────────────────────────────────────────
+
 
 let _docWriterAgent = null;
 async function getDocWriter() {
@@ -61,15 +57,7 @@ async function getDocWriter() {
   return _docWriterAgent;
 }
 
-/**
- * Resolve the correct git service, decrypted access token, and a
- * repo-bound normalized adapter for a project.
- *
- * `git`         : raw service module (for fetchRepoFilesWithProgress)
- * `accessToken` : decrypted OAuth/PAT token (null for GitHub)
- * `ra`          : createRepoAdapter instance that hides Azure's extra
- *                 `project` argument and other provider quirks
- */
+
 function resolveGit(project) {
   const provider = project.provider || "github";
   const git = getAdapter(provider);
@@ -80,13 +68,9 @@ function resolveGit(project) {
   return { git, accessToken, ra };
 }
 
-// ─── Timeout + cancellation ───────────────────────────────────────
 
-/**
- * Wrap any async fn with a hard timeout.
- * Returns { result } on success, { error, timedOut } on failure.
- * Never throws.
- */
+
+
 async function withTimeout(fn, ms, label) {
   let handle;
   const timeoutPromise = new Promise((_, reject) => {
@@ -105,12 +89,9 @@ async function withTimeout(fn, ms, label) {
   }
 }
 
-// ─── Agent runner ─────────────────────────────────────────────────
 
-/**
- * Run a single agent with timeout, error isolation, and timing.
- * Always returns a valid object : never throws.
- */
+
+
 async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   const start = Date.now();
   emit(step, "running", `Running ${label}…`);
@@ -134,7 +115,7 @@ async function runAgent({ label, step, fn, timeout, fallback, emit }) {
   return { ...result, _duration: duration };
 }
 
-// ─── Pure helpers ─────────────────────────────────────────────────
+
 
 function parseOwnerRepo(project) {
   const provider = project.provider || "github";
@@ -156,10 +137,7 @@ function categoriseWebhookFiles(webhookFiles) {
   return { added, modified, removed };
 }
 
-/**
- * Filter changedFiles to only those listed in agentFileList.
- * Uses a pre-built Set for O(1) lookups.
- */
+
 function filterFilesForAgent(changedFiles, agentFileList, removedPathSet) {
   const pathSet = new Set(agentFileList.map((f) => f.path));
   return changedFiles.filter(
@@ -167,10 +145,7 @@ function filterFilesForAgent(changedFiles, agentFileList, removedPathSet) {
   );
 }
 
-/**
- * Merge changed-file projectMap with stored projectMap.
- * Changed + removed paths are replaced; everything else is kept.
- */
+
 function mergeProjectMap(existingProjectMap, freshProjectMap, changedPathSet) {
   return [
     ...(existingProjectMap ?? []).filter((p) => !changedPathSet.has(p.path)),
@@ -201,10 +176,7 @@ function hasValidStoredState(project) {
   );
 }
 
-/**
- * Check if a full run is required and return the reason if so.
- * Returns null if incremental sync can proceed.
- */
+
 function requiresFullRun(project, changedFileEntries, analysis, options) {
   if (options.forceFullRun) return "forceFullRun requested";
   if (!hasValidStoredState(project)) return "no stored baseline";
@@ -223,7 +195,7 @@ async function updateCommitSha(project, sha) {
   });
 }
 
-// ─── Security helpers ─────────────────────────────────────────────
+
 
 function recomputeSecurityScore(findings) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
@@ -523,10 +495,7 @@ function buildComponentIndex(components) {
   return md;
 }
 
-/**
- * Determine which doc sections need regenerating based on which agents ran.
- * Returns { all, static, llm }.
- */
+
 function determineSectionsToRegenerate(agentsRun, analysis) {
   const sections = new Set(analysis.sectionsAffected ?? []);
 
@@ -553,10 +522,7 @@ function determineSectionsToRegenerate(agentsRun, analysis) {
   };
 }
 
-/**
- * Build the complete MongoDB $set payload from sync results.
- * Single source of truth : no fields can be silently dropped.
- */
+
 function buildMongoUpdate({
   newOutput,
   currentSha,
@@ -567,7 +533,7 @@ function buildMongoUpdate({
   totalDuration,
 }) {
   return {
-    // Documentation output
+
     "output.readme": newOutput.readme,
     "output.internalDocs": newOutput.internalDocs,
     "output.apiReference": newOutput.apiReference,
@@ -576,15 +542,15 @@ function buildMongoUpdate({
     "output.remediationReport": newOutput.remediationReport,
     "output.componentRef": newOutput.componentRef,
     "output.componentIndex": newOutput.componentIndex,
-    // Sync state
+
     lastDocumentedCommit: currentSha,
     fileManifest: newManifest,
     agentOutputs: mergedOutputs,
-    // Security aggregate
+
     security: securitySummary,
-    // Edited sections with stale flags
+
     editedSections: updatedEditedSections,
-    // Stats
+
     stats: {
       filesAnalysed: newManifest.length,
       endpoints: mergedOutputs.endpoints.length,
@@ -598,23 +564,14 @@ function buildMongoUpdate({
   };
 }
 
-// ─── Main Entry Point ─────────────────────────────────────────────
 
-/**
- * Run the incremental sync pipeline for a project.
- *
- * @param {Object}   project
- * @param {Function} onProgress            : SSE progress emitter
- * @param {Object}   options
- * @param {Array}    [options.webhookChangedFiles]
- * @param {boolean}  [options.forceFullRun]
- * @returns {Object} syncResult
- */
+
+
 export async function incrementalSync(project, onProgress, options = {}) {
   const syncStart = Date.now();
   const syncErrors = [];
 
-  // Structured emitter : always logs + fires SSE
+
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
     console.log(
@@ -631,9 +588,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
   try {
     emit("sync", "running", "Starting incremental sync…", `${owner}/${repo}`);
 
-    // ── PHASE 1 + 2 concurrent: resolve state & compute diff ──────
-    // Kick off meta + SHA fetch immediately; start diff computation
-    // as soon as we have the SHA. Both can overlap where possible.
+
 
     emit("sync:fetch", "running", "Resolving repo state and computing diff…");
     const fetchStart = Date.now();
@@ -649,7 +604,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       return { success: false, error: err.message, phase: "fetch" };
     }
 
-    // Nothing has changed since last sync
+
     if (
       currentSha &&
       currentSha === project.lastDocumentedCommit &&
@@ -669,7 +624,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── PHASE 2: Compute what changed ─────────────────────────────
+
 
     let added = [],
       modified = [],
@@ -687,8 +642,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         options.webhookChangedFiles,
       ));
       changedFileEntries = [...added, ...modified, ...removed];
-      // Fetch tree in background : needed for manifest update in Phase 8
-      // We don't await here; it runs concurrently with the agent phase
+
       currentTree = await ra
         .getFileTreeWithSha(meta.defaultBranch, accessToken)
         .catch(() => []);
@@ -730,7 +684,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${changedFileEntries.length} total · ${((Date.now() - fetchStart) / 1000).toFixed(1)}s`,
     );
 
-    // No eligible files changed (SHA moved but only ignored files)
+
     if (changedFileEntries.length === 0) {
       await updateCommitSha(project, currentSha);
       emit(
@@ -747,11 +701,11 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── Routing analysis (memoised : computed once, used everywhere) ──
-    const analysis = analyseChanges(changedFileEntries, project.fileManifest);
-    const agentsNeeded = analysis.agentsNeeded; // Set<string>
 
-    // Check if a full run is required
+    const analysis = analyseChanges(changedFileEntries, project.fileManifest);
+    const agentsNeeded = analysis.agentsNeeded;
+
+
     const fullRunReason = requiresFullRun(
       project,
       changedFileEntries,
@@ -777,9 +731,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${changedFileEntries.filter((f) => f.status !== "removed").length} files to re-analyse`,
     );
 
-    // ── PHASE 3: Determine files to fetch then fetch them ─────────
-    // Compute required paths from routing analysis BEFORE fetching
-    // so we only download exactly what each agent needs.
+
 
     const removedPathSet = new Set(removed.map((r) => r.path));
 
@@ -831,13 +783,11 @@ export async function incrementalSync(project, onProgress, options = {}) {
     const changedFiles = fetchResult ?? [];
     emit("sync:fetch", "done", `${changedFiles.length} files downloaded`);
 
-    // ── PHASE 4: Parallel Agent Execution ─────────────────────────
-    // Pre-compute shared values once : used by all agents
+
     const existingProjectMap = project.agentOutputs?.projectMap ?? [];
     const changedPathSet = new Set(changedPathsToFetch);
 
-    // Merge project map once : shared as read-only reference by all agent closures
-    // (agents that re-scan will override their portion via mergeProjectMap in Phase 5)
+
     const baselineProjectMap = mergeProjectMap(
       existingProjectMap,
       [],
@@ -851,8 +801,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
     );
     const agentsStart = Date.now();
 
-    // Kick off tree fetch concurrently with agent execution (webhook path only)
-    // so its latency is hidden behind the agent run time
+
     const treePromise =
       currentTree.length === 0
         ? ra.getFileTreeWithSha(meta.defaultBranch, accessToken).catch(() => [])
@@ -865,7 +814,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       componentResult,
       securityResult,
     ] = await Promise.all([
-      // ── Agent 1: Repo Scanner ──────────────────────────────────
+
       agentsNeeded.has("repoScanner") && changedFiles.length > 0
         ? runAgent({
             label: "Repo Scanner",
@@ -882,7 +831,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
           })
         : Promise.resolve({ projectMap: [], _skipped: true }),
 
-      // ── Agent 2: API Extractor ─────────────────────────────────
+
       agentsNeeded.has("apiExtractor")
         ? runAgent({
             label: "API Extractor",
@@ -907,7 +856,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
           })
         : Promise.resolve({ endpoints: [], _skipped: true }),
 
-      // ── Agent 3: Schema Analyser ───────────────────────────────
+
       agentsNeeded.has("schemaAnalyser")
         ? runAgent({
             label: "Schema Analyser",
@@ -939,7 +888,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
             _skipped: true,
           }),
 
-      // ── Agent 4: Component Mapper ──────────────────────────────
+
       agentsNeeded.has("componentMapper")
         ? runAgent({
             label: "Component Mapper",
@@ -965,9 +914,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
           })
         : Promise.resolve({ components: [], _skipped: true }),
 
-      // ── Agent 6: Security Auditor ──────────────────────────────
-      // Receives full baselineProjectMap so it can use has_auth flags
-      // for LLM file prioritisation
+
       agentsNeeded.has("securityAuditor") && changedFiles.length > 0
         ? runAgent({
             label: "Security Auditor",
@@ -994,7 +941,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
 
     const agentsDuration = Date.now() - agentsStart;
 
-    // Collect agent errors
+
     for (const [agent, r] of [
       ["scan", scanResult],
       ["api", apiResult],
@@ -1012,8 +959,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${(agentsDuration / 1000).toFixed(1)}s · ${syncErrors.length ? `⚠ ${syncErrors.length} error(s)` : "✅ clean"}`,
     );
 
-    // ── PHASE 5: Merge outputs ─────────────────────────────────────
-    // Build final merged projectMap (fresh scan results replace changed paths)
+
     const mergedProjectMap = mergeProjectMap(
       existingProjectMap,
       scanResult.projectMap ?? [],
@@ -1025,7 +971,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       {
         endpoints: apiResult.endpoints ?? [],
         models: schemaResult.models ?? [],
-        relationships: schemaResult.relationships, // undefined = not re-run → keep stored
+        relationships: schemaResult.relationships,
         components: componentResult.components ?? [],
         findings: securityResult.findings ?? [],
         projectMap: scanResult.projectMap ?? [],
@@ -1034,7 +980,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       [...removedPathSet],
     );
 
-    // ── PHASE 6: Recompute security from full merged findings ──────
+
     let securitySummary;
     if (agentsNeeded.has("securityAuditor")) {
       const { score, grade, counts } = recomputeSecurityScore(
@@ -1058,7 +1004,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         remediationMarkdown: buildRemediationPlan(mergedOutputs.findings),
       };
     } else {
-      // Security didn't run : carry forward stored values
+
       securitySummary = project.security ?? {
         score: 100,
         grade: "A",
@@ -1067,7 +1013,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       };
     }
 
-    // ── PHASE 7: Regenerate doc sections ──────────────────────────
+
     emit(
       "sync:docs",
       "running",
@@ -1084,7 +1030,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ...(project.output?.toObject?.() ?? { ...project.output }),
     };
 
-    // Build shared context for doc writer : computed once
+
     const docContext = {
       meta,
       techStack: project.techStack ?? [],
@@ -1113,12 +1059,12 @@ export async function incrementalSync(project, onProgress, options = {}) {
       },
     };
 
-    // Build a Set of user-edited section names for O(1) lookup
+
     const editedSectionNames = new Set(
       (project.editedSections ?? []).map((s) => s.section),
     );
 
-    // ── Static sections : parallel rebuild (no LLM cost) ──────────
+
     const staticResults = await Promise.allSettled(
       sectionsInfo.static.map(async (section) => {
         switch (section) {
@@ -1161,7 +1107,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       }
     }
 
-    // ── LLM sections : single batched doc writer call ──────────────
+
     const llmSectionsNeeded = sectionsInfo.llm;
     if (llmSectionsNeeded.length > 0) {
       emit(
@@ -1218,8 +1164,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       `${(docsDuration / 1000).toFixed(1)}s`,
     );
 
-    // ── PHASE 8: Update file manifest ─────────────────────────────
-    // Await the background tree fetch (started during agent execution)
+
     const resolvedTree = await treePromise;
     const newManifest = updateFileManifest(
       project.fileManifest,
@@ -1227,7 +1172,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       mergedProjectMap,
     );
 
-    // ── PHASE 9: Version history (parallel writes) ─────────────────
+
     await Promise.all(
       regenerated.map((section) =>
         DocumentVersion.createVersion({
@@ -1252,8 +1197,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       ),
     );
 
-    // ── PHASE 10: Build MongoDB update payload ─────────────────────
-    // Mark user-edited sections as stale if their content was regenerated
+
     const regeneratedSet = new Set(regenerated);
     const updatedEditedSections = (project.editedSections ?? []).map((es) => ({
       ...(es.toObject?.() ?? es),
@@ -1298,7 +1242,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
       removedFileCount: removedPathSet.size,
       totalDuration,
       errors: syncErrors.length > 0 ? syncErrors : undefined,
-      // Diagnostics : per-agent timings for monitoring
+
       _diagnostics: {
         scan: scanResult._duration,
         api: apiResult._duration,
@@ -1308,7 +1252,7 @@ export async function incrementalSync(project, onProgress, options = {}) {
         docs: docsDuration,
         total: totalDuration,
       },
-      // Caller (project.service.js) persists this via $set
+
       _update: mongoUpdate,
     };
   } catch (err) {
@@ -1318,12 +1262,9 @@ export async function incrementalSync(project, onProgress, options = {}) {
   }
 }
 
-// ─── Full Sync Fallback ───────────────────────────────────────────
 
-/**
- * Called when incremental sync cannot proceed.
- * Runs the full orchestrator pipeline and maps to incremental return format.
- */
+
+
 async function fullSyncFallback(
   project,
   owner,
@@ -1340,7 +1281,7 @@ async function fullSyncFallback(
   const { orchestrate } = await import("./orchestrator.service.js");
   const { accessToken: fallbackToken, ra: raFallback } = resolveGit(project);
 
-  // Pass the provider token so private repos on GitLab/Bitbucket/Azure succeed.
+
   const result = await orchestrate(project.repoUrl, onProgress, {
     provider: project.provider || "github",
     token: fallbackToken,

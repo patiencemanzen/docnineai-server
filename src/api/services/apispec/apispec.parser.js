@@ -1,20 +1,10 @@
-// =============================================================
-// apispec.parser.js
-//
-// Parses OpenAPI 2.0 / 3.0.x / 3.1.x and Postman Collection
-// v2.x into the normalised ApiSpec shape stored in MongoDB.
-//
-// Returns: { specVersion, info, servers, tags, endpoints,
-//            schemas, securitySchemes }
-// Throws:  Error with human-readable message on parse failure.
-// =============================================================
 
 import yaml from "js-yaml";
 
-// ── Text → raw object ─────────────────────────────────────────
+
 function parseRaw(text) {
   const trimmed = text.trim();
-  // JSON starts with { or [
+
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
       return JSON.parse(trimmed);
@@ -22,7 +12,7 @@ function parseRaw(text) {
       throw new Error(`Invalid JSON: ${e.message}`);
     }
   }
-  // Try YAML
+
   try {
     const doc = yaml.load(trimmed);
     if (typeof doc !== "object" || doc === null) {
@@ -34,22 +24,22 @@ function parseRaw(text) {
   }
 }
 
-// ── Version detection ─────────────────────────────────────────
+
 function detectVersion(doc) {
   if (doc.openapi) {
     const v = String(doc.openapi);
     if (v.startsWith("3.1")) return "3.1";
     if (v.startsWith("3.0")) return "3.0";
-    return "3.0"; // best guess for future 3.x
+    return "3.0";
   }
   if (doc.swagger && String(doc.swagger).startsWith("2")) return "2.0";
   if (doc.info?.schema && String(doc.info.schema).includes("postman"))
     return "postman";
-  if (doc.item) return "postman"; // Postman collection root
+  if (doc.item) return "postman";
   return "unknown";
 }
 
-// ── OAS 3.x parsing ──────────────────────────────────────────
+
 
 function parseOas3(doc, version) {
   const info = {
@@ -80,7 +70,7 @@ function parseOas3(doc, version) {
   for (const [path, pathItem] of Object.entries(paths)) {
     if (!pathItem || typeof pathItem !== "object") continue;
 
-    // Shared params at path level
+
     const pathParams = pathItem.parameters ?? [];
 
     const HTTP_METHODS = [
@@ -132,7 +122,7 @@ function parseOas3(doc, version) {
 }
 
 function mergeParams(pathParams, opParams) {
-  // Operation-level params override path-level by (in + name)
+
   const opKeys = new Set(opParams.map((p) => `${p.in}:${p.name}`));
   const merged = pathParams.filter((p) => !opKeys.has(`${p.in}:${p.name}`));
   return [...merged, ...opParams];
@@ -189,7 +179,7 @@ function normaliseResponses3(responses) {
   );
 }
 
-// ── OAS 2.0 (Swagger) parsing ─────────────────────────────────
+
 
 function parseSwagger2(doc) {
   const info = {
@@ -201,7 +191,7 @@ function parseSwagger2(doc) {
     termsOfService: doc.info?.termsOfService ?? "",
   };
 
-  // Build base URL from host + basePath + schemes
+
   let baseUrl = "";
   if (doc.host) {
     const scheme = (doc.schemes ?? ["https"])[0];
@@ -242,7 +232,7 @@ function parseSwagger2(doc) {
 
       const allParams = mergeParams(pathParams, op.parameters ?? []);
 
-      // Swagger 2 has body param and formData inline
+
       const bodyParam = allParams.find((p) => p.in === "body");
       const formParams = allParams.filter((p) => p.in === "formData");
       const regularParams = allParams.filter(
@@ -286,7 +276,7 @@ function parseSwagger2(doc) {
         };
       }
 
-      // Responses
+
       const produces = op.produces ?? doc.produces ?? ["application/json"];
       const responses = {};
       for (const [code, r] of Object.entries(op.responses ?? {})) {
@@ -336,7 +326,7 @@ function parseSwagger2(doc) {
   };
 }
 
-// ── Postman Collection v2.x parsing ──────────────────────────
+
 
 function parsePostman(doc) {
   const colInfo = doc.info ?? {};
@@ -352,7 +342,7 @@ function parsePostman(doc) {
     termsOfService: "",
   };
 
-  // Detect a common baseUrl from the first request if available
+
   const servers = [];
   const allItems = flattenPostmanItems(doc.item ?? []);
   const firstUrl = allItems[0]?.request?.url;
@@ -366,12 +356,12 @@ function parsePostman(doc) {
         description: "Inferred from first request",
       });
     } catch {
-      // ignore
+
     }
   }
   if (servers.length === 0) servers.push({ url: "/", description: "" });
 
-  // Derive tags from folder names
+
   const folderTags = (doc.item ?? [])
     .filter((i) => Array.isArray(i.item))
     .map((f) => ({
@@ -385,7 +375,7 @@ function parsePostman(doc) {
     const rawUrl = typeof req.url === "string" ? req.url : (req.url?.raw ?? "");
     const methodStr = (req.method ?? "GET").toUpperCase();
 
-    // Extract path from URL
+
     let path = "/";
     try {
       const urlObj = req.url;
@@ -398,7 +388,7 @@ function parsePostman(doc) {
       path = rawUrl.replace(/https?:\/\/[^/]+/, "") || "/";
     }
 
-    // Parameters from URL variables and query
+
     const parameters = [];
     const urlObj = typeof req.url === "object" ? req.url : {};
     for (const v of urlObj.variable ?? []) {
@@ -432,7 +422,7 @@ function parsePostman(doc) {
       });
     }
 
-    // Request body
+
     let requestBody = null;
     if (req.body) {
       const mode = req.body.mode ?? "raw";
@@ -472,7 +462,7 @@ function parsePostman(doc) {
       }
     }
 
-    // Responses from Postman examples
+
     const responses = {};
     for (const r of item.response ?? []) {
       const code = String(r.code ?? 200);
@@ -516,12 +506,12 @@ function parsePostman(doc) {
   };
 }
 
-/** Recursively flatten Postman items, tagging each with its folder name. */
+
 function flattenPostmanItems(items, folderName = "") {
   const result = [];
   for (const item of items) {
     if (Array.isArray(item.item)) {
-      // folder
+
       result.push(...flattenPostmanItems(item.item, item.name ?? folderName));
     } else {
       result.push({ ...item, _folderName: folderName });
@@ -530,14 +520,9 @@ function flattenPostmanItems(items, folderName = "") {
   return result;
 }
 
-// ── Public entry point ────────────────────────────────────────
 
-/**
- * Parse a raw spec string (JSON or YAML) into the normalised shape.
- *
- * @param {string} text : raw spec content
- * @returns {{ specVersion, info, servers, tags, endpoints, schemas, securitySchemes }}
- */
+
+
 export function parseSpec(text) {
   const doc = parseRaw(text);
   const version = detectVersion(doc);
@@ -551,7 +536,7 @@ export function parseSpec(text) {
     case "postman":
       return parsePostman(doc);
     default:
-      // Attempt OAS 3.0 as best guess
+
       try {
         return parseOas3(doc, "unknown");
       } catch {

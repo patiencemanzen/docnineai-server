@@ -1,16 +1,3 @@
-// =============================================================
-// Exports:
-//   inviteUsers          : send one or more email invites
-//   listAccess           : all shares for a project (owner only)
-//   changeRole           : owner updates a share's role
-//   revokeAccess         : owner revokes a specific share
-//   resendInvite         : resend a pending invite
-//   cancelInvite         : delete a pending invite before acceptance
-//   acceptInvite         : invitee clicks the accept link
-//   getSharedProjects    : projects shared WITH the current user
-//   assertProjectAccess  : throws 403/404 if user has no access
-//   getShareRole         : returns the role of a user on a project (or null)
-// =============================================================
 
 import { randomUUID } from "crypto";
 import { Project } from "../../../models/Project.js";
@@ -23,9 +10,7 @@ import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
 
-// ─────────────────────────────────────────────────────────────
-// Internal helpers
-// ─────────────────────────────────────────────────────────────
+
 
 function forbidden(msg = "Access denied.") {
   const e = new Error(msg);
@@ -81,7 +66,7 @@ async function assertShareAllowed(ownerId, role, { countTowardLimit = true } = {
   }
 }
 
-/** Return the project and throw 404 if missing, 403 if not owner. */
+
 async function assertOwner(projectId, userId) {
   const project = await Project.findById(projectId).lean();
   if (!project) throw notFound("Project not found.");
@@ -90,17 +75,9 @@ async function assertOwner(projectId, userId) {
   return project;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────
 
-/**
- * Send invitations to a list of emails.
- * @param {string} projectId
- * @param {string} ownerId
- * @param {{ email: string, role: "viewer"|"editor" }[]} invites
- * @returns {object[]} array of created/existing share docs
- */
+
+
 export async function inviteUsers(projectId, ownerId, invites) {
   const project = await assertOwner(projectId, ownerId);
   const owner = await User.findById(ownerId).select("name email").lean();
@@ -110,7 +87,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
   for (const { email, role } of invites) {
     const lc = email.toLowerCase().trim();
 
-    // Cannot invite the owner themselves
+
     if (lc === owner.email) {
       results.push({
         email: lc,
@@ -120,7 +97,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
       continue;
     }
 
-    // Check if an active invite (pending or accepted) already exists
+
     const existing = await ProjectShare.findOne({
       projectId,
       inviteeEmail: lc,
@@ -136,7 +113,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
         });
         continue;
       }
-      // Re-send existing pending invite with refreshed token + expiry
+
       existing.token = randomUUID();
       existing.role = role;
       existing.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -156,7 +133,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
       continue;
     }
 
-    // Check for a previously revoked invite : create fresh
+
     await ProjectShare.deleteOne({
       projectId,
       inviteeEmail: lc,
@@ -165,7 +142,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
 
     await assertShareAllowed(ownerId, role);
 
-    // Look up if the invitee already has a Docnine account
+
     const inviteeUser = await User.findOne({ email: lc }).select("_id").lean();
 
     const share = await ProjectShare.create({
@@ -196,7 +173,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
       metadata: { inviteeEmail: lc, role },
     });
 
-    // Notify the invitee if they already have an account
+
     if (inviteeUser?._id) {
       NotificationService.create({
         userId: inviteeUser._id,
@@ -214,9 +191,7 @@ export async function inviteUsers(projectId, ownerId, invites) {
   return results;
 }
 
-/**
- * List all access entries for a project (owner only).
- */
+
 export async function listAccess(projectId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -231,9 +206,7 @@ export async function listAccess(projectId, ownerId) {
   return shares.map(_serialize);
 }
 
-/**
- * Change the role of a specific share (owner only).
- */
+
 export async function changeRole(projectId, shareId, ownerId, newRole) {
   await assertOwner(projectId, ownerId);
 
@@ -275,9 +248,7 @@ export async function changeRole(projectId, shareId, ownerId, newRole) {
   return _serialize(share);
 }
 
-/**
- * Revoke access (owner only).
- */
+
 export async function revokeAccess(projectId, shareId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -311,9 +282,7 @@ export async function revokeAccess(projectId, shareId, ownerId) {
   await syncTeamSeatsAndBilling(projectId, ownerId);
 }
 
-/**
- * Resend a pending invitation (owner only).
- */
+
 export async function resendInvite(projectId, shareId, ownerId) {
   const project = await assertOwner(projectId, ownerId);
   const owner = await User.findById(ownerId).select("name email").lean();
@@ -340,9 +309,7 @@ export async function resendInvite(projectId, shareId, ownerId) {
   return _serialize(share);
 }
 
-/**
- * Cancel a pending invite before it is accepted (owner only).
- */
+
 export async function cancelInvite(projectId, shareId, ownerId) {
   await assertOwner(projectId, ownerId);
 
@@ -356,12 +323,7 @@ export async function cancelInvite(projectId, shareId, ownerId) {
   await share.deleteOne();
 }
 
-/**
- * Accept an invite via token (invitee calls this).
- * @param {string} token   : UUID from the invite link
- * @param {string|null} userId : logged-in user ID (null = not logged in)
- * @returns {{ projectId: string, role: string }}
- */
+
 export async function acceptInvite(token, userId) {
   const share = await ProjectShare.findOne({ token, status: "pending" });
   if (!share) throw notFound("Invalid or expired invite link.");
@@ -374,7 +336,7 @@ export async function acceptInvite(token, userId) {
 
   share.status = "accepted";
   if (userId) share.inviteeUserId = userId;
-  share.token = randomUUID(); // invalidate token after use
+  share.token = randomUUID();
   await share.save();
 
   ActivityLogService.log({
@@ -386,7 +348,7 @@ export async function acceptInvite(token, userId) {
     metadata: { inviteeEmail: share.inviteeEmail, role: share.role },
   });
 
-  // Sync Team plan billing if owner is on Team plan
+
   const project = await Project.findById(share.projectId).select("userId meta repoName");
   if (project) {
     await syncTeamSeatsAndBilling(project._id.toString(), project.userId.toString());
@@ -408,12 +370,9 @@ export async function acceptInvite(token, userId) {
   return { projectId: share.projectId.toString(), role: share.role };
 }
 
-/**
- * Return all projects shared WITH the given user (accepted shares only).
- * Attaches a `shareRole` field to each project doc.
- */
+
 export async function getSharedProjects(userId) {
-  // Find by userId or by email if the user record exists
+
   const user = await User.findById(userId).select("email").lean();
 
   const query = user
@@ -435,11 +394,7 @@ export async function getSharedProjects(userId) {
   return projects.map((p) => ({ ...p, shareRole: roleMap[p._id.toString()] }));
 }
 
-/**
- * Assert that userId can access projectId.
- * Owners always pass. Accepted shared members pass with their role.
- * @returns {{ isOwner: boolean, role: "owner"|"viewer"|"editor" }}
- */
+
 export async function assertProjectAccess(projectId, userId) {
   const project = await Project.findById(projectId).lean();
   if (!project) throw notFound("Project not found.");
@@ -448,7 +403,7 @@ export async function assertProjectAccess(projectId, userId) {
     return { isOwner: true, role: "owner", project };
   }
 
-  // Check for accepted share
+
   const user = await User.findById(userId).select("email").lean();
   const share = await ProjectShare.findOne({
     projectId,
@@ -464,10 +419,7 @@ export async function assertProjectAccess(projectId, userId) {
   return { isOwner: false, role: share.role, project };
 }
 
-/**
- * Get the share role for a user on a given project.
- * Returns null if they have no access.
- */
+
 export async function getShareRole(projectId, userId) {
   const project = await Project.findById(projectId).select("userId").lean();
   if (!project) return null;
@@ -486,13 +438,11 @@ export async function getShareRole(projectId, userId) {
   return share?.role ?? null;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Serializer : strips internal fields for API responses
-// ─────────────────────────────────────────────────────────────
+
 
 function _serialize(share) {
   const s = share.toObject ? share.toObject() : { ...share };
-  delete s.token; // never expose the raw token in API responses
+  delete s.token;
   return {
     _id: s._id,
     projectId: s.projectId,

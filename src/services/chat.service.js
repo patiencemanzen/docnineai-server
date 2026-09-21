@@ -1,21 +1,8 @@
-// ===================================================================
-// Chat With Your Codebase Service
-// ===================================================================
-// Strategy:
-//   • Docs (README + API + Schema + Internal) = permanent context
-//   • Conversation history kept per session (in-memory, ring buffer)
-//   • Smart context injection: only include relevant doc sections
-//     based on question keywords (saves tokens on each turn)
-//   • Max history: 6 turns (3 user + 3 assistant) to stay in budget
-// ===================================================================
-
 const MAX_HISTORY_TURNS = 6;
-const MAX_CONTEXT_CHARS = 3000; // ~750 tokens of doc context per message
+const MAX_CONTEXT_CHARS = 3000;
 
-// In-memory sessions: sessionId → { docsContext, history[], repoMeta }
 const sessions = new Map();
 
-// ── Build compressed docs context ────────────────────────────
 function buildDocsContext(output, meta) {
   const sections = [
     `# Project: ${meta?.name || "Unknown"}\n${meta?.description || ""}`,
@@ -36,11 +23,9 @@ function buildDocsContext(output, meta) {
   return sections.filter(Boolean).join("\n\n");
 }
 
-// ── Smart section selector based on question keywords ─────────
 function selectRelevantContext(question, fullContext) {
   const q = question.toLowerCase();
 
-  // Map keywords → which context sections to prioritise
   const SECTION_KEYWORDS = {
     api: [
       "endpoint",
@@ -85,7 +70,6 @@ function selectRelevantContext(question, fullContext) {
     ],
   };
 
-  // Find which section the question is most about
   let bestSection = null;
   let bestScore = 0;
   for (const [section, keywords] of Object.entries(SECTION_KEYWORDS)) {
@@ -96,7 +80,6 @@ function selectRelevantContext(question, fullContext) {
     }
   }
 
-  // If strongly matched, extract just that section from context
   if (bestScore >= 2 && bestSection) {
     const sectionMap = {
       api: "API REFERENCE",
@@ -109,24 +92,21 @@ function selectRelevantContext(question, fullContext) {
     if (start !== -1) {
       const end = fullContext.indexOf("\n## ", start + 1);
       const section = fullContext.slice(start, end === -1 ? undefined : end);
-      // Return the specific section + project overview
+
       const overview = fullContext.slice(0, 200);
       return `${overview}\n\n${section}`.slice(0, MAX_CONTEXT_CHARS);
     }
   }
 
-  // Default: trim full context to budget
   return fullContext.slice(0, MAX_CONTEXT_CHARS);
 }
 
-// ── Create session ────────────────────────────────────────────
 export function createChatSession({ jobId, output, meta }) {
   const docsContext = buildDocsContext(output, meta);
   sessions.set(jobId, { docsContext, history: [], meta });
   return jobId;
 }
 
-// ── Send message ──────────────────────────────────────────────
 export async function chat({ jobId, message }) {
   const session = sessions.get(jobId);
   if (!session) throw new Error("Chat session not found. Generate docs first.");
@@ -143,7 +123,6 @@ Be concise but complete. Format code examples with backticks.
 ${relevantContext}
 === END DOCUMENTATION ===`;
 
-  // Build messages array: system + trimmed history + new message
   const trimmedHistory = history.slice(-MAX_HISTORY_TURNS);
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -151,7 +130,6 @@ ${relevantContext}
     { role: "user", content: message },
   ];
 
-  // Direct API call to preserve conversation format
   const { client, MODEL } = await import("../config/llm.js");
   const response = await client.chat.completions.create({
     model: MODEL,
@@ -160,11 +138,10 @@ ${relevantContext}
   });
   const reply = response.choices[0].message.content.trim();
 
-  // Update history (ring buffer)
   history.push({ role: "user", content: message });
   history.push({ role: "assistant", content: reply });
   if (history.length > MAX_HISTORY_TURNS * 2) {
-    history.splice(0, 2); // drop oldest turn
+    history.splice(0, 2);
   }
 
   return {
@@ -175,7 +152,6 @@ ${relevantContext}
   };
 }
 
-// ── Suggested starter questions ───────────────────────────────
 export function getSuggestedQuestions(output) {
   const questions = [
     "How does authentication work in this project?",
@@ -187,7 +163,7 @@ export function getSuggestedQuestions(output) {
     "What tech stack does this project use?",
     "How is error handling implemented?",
   ];
-  // Filter based on what was actually found
+
   return questions
     .filter((q) => {
       if (q.includes("security") && !output.securityReport) return false;
@@ -198,22 +174,16 @@ export function getSuggestedQuestions(output) {
     .slice(0, 5);
 }
 
-// ── Reset session history ─────────────────────────────────────
 export function resetSession(jobId) {
   const session = sessions.get(jobId);
   if (session) session.history = [];
 }
 
-// ── Ensure session exists (auto-restore after server restart) ─
-// If the session is already in memory this is a no-op.
-// Otherwise it rebuilds the docs context from the persisted project output.
 export function ensureSession({ jobId, output, meta }) {
   if (sessions.has(jobId)) return;
   createChatSession({ jobId, output, meta });
 }
 
-// ── Streaming chat ────────────────────────────────────────────
-// Calls onToken for each streamed token, onDone when complete.
 export async function chatStream({ jobId, message, onToken, onDone, onError }) {
   const session = sessions.get(jobId);
   if (!session) {
@@ -258,7 +228,6 @@ ${relevantContext}
       }
     }
 
-    // Update history ring buffer
     history.push({ role: "user", content: message });
     history.push({ role: "assistant", content: fullReply });
     if (history.length > MAX_HISTORY_TURNS * 2) history.splice(0, 2);

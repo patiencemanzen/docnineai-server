@@ -1,22 +1,12 @@
-// =============================================================
-// Attachment controller
-//
-// Routes (mounted under /projects/:id/attachments):
-//   GET    /                   listAttachments
-//   POST   /                   uploadAttachment
-//   GET    /:attachmentId      downloadAttachment (inline or download)
-//   PATCH  /:attachmentId      updateAttachment (description)
-//   DELETE /:attachmentId      deleteAttachment
-// =============================================================
 
 import { Attachment } from "../../../models/Attachment.js";
 import { User } from "../../../models/User.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { getShareRole } from "../../services/projects/share.service.js";
 
-const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
-// MIME types where inline preview makes sense in the browser
+
 const INLINE_MIME_TYPES = new Set([
   "application/pdf",
   "text/plain",
@@ -34,14 +24,14 @@ function domainError(msg, code, status = 400) {
   return e;
 }
 
-/** Any access level (owner, editor, viewer) : just needs to be a member */
+
 async function assertReadAccess(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
   return role;
 }
 
-/** Write operations require owner or editor */
+
 async function assertWriteAccess(projectId, userId) {
   const role = await getShareRole(projectId, userId);
   if (!role) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
@@ -50,17 +40,14 @@ async function assertWriteAccess(projectId, userId) {
   return role;
 }
 
-// ─────────────────────────────────────────────────────────────
-// GET /projects/:id/attachments
-// List all attachments for a project (no file data).
-// ─────────────────────────────────────────────────────────────
+
 export async function listAttachments(req, res) {
   try {
     await assertReadAccess(req.params.id, req.user.userId);
 
     const attachments = await Attachment.find({ projectId: req.params.id })
       .sort({ createdAt: -1 })
-      .select("-data"); // exclude binary payload
+      .select("-data");
 
     return ok(res, { attachments });
   } catch (err) {
@@ -71,11 +58,7 @@ export async function listAttachments(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// POST /projects/:id/attachments
-// Upload a new attachment (multipart/form-data, field: "file").
-// Optional body field: description (string).
-// ─────────────────────────────────────────────────────────────
+
 export async function uploadAttachment(req, res) {
   try {
     await assertWriteAccess(req.params.id, req.user.userId);
@@ -98,7 +81,7 @@ export async function uploadAttachment(req, res) {
       );
     }
 
-    // Resolve uploader display name
+
     const user = await User.findById(req.user.userId).select("name email");
     const uploaderName = user?.name || user?.email || "Unknown";
 
@@ -113,7 +96,7 @@ export async function uploadAttachment(req, res) {
       data: req.file.buffer,
     });
 
-    // Return metadata only (no data buffer)
+
     const { data: _omit, ...meta } = attachment.toObject();
     return ok(res, { attachment: meta }, "File uploaded.", 201);
   } catch (err) {
@@ -124,11 +107,7 @@ export async function uploadAttachment(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// GET /projects/:id/attachments/:attachmentId
-// Stream the file. PDFs and images are sent inline for preview;
-// all other types are sent as attachment (triggers download).
-// ─────────────────────────────────────────────────────────────
+
 export async function downloadAttachment(req, res) {
   try {
     await assertReadAccess(req.params.id, req.user.userId);
@@ -146,7 +125,7 @@ export async function downloadAttachment(req, res) {
       ? "inline"
       : "attachment";
 
-    // Encode filename for Content-Disposition (handles spaces & non-ASCII)
+
     const encoded = encodeURIComponent(attachment.fileName).replace(
       /'/g,
       "%27",
@@ -168,10 +147,7 @@ export async function downloadAttachment(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// PATCH /projects/:id/attachments/:attachmentId
-// Update the description of an attachment.
-// ─────────────────────────────────────────────────────────────
+
 export async function updateAttachment(req, res) {
   try {
     await assertWriteAccess(req.params.id, req.user.userId);
@@ -205,10 +181,7 @@ export async function updateAttachment(req, res) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// DELETE /projects/:id/attachments/:attachmentId
-// Only the project owner can delete.
-// ─────────────────────────────────────────────────────────────
+
 export async function deleteAttachment(req, res) {
   try {
     await assertWriteAccess(req.params.id, req.user.userId);

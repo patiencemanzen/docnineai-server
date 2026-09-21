@@ -1,6 +1,3 @@
-// =============================================================
-// Azure DevOps OAuth flow and token management.
-// =============================================================
 
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -8,7 +5,7 @@ import { User } from "../../../models/User.js";
 import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 import * as azService from "../../../services/azure-devops.service.js";
 
-// ── Internal helpers ──────────────────────────────────────────
+
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.AZURE_DEVOPS_CLIENT_ID;
@@ -31,23 +28,16 @@ function getStateSecret() {
   return secret;
 }
 
-// ── OAuth Step 1: Build authorisation URL ─────────────────────
 
-/**
- * Generate the Azure DevOps OAuth authorisation URL.
- * @param {string} userId
- * @returns {string} redirect URL
- */
+
+
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
   const state = jwt.sign({ userId }, stateSecret, { expiresIn: "10m", algorithm: "HS256" });
 
-  // Azure DevOps OAuth does NOT accept localhost redirect URIs.
-  // In development use a tunnel (e.g. ngrok) and set AZURE_DEVOPS_REDIRECT_URI
-  // to the public tunnel URL, e.g. https://xxxx.ngrok.io/azure/oauth/callback,
-  // then register that same URL in https://app.vsaex.visualstudio.com/app/register.
+
   if (REDIRECT_URI?.includes("localhost")) {
     console.warn(
       "[Azure OAuth] AZURE_DEVOPS_REDIRECT_URI is a localhost URL : Azure DevOps " +
@@ -55,8 +45,7 @@ export function buildOAuthUrl(userId) {
     );
   }
 
-  // vso.code  : read source code, commits, branches
-  // vso.project : list projects (required by /_apis/projects used in repo listing)
+
   const scope = "vso.code vso.project";
 
   console.log("[Azure OAuth] Building authorization URL", {
@@ -65,10 +54,7 @@ export function buildOAuthUrl(userId) {
     scope,
   });
 
-  // Azure DevOps OAuth2 authorization request
-  // Azure DevOps uses response_type=Assertion (not "code").
-  // Note: scope is appended separately with encodeURIComponent so spaces become
-  // %20 : Azure DevOps rejects the + encoding that URLSearchParams produces.
+
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     response_type: "Assertion",
@@ -80,25 +66,21 @@ export function buildOAuthUrl(userId) {
     `https://app.vssps.visualstudio.com/oauth2/authorize?${params.toString()}` +
     `&scope=${encodeURIComponent(scope)}`;
   
-  // Log full URL for debugging
+
   console.log("[Azure OAuth] Full authorization URL:");
   console.log(url);
   
   return url;
 }
 
-// ── OAuth Step 2: Exchange assertion → token ──────────────────
 
-/**
- * Complete the Azure DevOps OAuth flow.
- * @param {{ assertion: string, state: string }}
- * @returns {{ azureUsername: string }}
- */
+
+
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
-  // 1. Verify state JWT (CSRF check)
+
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
@@ -119,11 +101,11 @@ export async function handleOAuthCallback({ code, state }) {
 
   const userId = statePayload.userId;
 
-  // 2. Exchange code for access token
+
   console.log("[Azure OAuth Service] Exchanging code for token...");
   let tokenRes;
   try {
-    // Azure DevOps uses non-standard OAuth token exchange parameters
+
     const params = new URLSearchParams({
       client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: CLIENT_SECRET,
@@ -173,7 +155,7 @@ export async function handleOAuthCallback({ code, state }) {
 
   console.log("[Azure OAuth Service] Got access token, fetching user profile...");
 
-  // 3. Fetch Azure DevOps user profile
+
   const azUser = await azService.getAuthenticatedUser(access_token);
 
   console.log("[Azure OAuth Service] Got Azure user", {
@@ -181,7 +163,7 @@ export async function handleOAuthCallback({ code, state }) {
     azureUsername: azUser.username,
   });
 
-  // 4. Update User record
+
   console.log("[Azure OAuth Service] Updating user with Azure identity...");
   const updated1 = await User.findByIdAndUpdate(userId, {
     azureDevOpsId: azUser.id,
@@ -197,7 +179,7 @@ export async function handleOAuthCallback({ code, state }) {
     );
   }
 
-  // 5. Store encrypted token
+
   console.log("[Azure OAuth Service] Encrypting and storing token...");
   const encryptedToken = encrypt(access_token);
   const encryptedRefresh = refresh_token ? encrypt(refresh_token) : null;
@@ -228,7 +210,7 @@ export async function handleOAuthCallback({ code, state }) {
   return { azureUsername: azUser.username, userId };
 }
 
-// ── Token management ──────────────────────────────────────────
+
 
 export function encryptProvidersToken(token) {
   return encrypt(token);

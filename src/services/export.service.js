@@ -1,18 +1,5 @@
-// ==============================================================
-// Export Service : PDF & Notion
-//
-// IMPORTANT: pdfkit and @notionhq/client are loaded with dynamic
-// import() inside each function, not at the top of the file.
-//
-// Top-level imports would crash the entire module at load time if
-// either package is missing, silently breaking all exports.
-// Dynamic imports fail per-call with a clear error message instead.
-// ==============================================================
-
-// ── PDF Export ────────────────────────────────────────────────
-// Streams a multi-section PDF directly to an Express response.
 export async function exportToPDF(res, { meta, output, stats, securityScore }) {
-  // Dynamic import : throws a clear error if pdfkit is not installed
+
   let PDFDocument;
   try {
     ({ default: PDFDocument } = await import("pdfkit"));
@@ -36,7 +23,6 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
   const RED = "#DC2626";
   const GREEN = "#16A34A";
 
-  // ── Cover page ──────────────────────────────────────────────
   doc.rect(0, 0, doc.page.width, 180).fill(BLUE);
   doc
     .fill("#ffffff")
@@ -79,7 +65,6 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
     sx += 120;
   });
 
-  // ── Helpers ──────────────────────────────────────────────────
   const heading1 = (text) => {
     doc.addPage();
     doc.rect(0, 0, doc.page.width, 6).fill(BLUE);
@@ -112,17 +97,15 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
     doc.moveDown(0.3);
   };
 
-    // ── Sections ─────────────────────────────────────────────────
-  // Accept both ExportDocumentData (tabs array) and effectiveOutput formats.
   if (Array.isArray(output?.tabs) && output.tabs.length > 0) {
-    // Frontend ExportDocumentData format : iterate all exported tabs
+
     for (const tab of output.tabs) {
       if (!tab.content?.trim()) continue;
       heading1(tab.label);
       body(tab.content.slice(0, 3000));
     }
   } else {
-    // Project effectiveOutput format
+
     if (output.readme) {
       heading1("📋 README");
       body(output.readme.slice(0, 3000));
@@ -165,7 +148,6 @@ export async function exportToPDF(res, { meta, output, stats, securityScore }) {
   doc.end();
 }
 
-// ── Notion Export ─────────────────────────────────────────────
 export async function exportToNotion({
   output,
   meta,
@@ -174,7 +156,7 @@ export async function exportToNotion({
   apiKey,
   parentPageId,
 }) {
-  // Dynamic import : throws a clear error if @notionhq/client is not installed
+
   let NotionClient;
   try {
     ({ Client: NotionClient } = await import("@notionhq/client"));
@@ -211,7 +193,6 @@ export async function exportToNotion({
     ],
   });
 
-  // Accept both ExportDocumentData (tabs array) and effectiveOutput formats.
   const sections = Array.isArray(output?.tabs) && output.tabs.length > 0
     ? output.tabs
         .filter((t) => t.content && t.content.length > 10)
@@ -239,7 +220,6 @@ export async function exportToNotion({
   return { mainPageUrl: mainPage.url, mainPageId: mainPage.id, childPages };
 }
 
-// ── Notion block builders ─────────────────────────────────────
 function notionHeading(text, level = 1) {
   const type = `heading_${level}`;
   return {
@@ -305,7 +285,6 @@ function markdownToNotionBlocks(markdown) {
   return blocks.slice(0, 100);
 }
 
-// ── Strip markdown for PDF plain text ────────────────────────
 function stripMarkdown(text) {
   return (text || "")
     .replace(/#{1,6}\s/g, "")

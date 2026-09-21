@@ -1,17 +1,3 @@
-// ===================================================================
-// Cron service : all scheduled billing jobs.
-//
-// Initialise once from dev.js / server.js after DB connects.
-// Jobs run daily at 00:00 UTC.
-//
-// Job list:
-//   check_trial_expiry         : send reminders, downgrade expired trials
-//   check_subscription_renewals : charge renewals due today
-//   process_dunning            : retry failed payments, escalate emails
-//   process_scheduled_downgrades : apply pending plan changes
-//   reset_ai_usage             : reset AI chat counters
-//   flag_expiring_cards        : warn on card expiry next month
-// ===================================================================
 
 import cron from "node-cron";
 import { Subscription } from "../models/Subscription.js";
@@ -32,16 +18,13 @@ import {
 
 let _started = false;
 
-/**
- * Start all billing cron jobs.
- * Safe to call multiple times : only initialises once.
- */
+
 export function startBillingCron() {
   if (_started) return;
   _started = true;
   console.log("-- Billing cron jobs starting…");
 
-  // Daily at 00:00 UTC
+
   const DAILY = "0 0 * * *";
 
   cron.schedule(DAILY, runCheckTrialExpiry, { timezone: "UTC" });
@@ -54,7 +37,7 @@ export function startBillingCron() {
   console.log("-- Billing cron jobs registered (daily @ 00:00 UTC)");
 }
 
-// ── Job handlers ─────────────────────────────────────────────────
+
 
 async function runCheckTrialExpiry() {
   console.log("[cron] check_trial_expiry starting");
@@ -63,7 +46,7 @@ async function runCheckTrialExpiry() {
     const tomorrow = addDays(now, 1);
     const threeDaysFromNow = addDays(now, 3);
 
-    // 3-day reminder
+
     const remind3 = await Subscription.find({
       status: "trialing",
       trialEndsAt: {
@@ -84,7 +67,7 @@ async function runCheckTrialExpiry() {
       }
     }
 
-    // 1-day reminder
+
     const remind1 = await Subscription.find({
       status: "trialing",
       trialEndsAt: { $gte: tomorrow, $lt: addDays(tomorrow, 1) },
@@ -102,7 +85,7 @@ async function runCheckTrialExpiry() {
       }
     }
 
-    // Expire trials that ended in the past
+
     const expired = await Subscription.find({
       status: "trialing",
       trialEndsAt: { $lt: now },
@@ -130,7 +113,7 @@ async function runCheckSubscriptionRenewals() {
     const endOfToday = new Date(now);
     endOfToday.setHours(23, 59, 59, 999);
 
-    // Find active subscriptions whose period ends today (and not already cancelled)
+
     const due = await Subscription.find({
       status: "active",
       cancelAtPeriodEnd: false,
@@ -170,20 +153,20 @@ async function runProcessScheduledDowngrades() {
   try {
     const now = new Date();
 
-    // Cancellations whose period has ended
+
     const cancellations = await Subscription.find({
       cancelAtPeriodEnd: true,
       currentPeriodEnd: { $lte: now },
     });
 
-    // Pending plan changes whose period has ended
+
     const pendingDowngrades = await Subscription.find({
       pendingPlan: { $ne: null },
       currentPeriodEnd: { $lte: now },
     });
 
     const all = [...cancellations, ...pendingDowngrades];
-    // Dedupe by _id
+
     const unique = [...new Map(all.map((s) => [s._id.toString(), s])).values()];
 
     console.log(
@@ -228,7 +211,7 @@ async function runFlagExpiringCards() {
     const now = new Date();
     const nextMonth = new Date(now);
     nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const nextMonthNum = nextMonth.getMonth() + 1; // 1-12
+    const nextMonthNum = nextMonth.getMonth() + 1;
     const nextMonthYear = nextMonth.getFullYear();
 
     const expiring = await PaymentMethod.find({
@@ -260,7 +243,7 @@ async function runFlagExpiringCards() {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+
 
 function addDays(date, days) {
   const d = new Date(date);

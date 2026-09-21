@@ -7,7 +7,7 @@ const MANIFEST_FILE =
   /^(package\.json|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|requirements\.txt|Pipfile|Pipfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|pom\.xml|build\.gradle|composer\.json|Gemfile|Gemfile\.lock)$/i;
 
 export function validateWebhookSignature(rawPayload, signature, secret) {
-  // Fail closed: a missing secret must never authenticate a webhook.
+
   if (!secret) return false;
   if (!signature || typeof signature !== "string") return false;
 
@@ -242,9 +242,7 @@ async function updateUserWebhookStatus({ userId, status }) {
 }
 
 export async function handleWebhook({ payload, signature, githubEvent = "" }) {
-  // Fast-path: ignore non-push / non-ping events before any heavy processing.
-  // The x-github-event header is the authoritative event type; payload shape is
-  // the fallback for integrations that don't send the header.
+
   const eventLower = githubEvent.toLowerCase();
   if (eventLower && eventLower !== "push" && eventLower !== "ping") {
     return {
@@ -546,6 +544,3 @@ jobs:
 `;
 }
 
-// handleProjectWebhook has been removed (v4.1+)
-// Webhook architecture now uses user-level webhook secret with server-side repo matching.
-// See handleWebhook() for the current implementation.

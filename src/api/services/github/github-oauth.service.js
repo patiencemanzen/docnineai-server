@@ -1,18 +1,3 @@
-// ===================================================================
-// GitHub OAuth flow and repository access.
-//
-// WHY no module-level env var constants:
-//   ESM module evaluation happens before dotenv.config() in server.js.
-//   Reading process.env at module load time gives undefined for .env values.
-//   All env reads are inside functions so they run after dotenv has loaded.
-//
-// Required env:
-//   GITHUB_CLIENT_ID      : from your GitHub OAuth App
-//   GITHUB_CLIENT_SECRET  : from your GitHub OAuth App
-//   GITHUB_REDIRECT_URI   : must match what's registered on GitHub
-//                           e.g. http://localhost:3000/github/oauth/callback
-//   JWT_ACCESS_SECRET     : reused as OAuth state JWT secret (10-min expiry)
-// ===================================================================
 
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -24,9 +9,9 @@ import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 const GH_API = "https://api.github.com";
 const GH_AUTH = "https://github.com/login/oauth";
 
-// ── Internal helpers ──────────────────────────────────────────
 
-/** Read and validate GitHub OAuth credentials at call-time. */
+
+
 function getOAuthConfig() {
   const CLIENT_ID = process.env.GITHUB_CLIENT_ID;
   const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
@@ -42,7 +27,7 @@ function getOAuthConfig() {
   return { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI };
 }
 
-/** JWT secret for signing the OAuth state parameter. */
+
 function getStateSecret() {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET must be set in .env");
@@ -79,16 +64,9 @@ async function getDecryptedToken(userId) {
   return decrypt(record.accessTokenEncrypted);
 }
 
-// ── OAuth Step 1: Build authorisation URL ─────────────────────
 
-/**
- * Generate the GitHub OAuth authorisation URL.
- * The `state` parameter is a short-lived signed JWT containing the userId :
- * this serves as CSRF protection with no server-side state required.
- *
- * @param {string} userId
- * @returns {string} redirect URL
- */
+
+
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
@@ -105,20 +83,14 @@ export function buildOAuthUrl(userId) {
   return `${GH_AUTH}/authorize?${params.toString()}`;
 }
 
-// ── OAuth Step 2: Exchange code → token ───────────────────────
 
-/**
- * Complete the OAuth flow: exchange code, fetch GitHub profile,
- * encrypt and persist the token.
- *
- * @param {{ code: string, state: string }}
- * @returns {{ githubUsername: string }}
- */
+
+
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
-  // 1. Verify state JWT (CSRF check)
+
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
@@ -133,7 +105,7 @@ export async function handleOAuthCallback({ code, state }) {
 
   const userId = statePayload.userId;
 
-  // 2. Exchange code for access token
+
   const tokenRes = await axios.post(
     `${GH_AUTH}/access_token`,
     {
@@ -155,16 +127,16 @@ export async function handleOAuthCallback({ code, state }) {
     throw err;
   }
 
-  // 3. Fetch GitHub user profile
+
   const ghUser = await fetchGitHubUser(access_token);
 
-  // 4. Update User record with GitHub identity
+
   await User.findByIdAndUpdate(userId, {
     githubId: String(ghUser.id),
     githubUsername: ghUser.login,
   });
 
-  // 5. Upsert encrypted token : one document per user
+
   await GitHubToken.findOneAndUpdate(
     { userId },
     {
@@ -185,22 +157,17 @@ export async function handleOAuthCallback({ code, state }) {
   return { githubUsername: ghUser.login };
 }
 
-// ── Get user repositories ─────────────────────────────────────
 
-/**
- * Fetch repositories the user has access to (public + private).
- * @param {string} userId
- * @param {{ page, perPage, type, sort }}
- * @returns {{ repos, page, perPage, hasNextPage }}
- */
+
+
 export async function getUserRepos(
   userId,
   {
     page = 1,
     perPage = 30,
-    type = "all", // all | owner | member | public | private
-    sort = "updated", // created | updated | pushed | full_name
-    org = null, // if provided, fetch org repos instead of /user/repos
+    type = "all",
+    sort = "updated",
+    org = null,
   } = {},
 ) {
   try {
@@ -208,7 +175,7 @@ export async function getUserRepos(
     
     const token = await getDecryptedToken(userId);
 
-    // Org repos use a different endpoint and don't support the 'type' filter
+
     const endpoint = org
       ? `${GH_API}/orgs/${encodeURIComponent(org)}/repos`
       : `${GH_API}/user/repos`;
@@ -242,7 +209,7 @@ export async function getUserRepos(
       updated_at: r.updated_at,
     }));
 
-    // GitHub paginates via Link header
+
     const linkHeader = res.headers.link || "";
     const hasNextPage = linkHeader.includes('rel="next"');
 
@@ -259,12 +226,9 @@ export async function getUserRepos(
   }
 }
 
-// ── Connection status ─────────────────────────────────────────
 
-/**
- * Return public GitHub connection metadata for a user, or null if not connected.
- * @param {string} userId
- */
+
+
 export async function getConnectionStatus(userId) {
   const record = await GitHubToken.findOne({ userId });
   if (!record) return null;
@@ -276,13 +240,9 @@ export async function getConnectionStatus(userId) {
   };
 }
 
-// ── List organisations ───────────────────────────────────────
 
-/**
- * Return all GitHub organisations the user belongs to.
- * @param {string} userId
- * @returns {Array<{ id, login, description, avatarUrl }>}
- */
+
+
 export async function getUserOrgs(userId) {
   const token = await getDecryptedToken(userId);
   const res = await axios.get(`${GH_API}/user/orgs`, {
@@ -297,12 +257,9 @@ export async function getUserOrgs(userId) {
   }));
 }
 
-// ── Disconnect ────────────────────────────────────────────────
 
-/**
- * Remove the stored GitHub token and unlink the GitHub identity from the user.
- * @param {string} userId
- */
+
+
 export async function disconnectGitHub(userId) {
   await GitHubToken.findOneAndDelete({ userId });
   await User.findByIdAndUpdate(userId, {

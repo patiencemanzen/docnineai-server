@@ -1,9 +1,3 @@
-// =============================================================
-// GitLab OAuth flow and token management.
-//
-// Similar to github.service.js but uses GitLab OAuth and
-// stores tokens in a similar pattern.
-// =============================================================
 
 import jwt from "jsonwebtoken";
 import axios from "axios";
@@ -11,7 +5,7 @@ import { User } from "../../../models/User.js";
 import { encrypt, decrypt } from "../../../utils/crypto.util.js";
 import * as glService from "../../../services/gitlab.service.js";
 
-// ── Internal helpers ──────────────────────────────────────────
+
 
 function getOAuthConfig() {
   const CLIENT_ID = process.env.GITLAB_CLIENT_ID;
@@ -37,13 +31,9 @@ function getStateSecret() {
   return secret;
 }
 
-// ── OAuth Step 1: Build authorisation URL ─────────────────────
 
-/**
- * Generate the GitLab OAuth authorisation URL.
- * @param {string} userId
- * @returns {string} redirect URL
- */
+
+
 export function buildOAuthUrl(userId) {
   const { CLIENT_ID, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
@@ -61,20 +51,14 @@ export function buildOAuthUrl(userId) {
   return `https://gitlab.com/oauth/authorize?${params.toString()}`;
 }
 
-// ── OAuth Step 2: Exchange code → token ───────────────────────
 
-/**
- * Complete the GitLab OAuth flow: exchange code, fetch profile,
- * encrypt and persist the token.
- *
- * @param {{ code: string, state: string }}
- * @returns {{ gitlabUsername: string }}
- */
+
+
 export async function handleOAuthCallback({ code, state }) {
   const { CLIENT_ID, CLIENT_SECRET, REDIRECT_URI } = getOAuthConfig();
   const stateSecret = getStateSecret();
 
-  // 1. Verify state JWT (CSRF check)
+
   let statePayload;
   try {
     statePayload = jwt.verify(state, stateSecret, { algorithms: ["HS256"] });
@@ -95,7 +79,7 @@ export async function handleOAuthCallback({ code, state }) {
 
   const userId = statePayload.userId;
 
-  // 2. Exchange code for access token
+
   console.log("[GitLab OAuth Service] Exchanging code for token...");
   let tokenRes;
   try {
@@ -139,7 +123,7 @@ export async function handleOAuthCallback({ code, state }) {
     "[GitLab OAuth Service] Got access token, fetching user profile...",
   );
 
-  // 3. Fetch GitLab user profile using access token
+
   let glUser;
   try {
     glUser = await glService.getAuthenticatedUser(access_token);
@@ -158,7 +142,7 @@ export async function handleOAuthCallback({ code, state }) {
     gitlabUsername: glUser.username,
   });
 
-  // 4. Update User record with GitLab identity
+
   console.log("[GitLab OAuth Service] Updating user with GitLab identity...");
   const updated1 = await User.findByIdAndUpdate(userId, {
     gitlabId: String(glUser.id),
@@ -175,7 +159,7 @@ export async function handleOAuthCallback({ code, state }) {
     throw new Error("User not found in database. Please log in again and try.");
   }
 
-  // 5. Store encrypted token on User document
+
   console.log("[GitLab OAuth Service] Encrypting and storing token...");
   const encryptedToken = encrypt(access_token);
   const encryptedRefresh = refresh_token ? encrypt(refresh_token) : null;
@@ -206,12 +190,9 @@ export async function handleOAuthCallback({ code, state }) {
   return { gitlabUsername: glUser.username, userId };
 }
 
-// ── Store provider-specific token on project ──────────────────
 
-/**
- * Store an encrypted GitLab access token on a Project document.
- * Called when creating a project that will use this token.
- */
+
+
 export function encryptProvidersToken(token) {
   return encrypt(token);
 }
@@ -220,18 +201,9 @@ export function decryptProvidersToken(encrypted) {
   return decrypt(encrypted);
 }
 
-// ── Token refresh ─────────────────────────────────────────────
 
-/**
- * Use the stored refresh token to get a new GitLab access token,
- * persist both new tokens, and return the new plaintext access token.
- *
- * Throws with code TOKEN_REFRESH_FAILED if no refresh token is stored
- * or if GitLab rejects the refresh (user must re-authorise).
- *
- * @param {string} userId
- * @returns {Promise<string>} new plaintext access token
- */
+
+
 export async function refreshAndStoreToken(userId) {
   const user = await User.findById(userId).select(
     "+gitlabTokenEncrypted +gitlabRefreshTokenEncrypted",
@@ -257,7 +229,7 @@ export async function refreshAndStoreToken(userId) {
       status: err.response?.status,
       data: err.response?.data,
     });
-    // Refresh token is also invalid : user must re-authorise
+
     await User.findByIdAndUpdate(userId, {
       gitlabTokenEncrypted: null,
       gitlabRefreshTokenEncrypted: null,
@@ -282,12 +254,9 @@ export async function refreshAndStoreToken(userId) {
   return access_token;
 }
 
-// ── Disconnect / revoke ───────────────────────────────────────
 
-/**
- * Disconnect GitLab OAuth.
- * In practice, we'd also revoke the token on GitLab's side.
- */
+
+
 export async function disconnect(userId) {
   await User.findByIdAndUpdate(userId, {
     gitlabId: null,

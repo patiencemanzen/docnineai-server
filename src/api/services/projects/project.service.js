@@ -1,39 +1,3 @@
-// ===================================================================
-// Project Service (Improved)
-// ===================================================================
-//
-// Project management + full/incremental pipeline operations.
-//
-// Aligned with all improved agents:
-//   - Orchestrator  v4: routing, pipelineReport, agentErrors,
-//                       architectureHint, layerMap, flagsSummary,
-//                       keyFiles, testFrameworks, richer security
-//   - Doc Writer    v2: componentRef, componentIndex, remediationReport
-//   - Security      v2: categoryCounts, affectedFiles, remediationMarkdown
-//   - Repo Scanner  v2: layerMap, flagsSummary, architectureHint,
-//                       keyFiles, testFrameworks
-//
-// Pipeline lifecycle:
-//   queued → running → done | error → (archived)
-//   error | done → running  (via retryProject or syncProject)
-//
-// Operations:
-//   createProject      : start full pipeline for a new repo
-//   retryProject       : re-run full pipeline on an existing project
-//   syncProject        : incremental or forced full re-run
-//   listProjects       : paginated project list with filtering/sorting
-//   getProjectById     : owner or shared-member access
-//   getProjectEvents   : SSE event log
-//   deleteProject      : owner-only hard delete
-//   updateProject      : archive or soft update
-//   editDocSection     : save user edit for one doc section
-//   revertDocSection   : restore latest AI content, clear user edit
-//   acceptAISection    : accept AI regeneration (clears stale flag)
-//   listVersions       : paginated version history
-//   getVersion         : single version with full content
-//   restoreVersion     : restore a historical version as current edit
-//   recoverOrphanedJobs : startup recovery for interrupted pipelines
-// ===================================================================
 
 import { randomUUID, randomBytes, createHash } from "crypto";
 
@@ -58,25 +22,20 @@ import {
   normaliseRepoUrl,
 } from "../../../adapters/provider.adapter.js";
 
-// ─── All known output sections ────────────────────────────────────
-// Superset of SECTIONS from the model : includes new sections added
-// by the improved Doc Writer and Security Auditor.
-// The model's SECTIONS constant is the source of truth for validation;
-// this list is used for iteration in pipeline persistence.
+
 
 const ALL_OUTPUT_SECTIONS = [
   "readme",
   "internalDocs",
   "apiReference",
   "schemaDocs",
-  "componentRef", // new : LLM-written component reference
-  "componentIndex", // new : static component index table
+  "componentRef",
+  "componentIndex",
   "securityReport",
-  "remediationReport", // new : prioritised remediation checklist
+  "remediationReport",
 ];
 
-// ─── Lazy loaders ─────────────────────────────────────────────────
-// Lazy imports avoid circular dependencies and reduce startup time.
+
 
 let _orchestrate = null;
 let _incrementalSync = null;
@@ -96,28 +55,20 @@ async function getIncrementalSync() {
   return _incrementalSync;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
 
-/**
- * Parse any supported git provider URL.
- * Auto-detects provider from the URL host.
- * Returns { owner, repoName, normalised, provider }.
- *
- * Note: Azure DevOps requires special handling as it returns
- * { owner, project, repo } instead of { owner, repo }
- */
+
+
 function parseRepoUrl(raw) {
   const provider = detectProvider(raw);
   try {
     const parsed = adapterParseRepoUrl(provider, raw);
 
-    // Extract repoName based on provider
+
     let repoName, owner;
     if (provider === "azure") {
       owner = parsed.owner;
       repoName = parsed.repo;
-      // For Azure: owner is org, repo is the repository name
-      // project is the Azure DevOps project name
+
     } else {
       owner = parsed.owner;
       repoName = parsed.repo;
@@ -142,9 +93,7 @@ function parseRepoUrl(raw) {
   }
 }
 
-/**
- * Create a typed domain error with code and HTTP status.
- */
+
 function domainError(msg, code, status = 400) {
   const e = new Error(msg);
   e.code = code;
@@ -152,10 +101,7 @@ function domainError(msg, code, status = 400) {
   return e;
 }
 
-/**
- * Assert that userId is the owner of projectId.
- * Returns the project document or throws PROJECT_NOT_FOUND.
- */
+
 async function assertOwnership(projectId, userId) {
   const project = await Project.findOne({ _id: projectId, userId });
   if (!project)
@@ -163,19 +109,16 @@ async function assertOwnership(projectId, userId) {
   return project;
 }
 
-/**
- * Assert that userId has at least the given role on the project.
- * Supports: owner, editor, viewer.
- */
+
 async function assertAccess(projectId, userId, requiredRole = "viewer") {
-  // Check owner first
+
   const ownedProject = await Project.findOne({ _id: projectId, userId });
   if (ownedProject) {
     ownedProject._shareRole = "owner";
     return ownedProject;
   }
 
-  // Check shared access
+
   const project = await Project.findById(projectId);
   if (!project)
     throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
@@ -192,7 +135,7 @@ async function assertAccess(projectId, userId, requiredRole = "viewer") {
 
   if (!share) throw domainError("Project not found.", "PROJECT_NOT_FOUND", 404);
 
-  // Role hierarchy: owner > editor > viewer
+
   const ROLE_RANK = { owner: 3, editor: 2, viewer: 1 };
   if ((ROLE_RANK[share.role] ?? 0) < (ROLE_RANK[requiredRole] ?? 0)) {
     throw domainError(
@@ -206,10 +149,7 @@ async function assertAccess(projectId, userId, requiredRole = "viewer") {
   return project;
 }
 
-/**
- * Parse a sort query string param into a Mongoose sort object.
- * Whitelists allowed fields to prevent injection.
- */
+
 function parseSortParam(sort = "-createdAt") {
   const ALLOWED = new Set([
     "createdAt",
@@ -224,10 +164,7 @@ function parseSortParam(sort = "-createdAt") {
   return { [field]: desc ? -1 : 1 };
 }
 
-/**
- * Normalise the security object from the improved Security Auditor.
- * Handles both old schema (no categoryCounts) and new schema.
- */
+
 function normaliseSecurity(security) {
   if (!security) return {};
   return {
@@ -240,10 +177,7 @@ function normaliseSecurity(security) {
   };
 }
 
-/**
- * Normalise stats from the improved Orchestrator.
- * Handles both old schema (fewer fields) and new schema.
- */
+
 function normaliseStats(stats, result) {
   return {
     filesAnalysed: stats?.filesAnalysed ?? 0,
@@ -259,10 +193,7 @@ function normaliseStats(stats, result) {
   };
 }
 
-/**
- * Build a file manifest from a tree + projectMap.
- * Used when full sync returns a fresh tree.
- */
+
 function buildManifestFromTree(tree, projectMap) {
   const roleMap = new Map((projectMap || []).map((p) => [p.path, p.role]));
   const layerMap = new Map((projectMap || []).map((p) => [p.path, p.layer]));
@@ -274,21 +205,15 @@ function buildManifestFromTree(tree, projectMap) {
   }));
 }
 
-/**
- * Build the SSE progress handler.
- * Pushes events to the in-memory job registry AND persists
- * the last 200 events to MongoDB (capped slice) for recovery.
- *
- * IMPROVED: Adds checkpoint tracking to detect progress stalls.
- */
+
 function makeProgressHandler(projectId, jobId) {
   let lastCheckpointTime = Date.now();
 
   return async (event) => {
-    // Always push to in-memory registry (instant SSE delivery)
+
     pushEvent(jobId, event);
 
-    // Track checkpoint for stall detection
+
     if (
       event.status === "done" ||
       event.status === "error" ||
@@ -297,29 +222,26 @@ function makeProgressHandler(projectId, jobId) {
       lastCheckpointTime = Date.now();
     }
 
-    // Persist to DB : non-critical, swallow errors
+
     try {
       await Project.updateOne(
         { _id: projectId },
         {
           $push: {
-            events: { $each: [event], $slice: -200 }, // Keep last 200 events
+            events: { $each: [event], $slice: -200 },
           },
-          // Update metadata for monitoring
+
           "meta.lastProgressAt": new Date(),
           "meta.lastProgressStep": event.step,
         },
       );
     } catch {
-      /* non-critical : SSE still delivered via in-memory registry */
+      
     }
   };
 }
 
-/**
- * Create initial DocumentVersion entries for all sections after
- * a full pipeline run. Runs in parallel for speed.
- */
+
 async function createInitialVersions(projectId, output, commitSha) {
   const promises = ALL_OUTPUT_SECTIONS.map(async (section) => {
     const content = output?.[section];
@@ -344,7 +266,7 @@ async function createInitialVersions(projectId, output, commitSha) {
         },
       });
     } catch (err) {
-      // Version history failure is non-fatal
+
       console.warn(
         `[versions] Failed to create version for ${section}:`,
         err.message,
@@ -354,11 +276,7 @@ async function createInitialVersions(projectId, output, commitSha) {
   await Promise.all(promises);
 }
 
-/**
- * Build the full project update payload from a successful orchestrate result.
- * Centralises all field mapping in one place so runPipeline and runSync
- * (full fallback path) are consistent.
- */
+
 function buildFullRunUpdate(result, commitSha, freshTree) {
   return {
     status: "done",
@@ -377,7 +295,7 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
       ? buildManifestFromTree(freshTree, result.agentOutputs?.projectMap || [])
       : result.fileManifest || [],
     agentOutputs: result.agentOutputs || {},
-    // New fields from improved agents
+
     "agentOutputs.summaries": result.agentOutputs?.summaries || {},
     routing: result.routing || null,
     pipelineReport: result.pipelineReport?.markdown || null,
@@ -386,18 +304,9 @@ function buildFullRunUpdate(result, commitSha, freshTree) {
   };
 }
 
-// ─── Startup Recovery ─────────────────────────────────────────────
 
-/**
- * Startup Recovery (Improved)
- * Called once at server startup.
- * Finds projects stuck in "running" or "queued" state (server crash),
- * marks them as "error", and registers synthetic lost jobs.
- *
- * Also checks for Vercel-timeout scenarios where the pipeline timed out
- * but the backend job might still be running. For those, uses a more
- * lenient recovery message to avoid false positives.
- */
+
+
 export async function recoverOrphanedJobs() {
   try {
     const { jobs, isVercelTimedOut, getStaleJobs } =
@@ -418,7 +327,7 @@ export async function recoverOrphanedJobs() {
     let recovered = 0;
 
     for (const p of orphans) {
-      // Skip if already registered : genuine in-flight pipeline
+
       if (p.jobId && jobs.has(p.jobId)) {
         console.log(`[recovery] Job ${p.jobId} still in memory, not orphaned`);
         continue;
@@ -462,27 +371,13 @@ export async function recoverOrphanedJobs() {
   }
 }
 
-// ─── Project CRUD ─────────────────────────────────────────────────
 
-/**
- * Create a new project and start the full documentation pipeline.
- * Returns immediately with the project document : pipeline runs async.
- */
-/**
- * Create a new documentation project for a GitHub/GitLab/Azure DevOps repository.
- * Logs the project creation to changelog.
- *
- * Process:
- * 1. Parse and validate repository URL
- * 2. Check for duplicate pipelines
- * 3. For GitLab: fetch and encrypt access token
- * 4. For Azure DevOps: fetch and encrypt access token
- * 5. Create project document
- * 6. Register async pipeline job
- */
+
+
+
 export async function createProject({ userId, repoUrl }) {
   try {
-    // provider is auto-detected from the URL (github.com vs gitlab.com vs dev.azure.com)
+
     const { owner, repoName, normalised, provider } = parseRepoUrl(repoUrl);
 
     console.log("[createProject] Parsed repo URL", {
@@ -492,7 +387,7 @@ export async function createProject({ userId, repoUrl }) {
       repoUrl: normalised,
     });
 
-    // Prevent duplicate pipelines for the same repo
+
     const active = await Project.findOne({
       userId,
       repoOwner: owner,
@@ -512,8 +407,7 @@ export async function createProject({ userId, repoUrl }) {
       );
     }
 
-    // For GitLab: look up the user's stored access token so the pipeline
-    // can authenticate against the GitLab API.
+
     let providerToken = null;
     if (provider === "gitlab") {
       const user = await User.findById(userId).select("+gitlabTokenEncrypted");
@@ -525,15 +419,14 @@ export async function createProject({ userId, repoUrl }) {
           400,
         );
       }
-      // Decrypt once here; re-encrypt and store on the project so the
-      // pipeline can use it without another DB round-trip.
+
       const { encrypt, decrypt } =
         await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.gitlabTokenEncrypted));
       console.log("[createProject] GitLab token prepared for project");
     }
 
-    // For Azure DevOps: look up the user's stored access token
+
     if (provider === "azure") {
       const user = await User.findById(userId).select(
         "+azureDevOpsTokenEncrypted",
@@ -548,14 +441,14 @@ export async function createProject({ userId, repoUrl }) {
           400,
         );
       }
-      // Decrypt once here; re-encrypt and store on the project
+
       const { encrypt, decrypt } =
         await import("../../../utils/crypto.util.js");
       providerToken = encrypt(decrypt(user.azureDevOpsTokenEncrypted));
       console.log("[createProject] Azure DevOps token prepared for project");
     }
 
-    // For Bitbucket: look up the user's stored access token
+
     if (provider === "bitbucket") {
       const user = await User.findById(userId).select(
         "+bitbucketTokenEncrypted",
@@ -574,7 +467,7 @@ export async function createProject({ userId, repoUrl }) {
       console.log("[createProject] Bitbucket token prepared for project");
     }
 
-    // For GitHub: look up the user's stored access token from GitHubToken collection
+
     if (provider === "github") {
       const { GitHubToken } =
         await import("../../../models/GitHubToken.js");
@@ -582,8 +475,7 @@ export async function createProject({ userId, repoUrl }) {
         "+accessTokenEncrypted",
       );
       if (githubToken?.accessTokenEncrypted) {
-        // Decrypt once here; re-encrypt and store on the project so the
-        // pipeline can use it without another DB round-trip.
+
         const { encrypt, decrypt } =
           await import("../../../utils/crypto.util.js");
         providerToken = encrypt(decrypt(githubToken.accessTokenEncrypted));
@@ -592,8 +484,7 @@ export async function createProject({ userId, repoUrl }) {
         console.warn("[createProject] GitHub token not found for user", {
           userId,
         });
-        // GitHub token is optional : public repos can be accessed without it
-        // but rate limits are much lower (60 req/hour vs 5000 req/hour with token)
+
         console.log("[createProject] Proceeding without GitHub token (rate limits will apply)");
       }
     }
@@ -632,7 +523,7 @@ export async function createProject({ userId, repoUrl }) {
       metadata: { provider, owner, repoName, repoUrl: normalised },
     });
 
-    // Log project creation to changelog
+
     try {
       const { logProjectChange } =
         await import("../../../services/changelog.service.js");
@@ -657,19 +548,16 @@ export async function createProject({ userId, repoUrl }) {
   }
 }
 
-/**
- * Create a blank "from scratch" project.
- * No repository, no pipeline : just an empty documentation project.
- */
+
 export async function createFromScratchProject({ userId, projectName }) {
   if (!projectName || projectName.trim().length === 0) {
     throw domainError("Project name is required.", "INVALID_PROJECT_NAME", 400);
   }
 
-  // Use project name as both owner and repo name for pseudo-URL
+
   const cleanName = projectName.trim().replace(/\s+/g, "-").toLowerCase();
 
-  // Check for duplicates with same name
+
   const existing = await Project.findOne({
     userId,
     repoName: cleanName,
@@ -687,12 +575,12 @@ export async function createFromScratchProject({ userId, projectName }) {
 
   const project = await Project.create({
     userId,
-    repoUrl: `manual://${cleanName}`, // pseudo-URL for manual projects
+    repoUrl: `manual://${cleanName}`,
     repoOwner: "manual",
     repoName: cleanName,
-    provider: "github", // default provider (unused for manual projects)
-    sourceType: "manual", // marks as from-scratch
-    status: "done", // no pipeline needed
+    provider: "github",
+    sourceType: "manual",
+    status: "done",
     meta: {
       name: projectName,
       description: `Manual documentation for ${projectName}`,
@@ -718,7 +606,7 @@ export async function createFromScratchProject({ userId, projectName }) {
   return project;
 }
 
-//  * Clears all stored outputs so the run starts from a clean state.
+
 export async function retryProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
@@ -733,7 +621,7 @@ export async function retryProject({ projectId, userId }) {
 
   const jobId = randomUUID();
 
-  // Clear all outputs before retry to ensure a clean state
+
   await Project.findByIdAndUpdate(project._id, {
     $set: {
       jobId,
@@ -770,9 +658,7 @@ export async function retryProject({ projectId, userId }) {
   return Project.findById(project._id);
 }
 
-/**
- * List projects for a user with pagination, filtering, and sorting.
- */
+
 export async function listProjects({
   userId,
   page = 1,
@@ -792,7 +678,7 @@ export async function listProjects({
       .sort(sortObj)
       .skip((page - 1) * limit)
       .limit(limit)
-      // Exclude large fields from list queries
+
       .select(
         "-output -events -editedOutput -fileManifest -agentOutputs -pipelineReport",
       ),
@@ -808,19 +694,12 @@ export async function listProjects({
   };
 }
 
-/**
- * Get a project by ID.
- * Accessible to the owner or any user with an accepted share invitation.
- * Attaches _shareRole to the document for downstream permission checks.
- */
+
 export async function getProjectById({ projectId, userId }) {
   return assertAccess(projectId, userId, "viewer");
 }
 
-/**
- * Return the pipeline event log.
- * Accessible to owners and shared members (viewer+).
- */
+
 export async function getProjectEvents({ projectId, userId }) {
   await assertAccess(projectId, userId, "viewer");
 
@@ -837,10 +716,7 @@ export async function getProjectEvents({ projectId, userId }) {
   };
 }
 
-/**
- * Hard-delete a project and all its version history.
- * Owner-only.
- */
+
 export async function deleteProject({ projectId, userId }) {
   const project = await assertOwnership(projectId, userId);
 
@@ -857,10 +733,7 @@ export async function deleteProject({ projectId, userId }) {
   ]);
 }
 
-/**
- * Soft-update a project (currently: archive only).
- * Owner-only.
- */
+
 export async function updateProject({ projectId, userId, updates }) {
   const project = await assertOwnership(projectId, userId);
   let didUpdate = false;
@@ -913,32 +786,17 @@ export async function updateProject({ projectId, userId, updates }) {
   return project;
 }
 
-// ─── Incremental Sync ─────────────────────────────────────────────
 
-/**
- * Check for new commits and run only the affected pipeline segments.
- * Falls back to a full run if:
- *   - No stored baseline exists
- *   - A manifest file changed
- *   - forceFullRun = true
- *   - Changed file count exceeds FULL_RUN_THRESHOLD
- *
- * Accessible to owner only : sync mutates project state.
- *
- * @param {{ projectId, userId, forceFullRun, webhookChangedFiles }}
- * @returns {{ project, streamUrl }}
- */
-/**
- * Sync a project : check for new commits and re-document.
- * Logs the sync operation to changelog.
- */
+
+
+
 export async function syncProject({
   projectId,
   userId,
   forceFullRun = false,
   webhookChangedFiles = null,
 }) {
-  // Load with extra fields needed for incremental sync
+
   const project = await Project.findOne({ _id: projectId, userId }).select(
     "+agentOutputs +fileManifest +events",
   );
@@ -969,7 +827,7 @@ export async function syncProject({
 
   registerJob(jobId);
 
-  // Log sync operation to changelog
+
   try {
     const { logProjectChange } =
       await import("../../../services/changelog.service.js");
@@ -982,7 +840,7 @@ export async function syncProject({
     console.warn("[changelog] Failed to log sync:", err.message);
   }
 
-  // Fire-and-forget : caller streams progress via SSE
+
   runSync({ project, jobId, forceFullRun, webhookChangedFiles }).catch((err) =>
     console.error(`❌ Sync crash [${jobId}]:`, err.message),
   );
@@ -993,18 +851,9 @@ export async function syncProject({
   };
 }
 
-// ─── Document Editing ─────────────────────────────────────────────
 
-/**
- * Save a user edit for one documentation section.
- * Requires editor or owner access.
- *
- * Flow:
- *   1. Snapshot current effective content as a version
- *   2. Write new content to editedOutput
- *   3. Mark section in editedSections
- *   4. Create version entry for the new edit
- */
+
+
 export async function editDocSection({ projectId, userId, section, content }) {
   if (!SECTIONS.includes(section))
     throw domainError(
@@ -1022,7 +871,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
       409,
     );
 
-  // Snapshot current content before overwriting
+
   const currentContent =
     project.editedOutput?.[section] || project.output?.[section] || "";
 
@@ -1042,7 +891,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
 
-  // Apply the edit
+
   const editedSections = (project.editedSections || []).filter(
     (s) => s.section !== section,
   );
@@ -1053,7 +902,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
     editedSections,
   });
 
-  // Record the new edit as a version
+
   await DocumentVersion.createVersion({
     projectId: project._id,
     section,
@@ -1064,7 +913,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
     console.warn("[versions] Version save failed:", err.message),
   );
 
-  // Log the change to changelog
+
   try {
     const { logSectionEdit } =
       await import("../../../services/changelog.service.js");
@@ -1076,11 +925,7 @@ export async function editDocSection({ projectId, userId, section, content }) {
   return getProjectById({ projectId, userId });
 }
 
-/**
- * Revert a section to its latest AI-generated content.
- * Clears editedOutput and editedSections entry for this section.
- * Requires editor or owner access.
- */
+
 export async function revertDocSection({ projectId, userId, section }) {
   if (!SECTIONS.includes(section))
     throw domainError(
@@ -1104,12 +949,7 @@ export async function revertDocSection({ projectId, userId, section }) {
   return getProjectById({ projectId, userId });
 }
 
-/**
- * Accept the new AI-generated content for a stale section.
- * Semantically identical to revertDocSection : clears the user edit
- * and the stale flag, making the AI version the active content.
- * Requires editor or owner access.
- */
+
 export async function acceptAISection({ projectId, userId, section }) {
   if (!SECTIONS.includes(section))
     throw domainError(
@@ -1118,7 +958,7 @@ export async function acceptAISection({ projectId, userId, section }) {
       400,
     );
 
-  // Save a version of the user's content before discarding it
+
   const project = await assertAccess(projectId, userId, "editor");
   const userContent = project.editedOutput?.[section];
 
@@ -1132,7 +972,7 @@ export async function acceptAISection({ projectId, userId, section }) {
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
 
-  // Log the change to changelog
+
   try {
     const { logSectionAccept } =
       await import("../../../services/changelog.service.js");
@@ -1144,13 +984,9 @@ export async function acceptAISection({ projectId, userId, section }) {
   return revertDocSection({ projectId, userId, section });
 }
 
-// ─── Version History ──────────────────────────────────────────────
 
-/**
- * List version history for a section : newest first.
- * Content is excluded from list results (too large); use getVersion for full content.
- * Accessible to owner and shared members (viewer+).
- */
+
+
 export async function listVersions({
   projectId,
   userId,
@@ -1179,10 +1015,7 @@ export async function listVersions({
   return { versions, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-/**
- * Fetch a single version with full content.
- * Accessible to owner and shared members (viewer+).
- */
+
 export async function getVersion({ projectId, userId, versionId }) {
   await assertAccess(projectId, userId, "viewer");
 
@@ -1193,11 +1026,7 @@ export async function getVersion({ projectId, userId, versionId }) {
   return version;
 }
 
-/**
- * Restore a historical version as the current user edit.
- * Snapshots current content first, then applies restore.
- * Requires editor or owner access.
- */
+
 export async function restoreVersion({ projectId, userId, versionId }) {
   const project = await assertAccess(projectId, userId, "editor");
   const version = await DocumentVersion.findOne({ _id: versionId, projectId });
@@ -1211,7 +1040,7 @@ export async function restoreVersion({ projectId, userId, versionId }) {
       409,
     );
 
-  // Snapshot current effective content before restore
+
   const currentContent =
     project.editedOutput?.[version.section] ||
     project.output?.[version.section] ||
@@ -1229,7 +1058,7 @@ export async function restoreVersion({ projectId, userId, versionId }) {
     }).catch((err) => console.warn("[versions] Snapshot failed:", err.message));
   }
 
-  // Apply the restored content as a user edit
+
   const editedSections = (project.editedSections || []).filter(
     (s) => s.section !== version.section,
   );
@@ -1244,7 +1073,7 @@ export async function restoreVersion({ projectId, userId, versionId }) {
     editedSections,
   });
 
-  // Record the restore as a version
+
   await DocumentVersion.createVersion({
     projectId: project._id,
     section: version.section,
@@ -1260,26 +1089,17 @@ export async function restoreVersion({ projectId, userId, versionId }) {
   return getProjectById({ projectId, userId });
 }
 
-// ─── Internal Pipeline Runners ────────────────────────────────────
 
-/**
- * Run the full 6-agent documentation pipeline.
- * Called by createProject and retryProject.
- * Persists the complete result to MongoDB and finishes the job.
- */
-/**
- * Run the full pipeline asynchronously.
- * On Vercel, if the HTTP request is going to timeout (60s), we don't want
- * to leave the job in limbo. Instead, we detect timeout and flag it so that
- * retry works properly. The job continues in the background.
- */
+
+
+
 async function runPipeline({ project, normalised, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
   const isVercel =
     !!process.env.VERCEL && process.env.NODE_ENV === "production";
 
-  // Decrypt the provider token if it exists (GitHub, GitLab, or Azure DevOps)
+
   let providerTokenDecrypted = null;
   if (project.providerToken) {
     const { decrypt } = await import("../../../utils/crypto.util.js");
@@ -1299,7 +1119,7 @@ async function runPipeline({ project, normalised, jobId }) {
       metadata: { jobId, provider: project.provider },
     });
 
-    // On Vercel, wrap orchestrate with a timeout detector (55s for safety margin)
+
     let result;
     if (isVercel) {
       result = await Promise.race([
@@ -1309,7 +1129,7 @@ async function runPipeline({ project, normalised, jobId }) {
         }),
         new Promise(
           (_, reject) =>
-            setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000), // 55s timeout on Vercel
+            setTimeout(() => reject(new Error("VERCEL_HTTP_TIMEOUT")), 55_000),
         ),
       ]);
     } else {
@@ -1342,7 +1162,7 @@ async function runPipeline({ project, normalised, jobId }) {
       return;
     }
 
-    // Build and persist the full update
+
     const update = buildFullRunUpdate(
       result,
       result.lastDocumentedCommit,
@@ -1350,14 +1170,14 @@ async function runPipeline({ project, normalised, jobId }) {
     );
     await Project.findByIdAndUpdate(project._id, { $set: update });
 
-    // Create version history for all generated sections (parallel)
+
     await createInitialVersions(
       project._id,
       result.output,
       result.lastDocumentedCommit,
     );
 
-    // Log non-fatal agent errors to console (they're also stored in agentErrors field)
+
     if (result.agentErrors?.length) {
       console.warn(
         `[pipeline:${jobId}] ${result.agentErrors.length} non-fatal agent error(s):`,
@@ -1392,8 +1212,7 @@ async function runPipeline({ project, normalised, jobId }) {
       routing: result.routing,
     });
 
-    // ── Trigger Slack Security Alerts ──────────────────────────────
-    // After pipeline completes, send alerts to Slack if configured
+
     try {
       const { triggerSecurityAlerts } =
         await import("../../../services/slack-webhook.service.js");
@@ -1405,7 +1224,7 @@ async function runPipeline({ project, normalised, jobId }) {
       );
     }
 
-    // ── Security finding notifications ─────────────────────────────
+
     if (result.security?.findings?.length) {
       const projectName = `${project.repoOwner}/${project.repoName}`;
       const criticals = result.security.findings.filter((f) => f.severity === "critical");
@@ -1437,7 +1256,7 @@ async function runPipeline({ project, normalised, jobId }) {
       });
     }
   } catch (err) {
-    // Detect Vercel timeout scenario
+
     if (err.message === "VERCEL_HTTP_TIMEOUT") {
       console.warn(`[pipeline:${jobId}] Vercel 55s timeout : marking project as error (retryable).`);
       const { flagVercelTimeout } =
@@ -1466,7 +1285,7 @@ async function runPipeline({ project, normalised, jobId }) {
       return;
     }
 
-    // Real error : mark as failed
+
     console.error(`[pipeline:${jobId}] Fatal error:`, err);
     await Project.findByIdAndUpdate(project._id, {
       status: "error",
@@ -1490,16 +1309,12 @@ async function runPipeline({ project, normalised, jobId }) {
   }
 }
 
-/**
- * Run the incremental sync pipeline.
- * Called by syncProject.
- * Handles three outcomes: skipped, full run fallback, incremental success.
- */
+
 async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   const incrementalSync = await getIncrementalSync();
   const onProgress = makeProgressHandler(project._id, jobId);
 
-  // Decrypt the provider token if it exists
+
   let providerTokenDecrypted = null;
   if (project.providerToken) {
     const { decrypt } = await import("../../../utils/crypto.util.js");
@@ -1533,7 +1348,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       error: syncResult.error,
     });
 
-    // ── Outcome: sync failed ──────────────────────────────────
+
     if (!syncResult.success) {
       const errorMsg = syncResult.error || "Sync failed";
       console.error(`[sync:${jobId}] Sync failed: ${errorMsg}`);
@@ -1545,7 +1360,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-    // ── Outcome: skipped (no changes / already up-to-date) ────
+
     if (syncResult.skipped) {
       console.log(
         `[sync:${jobId}] Sync skipped (${syncResult.reason}), marking done`,
@@ -1563,7 +1378,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-    // ── Outcome: full run fallback ────────────────────────────
+
     if (syncResult.isFullRun) {
       console.log(
         `[sync:${jobId}] Fell back to full run : applying full pipeline result`,
@@ -1589,7 +1404,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
 
       await Project.findByIdAndUpdate(project._id, { $set: update });
 
-      // Create version history for all sections (parallel)
+
       await createInitialVersions(
         project._id,
         result.output,
@@ -1606,14 +1421,12 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       return;
     }
 
-    // ── Outcome: incremental success ──────────────────────────
-    // The incremental sync returns a pre-built _update object ready
-    // for direct MongoDB application.
+
 
     const { _update, ...syncMeta } = syncResult;
 
     if (!_update) {
-      // Shouldn't happen : guard against malformed sync result
+
       const errorMsg = "Sync returned no update payload";
       console.error(`[sync:${jobId}] ${errorMsg}`);
       await Project.findByIdAndUpdate(project._id, {
@@ -1633,7 +1446,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
         ..._update,
         status: "done",
         search_language: "english",
-        // Carry forward non-mutated fields from original result
+
         techStack: project.techStack || _update.techStack || [],
         testFrameworks: project.testFrameworks || [],
         architectureHint:
@@ -1641,7 +1454,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
       },
     });
 
-    // Log non-fatal errors
+
     if (syncResult.errors?.length) {
       console.warn(
         `[sync:${jobId}] ${syncResult.errors.length} non-fatal error(s):`,
@@ -1672,11 +1485,7 @@ async function runSync({ project, jobId, forceFullRun, webhookChangedFiles }) {
   }
 }
 
-/**
- * Run the full pipeline for a ZIP-uploaded project.
- * Normalizes extracted files similar to Git projects and runs orchestrator.
- * Called by ZIP upload controller.
- */
+
 export async function runZipPipeline({ project, jobId }) {
   const orchestrate = await getOrchestrate();
   const onProgress = makeProgressHandler(project._id, jobId);
@@ -1686,7 +1495,7 @@ export async function runZipPipeline({ project, jobId }) {
   );
 
   try {
-    // Extract files from project zipMetadata
+
     const { extractedFiles = [] } = project.zipMetadata || {};
 
     if (!extractedFiles.length) {
@@ -1697,9 +1506,7 @@ export async function runZipPipeline({ project, jobId }) {
       `[zip-pipeline:${jobId}] Processing ${extractedFiles.length} extracted files`,
     );
 
-    // Normalize ZIP files into the same format as Git providers.
-    // `files` must include `content` so agents can process file bodies.
-    // `meta` must be present so doc-writer and other agents can read project info.
+
     const normalised = {
       owner: project.repoOwner || "local",
       repo: project.repoName || "zip-project",
@@ -1715,7 +1522,7 @@ export async function runZipPipeline({ project, jobId }) {
       },
       branch: "main",
       commits: [],
-      files: extractedFiles, // Already [{path, content}] : no mapping needed
+      files: extractedFiles,
       fileTree: buildFileTree(extractedFiles),
       fileManifest: extractedFiles.reduce((acc, f) => {
         acc[f.path] = {
@@ -1742,7 +1549,7 @@ export async function runZipPipeline({ project, jobId }) {
       `[zip-pipeline:${jobId}] Normalised ZIP project: ${extractedFiles.length} files, languages: ${normalised.language}`,
     );
 
-    // Run the full orchestrator pipeline
+
     const result = await orchestrate(normalised, onProgress);
 
     if (!result.success) {
@@ -1756,18 +1563,18 @@ export async function runZipPipeline({ project, jobId }) {
 
     console.log(`[zip-pipeline:${jobId}] Pipeline completed successfully`);
 
-    // Build and persist the full update
+
     const update = buildFullRunUpdate(result, normalised.lastCommitSha, null);
     await Project.findByIdAndUpdate(project._id, { $set: update });
 
-    // Create version history for all generated sections (parallel)
+
     await createInitialVersions(
       project._id,
       result.output,
       normalised.lastCommitSha,
     );
 
-    // Log non-fatal agent errors
+
     if (result.agentErrors?.length) {
       console.warn(
         `[zip-pipeline:${jobId}] ${result.agentErrors.length} non-fatal agent error(s):`,
@@ -1796,9 +1603,7 @@ export async function runZipPipeline({ project, jobId }) {
   }
 }
 
-/**
- * Build a tree structure from extracted files for manifests.
- */
+
 function buildFileTree(files) {
   const tree = {};
   for (const file of files) {
@@ -1817,14 +1622,9 @@ function buildFileTree(files) {
   return tree;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CUSTOM TABS MANAGEMENT
-// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Create a new custom tab for a project.
- * Requires editor or owner access.
- */
+
+
 export async function createCustomTab({
   projectId,
   userId,
@@ -1834,14 +1634,14 @@ export async function createCustomTab({
 }) {
   const project = await assertAccess(projectId, userId, "editor");
 
-  // Validate tab name : must be unique per project
+
   if (!name || name.trim().length === 0) {
     throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
   }
 
   const trimmedName = name.trim();
 
-  // Check for duplicates (case-insensitive)
+
   const isDuplicate = project.customTabs?.some(
     (t) => t.name.toLowerCase() === trimmedName.toLowerCase(),
   );
@@ -1854,7 +1654,7 @@ export async function createCustomTab({
     );
   }
 
-  // Calculate order (add to end)
+
   const maxOrder =
     project.customTabs?.length > 0
       ? Math.max(...project.customTabs.map((t) => t.order))
@@ -1880,11 +1680,7 @@ export async function createCustomTab({
   return getProjectById({ projectId, userId });
 }
 
-/**
- * Update a custom tab's name, description, or content.
- * Requires editor or owner access.
- * Cannot update "Other Docs" (reserved tab).
- */
+
 export async function updateCustomTab({
   projectId,
   userId,
@@ -1903,17 +1699,17 @@ export async function updateCustomTab({
     throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
   }
 
-  // Build update object
+
   const updates = { updatedAt: new Date() };
 
-  // Validate and update name
+
   if (name !== undefined && name !== null) {
     const trimmedName = name.trim();
     if (trimmedName.length === 0) {
       throw domainError("Tab name cannot be empty", "VALIDATION_ERROR", 422);
     }
 
-    // Check for duplicate names (excluding this tab)
+
     const isDuplicate = project.customTabs?.some(
       (t) =>
         t._id?.toString() !== tabId?.toString() &&
@@ -1931,17 +1727,17 @@ export async function updateCustomTab({
     updates.name = trimmedName;
   }
 
-  // Update description
+
   if (description !== undefined) {
     updates.description = description?.trim() || "";
   }
 
-  // Update content (with versioning)
+
   if (content !== undefined) {
     const oldContent = tab.content;
     updates.content = content?.trim() || "";
 
-    // Create version snapshot if content changed
+
     if (oldContent !== updates.content) {
       const snapshotSource = project.editedCustomTabs?.some(
         (e) => e.tabId?.toString() === tabId?.toString(),
@@ -1961,7 +1757,7 @@ export async function updateCustomTab({
         );
       }
 
-      // Record new version
+
       await DocumentVersion.createVersion({
         projectId: project._id,
         section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
@@ -1972,7 +1768,7 @@ export async function updateCustomTab({
         console.warn("[versions] Custom tab version save failed:", err.message),
       );
 
-      // Mark as edited
+
       let editedCustomTabs = (project.editedCustomTabs || []).filter(
         (e) => e.tabId?.toString() !== tabId?.toString(),
       );
@@ -1985,7 +1781,7 @@ export async function updateCustomTab({
     }
   }
 
-  // Apply updates to the specific tab
+
   await Project.updateOne(
     { _id: projectId, "customTabs._id": tabId },
     {
@@ -1998,11 +1794,7 @@ export async function updateCustomTab({
   return getProjectById({ projectId, userId });
 }
 
-/**
- * Delete a custom tab.
- * Requires owner access (stricter than editor).
- * Cannot delete "Other Docs" (reserved tab).
- */
+
 export async function deleteCustomTab({ projectId, userId, tabId }) {
   const project = await assertAccess(projectId, userId, "owner");
 
@@ -2014,17 +1806,17 @@ export async function deleteCustomTab({ projectId, userId, tabId }) {
     throw domainError("Tab not found", "TAB_NOT_FOUND", 404);
   }
 
-  // Remove the tab
+
   await Project.findByIdAndUpdate(projectId, {
     $pull: { customTabs: { _id: tabId } },
   });
 
-  // Remove related edited tracking
+
   await Project.findByIdAndUpdate(projectId, {
     $pull: { editedCustomTabs: { tabId } },
   });
 
-  // Delete version history for this tab
+
   await DocumentVersion.deleteMany({
     projectId,
     section: `custom_${tab.name.toLowerCase().replace(/\s+/g, "_")}`,
@@ -2038,10 +1830,7 @@ export async function deleteCustomTab({ projectId, userId, tabId }) {
   return getProjectById({ projectId, userId });
 }
 
-/**
- * List all custom tabs for a project.
- * Sorted by order for consistent UI display.
- */
+
 export async function listCustomTabs({ projectId, userId }) {
   const project = await assertAccess(projectId, userId, "viewer");
 
@@ -2050,11 +1839,7 @@ export async function listCustomTabs({ projectId, userId }) {
   return { tabs };
 }
 
-/**
- * Reorder custom tabs (bulk update).
- * Requires editor or owner access.
- * Input: array of { tabId, order }
- */
+
 export async function reorderCustomTabs({ projectId, userId, orders }) {
   const project = await assertAccess(projectId, userId, "editor");
 
@@ -2062,7 +1847,7 @@ export async function reorderCustomTabs({ projectId, userId, orders }) {
     throw domainError("orders must be an array", "VALIDATION_ERROR", 422);
   }
 
-  // Update each tab's order
+
   for (const { tabId, order } of orders) {
     await Project.updateOne(
       { _id: projectId, "customTabs._id": tabId },

@@ -1,6 +1,3 @@
-// =============================================================
-// GitLab OAuth Controller
-// =============================================================
 
 import * as gitlabOAuthService from "../../services/gitlab/gitlab-oauth.service.js";
 import * as gitlabService from "../../../services/gitlab.service.js";
@@ -68,7 +65,7 @@ function isExpiredTokenError(err) {
 
 export async function listRepos(req, res) {
   try {
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
+
     const user = await User.findById(req.user.userId).select("+gitlabTokenEncrypted");
     if (!user || !user.gitlabTokenEncrypted) {
       console.log("[gitlab.controller] No GitLab token found for user", { 

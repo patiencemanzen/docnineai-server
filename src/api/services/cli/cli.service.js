@@ -286,12 +286,11 @@ export async function generateFromCli({ userId, projectId, files, agentsOnly = [
 
     await project.save();
 
-    // Log pipeline completion to changelog
     try {
       const { logProjectChange } = await import("../../../services/changelog.service.js");
       await logProjectChange(project._id, project.userId, "pipeline_completed", {
         details: "Analysis pipeline completed successfully",
-        affectedCount: 5, // readme, api, schema, internal, security
+        affectedCount: 5,
       });
     } catch (err) {
       console.warn("[changelog] Failed to log pipeline completion:", err.message);
@@ -309,7 +308,6 @@ export async function generateFromCli({ userId, projectId, files, agentsOnly = [
     project.errorMessage = err.message || "CLI generation failed.";
     await project.save();
 
-    // Log pipeline failure to changelog
     try {
       const { logProjectChange } = await import("../../../services/changelog.service.js");
       await logProjectChange(project._id, project.userId, "pipeline_failed", {
@@ -344,8 +342,6 @@ export async function chatFromCli({ userId, projectId, question }) {
     sources: [],
   };
 }
-
-// ── Helpers for diff / export ─────────────────────────────────
 
 const CHANGETYPE_TO_DIFF = {
   section_edited: "modified",

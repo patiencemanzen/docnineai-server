@@ -1,8 +1,4 @@
-/**
- * API Token Authentication Middleware
- * Validates Bearer tokens generated from Dashboard → Settings → API Tokens
- * Attaches token info to req.tokenAuth on success
- */
+
 
 import { APIToken } from "../models/APIToken.js";
 import { fail } from "../utils/response.util.js";
@@ -12,12 +8,7 @@ function clientIpOf(req) {
   return req.ip || req.socket?.remoteAddress || "";
 }
 
-/**
- * Authenticate API token from Authorization header
- * Validates token against database, checks expiration and status
- * Attaches req.tokenAuth = { token, user, scopes, isValid } on success
- * Falls back to session auth if no API token
- */
+
 export async function authenticateAPIToken(req, res, next) {
   if (req.tokenAuth) return next();
 
@@ -35,7 +26,7 @@ export async function authenticateAPIToken(req, res, next) {
 
   const plainToken = header.slice(7).trim();
 
-  // Session JWT already authenticated (protect ran first), or a non-API token.
+
   if (req.user && !plainToken.startsWith("docnine_")) {
     return next();
   }
@@ -124,10 +115,7 @@ export async function authenticateAPIToken(req, res, next) {
   }
 }
 
-/**
- * Optional: Require API token (not session auth)
- * Use after authenticateAPIToken to ensure it's a token, not session
- */
+
 export function requireAPIToken(req, res, next) {
   if (!req.tokenAuth || !req.tokenAuth.token) {
     return fail(
@@ -140,11 +128,7 @@ export function requireAPIToken(req, res, next) {
   next();
 }
 
-/**
- * Optional: Check token scope.
- * Session JWTs (dashboard) skip this check.
- * Works with both singular string scope and array of scopes.
- */
+
 export function checkTokenScope(requiredScopes = []) {
   return (req, res, next) => {
     if (!req.tokenAuth) {

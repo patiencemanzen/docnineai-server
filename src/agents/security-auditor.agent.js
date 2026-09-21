@@ -1,16 +1,7 @@
-// ===================================================================
-// Agent 6: Security Auditor (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
 import { chunkText } from "../utils/token-manager.util.js";
 
-// ─── Static Rules ─────────────────────────────────────────────────
-// Organised by OWASP Top 10 category for structured reporting.
-// Every rule has: id, category, severity, title, regex, advice, cwe
-
 const STATIC_RULES = [
-  // ── A01: Broken Access Control ───────────────────────────────
   {
     id: "SEC001",
     category: "A01:BrokenAccessControl",
@@ -45,7 +36,6 @@ const STATIC_RULES = [
     cwe: "CWE-639",
   },
 
-  // ── A02: Cryptographic Failures ───────────────────────────────
   {
     id: "SEC004",
     category: "A02:CryptographicFailures",
@@ -130,7 +120,6 @@ const STATIC_RULES = [
     cwe: "CWE-614",
   },
 
-  // ── A03: Injection ────────────────────────────────────────────
   {
     id: "SEC012",
     category: "A03:Injection",
@@ -216,7 +205,6 @@ const STATIC_RULES = [
     cwe: "CWE-94",
   },
 
-  // ── A04: Insecure Design ──────────────────────────────────────
   {
     id: "SEC020",
     category: "A04:InsecureDesign",
@@ -250,7 +238,6 @@ const STATIC_RULES = [
     cwe: "CWE-434",
   },
 
-  // ── A05: Security Misconfiguration ───────────────────────────
   {
     id: "SEC023",
     category: "A05:SecurityMisconfiguration",
@@ -294,7 +281,6 @@ const STATIC_RULES = [
     cwe: "CWE-215",
   },
 
-  // ── A07: Identification & Authentication Failures ─────────────
   {
     id: "SEC027",
     category: "A07:AuthFailures",
@@ -328,7 +314,6 @@ const STATIC_RULES = [
     cwe: "CWE-798",
   },
 
-  // ── A09: Security Logging & Monitoring Failures ───────────────
   {
     id: "SEC030",
     category: "A09:LoggingFailures",
@@ -352,7 +337,6 @@ const STATIC_RULES = [
     cwe: "CWE-1059",
   },
 
-  // ── A10: SSRF ─────────────────────────────────────────────────
   {
     id: "SEC032",
     category: "A10:SSRF",
@@ -366,13 +350,9 @@ const STATIC_RULES = [
   },
 ];
 
-// ─── Severity Configuration ───────────────────────────────────────
-
 const SEVERITY_WEIGHT = { CRITICAL: 25, HIGH: 15, MEDIUM: 7, LOW: 2 };
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const SEVERITY_EMOJI = { CRITICAL: "🔴", HIGH: "🟠", MEDIUM: "🟡", LOW: "🔵" };
-
-// ─── LLM System Prompt ────────────────────────────────────────────
 
 const LLM_SYSTEM_PROMPT = `You are a principal application security engineer with expertise in OWASP Top 10, secure code review, and penetration testing. You specialise in finding vulnerabilities that static regex analysis cannot catch.
 
@@ -431,8 +411,6 @@ If no vulnerabilities are found, return: []
 7. If you are reviewing an auth, payment, or permission-related function : scrutinise it more thoroughly.
 8. Prefer HIGH confidence, fewer findings over LOW confidence, many findings. Quality over quantity.`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const SKIP_REGEX =
   /node_modules|\.lock$|\.min\.|dist\/|build\/|coverage\/|\.nyc_output|__pycache__|\.git\/|\.(md|yaml|yml|txt|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|map|d\.ts)$/i;
 
@@ -442,15 +420,10 @@ const HIGH_RISK_PATH_REGEX =
 const HIGH_RISK_CONTENT_KEYWORDS =
   /jwt\.sign|jwt\.verify|bcrypt\.hash|createHash|Bearer|Authorization|role|permission|admin|stripe\.charges|payment|session\.secret|passport\./i;
 
-const CHUNK_SIZE = 6000; // was 400 : far too small for any real security analysis
-const MAX_LLM_FILES = 15; // increased from 8
+const CHUNK_SIZE = 6000;
+const MAX_LLM_FILES = 15;
 const MAX_RETRIES = 2;
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Safe JSON parse with fence stripping fallback.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
@@ -467,9 +440,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single LLM finding.
- */
 function validateLLMFinding(finding, fallbackFile) {
   if (!finding || typeof finding !== "object") return null;
 
@@ -501,9 +471,6 @@ function validateLLMFinding(finding, fallbackFile) {
   };
 }
 
-/**
- * LLM call with exponential back-off retry.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -519,22 +486,18 @@ async function llmCallWithRetry({
   }
 }
 
-/**
- * Deduplicate findings : prefer the richer version of any two
- * findings with the same title in the same file.
- */
 function deduplicateFindings(findings) {
   const map = new Map();
 
   for (const f of findings) {
-    // Key: file + normalised title (lowercase, stripped punctuation)
+
     const key = `${f.file}::${f.title.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
     const existing = map.get(key);
 
     if (!existing) {
       map.set(key, f);
     } else {
-      // Keep the richer finding (LLM findings over static : more context)
+
       const scoreF = scoreFinding(f);
       const scoreE = scoreFinding(existing);
       if (scoreF > scoreE) map.set(key, f);
@@ -544,9 +507,6 @@ function deduplicateFindings(findings) {
   return Array.from(map.values());
 }
 
-/**
- * Score completeness of a finding for deduplication.
- */
 function scoreFinding(f) {
   let score = 0;
   if (f.description) score += 3;
@@ -560,12 +520,8 @@ function scoreFinding(f) {
   return score;
 }
 
-/**
- * Calculate security score and grade from findings.
- */
 function calculateScore(findings) {
-  // Deduct points per finding : CRITICAL findings have diminishing returns
-  // to prevent a single file from dominating the score
+
   const criticalCount = findings.filter(
     (f) => f.severity === "CRITICAL",
   ).length;
@@ -573,7 +529,6 @@ function calculateScore(findings) {
   const mediumCount = findings.filter((f) => f.severity === "MEDIUM").length;
   const lowCount = findings.filter((f) => f.severity === "LOW").length;
 
-  // Diminishing deductions : first occurrence hurts more than the 10th
   const deductCritical =
     Math.min(criticalCount, 3) * 25 + Math.max(0, criticalCount - 3) * 10;
   const deductHigh =
@@ -599,18 +554,12 @@ function calculateScore(findings) {
   return { score, grade };
 }
 
-/**
- * Count findings per severity.
- */
 function countBySeverity(findings) {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
   for (const f of findings) counts[f.severity] = (counts[f.severity] ?? 0) + 1;
   return counts;
 }
 
-/**
- * Count findings per OWASP category.
- */
 function countByCategory(findings) {
   const counts = {};
   for (const f of findings) {
@@ -620,9 +569,6 @@ function countByCategory(findings) {
   return counts;
 }
 
-/**
- * Build the list of most affected files sorted by risk score.
- */
 function buildAffectedFiles(findings) {
   const fileMap = {};
   for (const f of findings) {
@@ -636,8 +582,6 @@ function buildAffectedFiles(findings) {
     .slice(0, 10);
 }
 
-// ─── Report Builder ───────────────────────────────────────────────
-
 function buildReport(
   findings,
   score,
@@ -650,7 +594,6 @@ function buildReport(
 ) {
   let md = `# Security Audit Report\n\n`;
 
-  // ── Executive Summary ─────────────────────────────────────────
   md += `## Executive Summary\n\n`;
   md += `| Metric | Value |\n|--------|-------|\n`;
   md += `| **Security Score** | ${score}/100 |\n`;
@@ -659,7 +602,6 @@ function buildReport(
   md += `| **Static Analysis** | ${staticCount} findings |\n`;
   md += `| **AI Deep Scan** | ${llmCount} findings |\n\n`;
 
-  // ── Severity Breakdown ────────────────────────────────────────
   md += `## Severity Breakdown\n\n`;
   md += `| Severity | Count | Risk |\n|----------|-------|------|\n`;
   for (const sev of SEVERITY_ORDER) {
@@ -670,7 +612,6 @@ function buildReport(
   }
   md += "\n";
 
-  // ── OWASP Category Breakdown ──────────────────────────────────
   if (Object.keys(categoryCounts).length > 0) {
     md += `## OWASP Top 10 Coverage\n\n`;
     md += `| Category | Findings |\n|----------|----------|\n`;
@@ -682,7 +623,6 @@ function buildReport(
     md += "\n";
   }
 
-  // ── Most Affected Files ───────────────────────────────────────
   if (affectedFiles.length > 0) {
     md += `## Most Affected Files\n\n`;
     md += `| File | Findings | Risk Score |\n|------|----------|------------|\n`;
@@ -692,7 +632,6 @@ function buildReport(
     md += "\n";
   }
 
-  // ── Score Guide ───────────────────────────────────────────────
   md += `## Score Guide\n\n`;
   md += `| Grade | Score | Meaning |\n|-------|-------|----------|\n`;
   md += `| A | 90–100 | Production ready : address Low findings |\n`;
@@ -701,7 +640,6 @@ function buildReport(
   md += `| D | 45–64  | High risk : do not deploy to production |\n`;
   md += `| F | 0–44   | Critical risk : security review required |\n\n`;
 
-  // ── Findings Detail ───────────────────────────────────────────
   if (!findings.length) {
     md += `## Findings\n\n✅ No vulnerabilities detected.\n`;
     return md;
@@ -737,12 +675,6 @@ function buildReport(
   return md;
 }
 
-// ─── Remediation Plan Builder ─────────────────────────────────────
-
-/**
- * Build a prioritised remediation checklist from findings.
- * Grouped by severity with effort estimates.
- */
 function buildRemediationPlan(findings) {
   let md = `# 🔧 Remediation Plan\n\n`;
   md += `> Address findings in this order: Critical → High → Medium → Low\n\n`;
@@ -772,14 +704,11 @@ function buildRemediationPlan(findings) {
   return md;
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function securityAuditorAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
   notify("Starting security audit…", "Agent 6 : Security Auditor");
 
-  // ── 1. Filter scannable code files ────────────────────────────
   const codeFiles = files.filter(
     (f) => f?.path && f?.content && !SKIP_REGEX.test(f.path),
   );
@@ -794,12 +723,11 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     `${codeFiles.length} code files · ${STATIC_RULES.length} rules`,
   );
 
-  // ── 2. Static scan : all files, zero LLM cost ─────────────────
   const staticFindings = [];
 
   for (const file of codeFiles) {
     for (const rule of STATIC_RULES) {
-      // Re-create regex each time to reset lastIndex state
+
       const re = new RegExp(
         rule.regex.source,
         rule.regex.flags.replace("g", "") + "g",
@@ -807,7 +735,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
       const matches = [...file.content.matchAll(re)];
       if (!matches.length) continue;
 
-      // Find approximate line number of first match
       const firstMatchIndex = file.content.indexOf(matches[0][0]);
       const lineNumber = file.content
         .slice(0, firstMatchIndex)
@@ -838,10 +765,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     `Critical:${staticCountBySev.CRITICAL} · High:${staticCountBySev.HIGH} · Medium:${staticCountBySev.MEDIUM} · Low:${staticCountBySev.LOW}`,
   );
 
-  // ── fastMode: skip LLM deep scan to stay within Vercel timeout budget ──
-  // The static scan already covers all 32 OWASP pattern rules. On Vercel,
-  // the 20s security timeout + TPM rate limits make LLM scanning impossible.
-  // Return static results directly so the pipeline can continue to doc writing.
   if (fastMode) {
     const findings = deduplicateFindings(staticFindings).sort((a, b) => {
       const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -880,9 +803,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     };
   }
 
-  // ── 3. Score files for LLM priority ───────────────────────────
-  // Files that already have static findings get priority,
-  // plus files that contain high-risk keywords
   const fileRiskScore = (file) => {
     const staticHits = staticFindings.filter((f) => f.file === file.path);
     const staticScore = staticHits.reduce(
@@ -918,10 +838,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
 
   notify(`AI deep scan…`, `${highRiskFiles.length} high-risk files selected`);
 
-  // ── 4. LLM deep scan : high-risk files only (parallel) ───────
-  // Flatten all file×chunk combinations into a single task list and run
-  // them all concurrently. The global LLM semaphore (MAX_CONCURRENT=2)
-  // in llm.js throttles the actual API calls without blocking the loop.
   const llmFindings = [];
   const llmErrors = [];
 
@@ -986,7 +902,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     `Critical:${llmCountBySev.CRITICAL} · High:${llmCountBySev.HIGH} · Medium:${llmCountBySev.MEDIUM} · Low:${llmCountBySev.LOW}`,
   );
 
-  // ── 5. Merge, deduplicate, and sort all findings ───────────────
   const rawFindings = [...staticFindings, ...llmFindings];
   const findings = deduplicateFindings(rawFindings).sort((a, b) => {
     const sevOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -996,13 +911,11 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     );
   });
 
-  // ── 6. Calculate score and build outputs ──────────────────────
   const { score, grade } = calculateScore(findings);
   const counts = countBySeverity(findings);
   const categoryCounts = countByCategory(findings);
   const affectedFiles = buildAffectedFiles(findings);
 
-  // ── 7. Build summary ──────────────────────────────────────────
   const summary = {
     totalFindings: findings.length,
     staticFindings: staticFindings.length,
@@ -1058,8 +971,6 @@ export async function securityAuditorAgent({ files, projectMap, emit, fastMode =
     errors: llmErrors.length > 0 ? llmErrors : undefined,
   };
 }
-
-// ─── Empty Result Helper ──────────────────────────────────────────
 
 function buildEmptyResult() {
   const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };

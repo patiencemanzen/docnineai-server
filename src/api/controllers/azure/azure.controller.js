@@ -1,6 +1,3 @@
-// =============================================================
-// Azure DevOps OAuth Controller
-// =============================================================
 
 import * as azureOAuthService from "../../services/azure/azure-oauth.service.js";
 import * as azureService from "../../../services/azure-devops.service.js";
@@ -75,7 +72,7 @@ export async function listRepos(req, res) {
       perPage,
     });
 
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
+
     const user = await User.findById(req.user.userId).select(
       "+azureDevOpsTokenEncrypted",
     );

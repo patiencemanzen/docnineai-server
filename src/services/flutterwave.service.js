@@ -1,16 +1,3 @@
-// ===================================================================
-// Flutterwave service : thin REST client over the FW v3 API.
-//
-// Never import this module on the client side. It uses the secret key.
-//
-// Required env vars:
-//   FLW_SECRET_KEY        : Flutterwave secret key (sk_live_... or sk_test_...)
-//   FLW_PUBLIC_KEY        : Flutterwave public key (PK_live_... or PK_...)
-//   FLW_WEBHOOK_HASH      : Custom webhook hash set in FW dashboard
-//   FRONTEND_URL          : Used to construct redirect URLs
-//
-// Docs: https://developer.flutterwave.com/docs
-// ===================================================================
 
 import axios from "axios";
 import crypto from "crypto";
@@ -34,7 +21,7 @@ function flwClient() {
   });
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+
 
 function handleFLWError(err, context) {
   const status = err.response?.status;
@@ -49,23 +36,9 @@ function handleFLWError(err, context) {
   throw error;
 }
 
-// ── Payment initialisation ───────────────────────────────────────
 
-/**
- * Create a Flutterwave hosted-payment link (standard checkout).
- * Used for the initial checkout where we don't have a saved token.
- *
- * @param {Object} opts
- * @param {string}  opts.txRef        - Unique reference (stored in Invoice)
- * @param {number}  opts.amount       - Amount in USD (not cents)
- * @param {string}  opts.currency     - e.g. "USD"
- * @param {string}  opts.email
- * @param {string}  opts.name
- * @param {string}  opts.phone        - optional
- * @param {string}  opts.planId       - for tagging
- * @param {string}  opts.redirectUrl  - where FW sends the user after payment
- * @returns {Promise<{paymentLink: string}>}
- */
+
+
 export async function initializePayment({
   txRef,
   amount,
@@ -80,8 +53,7 @@ export async function initializePayment({
   try {
     const isRWF = currency === "RWF";
 
-    // USD → card only
-    // RWF → card + MTN/Airtel mobile money (USSD not supported for RWF)
+
     const payment_options = isRWF ? "card, mobilemoneyrwanda" : "card";
 
     const { data } = await client.post("/payments", {
@@ -105,27 +77,20 @@ export async function initializePayment({
   }
 }
 
-// ── Transaction verification ─────────────────────────────────────
 
-/**
- * Verify a transaction by ID. Use after receiving webhook or redirect.
- * @param {number|string} transactionId
- * @returns {Promise<Object>} FW transaction data
- */
+
+
 export async function verifyTransaction(transactionId) {
   const client = flwClient();
   try {
     const { data } = await client.get(`/transactions/${transactionId}/verify`);
-    return data.data; // raw FW transaction object
+    return data.data;
   } catch (err) {
     handleFLWError(err, "verifyTransaction");
   }
 }
 
-/**
- * Verify a transaction by tx_ref (our reference).
- * @param {string} txRef
- */
+
 export async function verifyByRef(txRef) {
   const client = flwClient();
   try {
@@ -142,21 +107,9 @@ export async function verifyByRef(txRef) {
   }
 }
 
-// ── Tokenised charges ────────────────────────────────────────────
 
-/**
- * Charge a customer using their saved Flutterwave token.
- * This is used for automatic subscription renewals.
- *
- * @param {Object} opts
- * @param {string}  opts.token     - FW charge token from previous payment
- * @param {string}  opts.txRef     - Unique ref for this charge
- * @param {number}  opts.amount    - USD (not cents)
- * @param {string}  opts.currency
- * @param {string}  opts.email
- * @param {string}  opts.narration - Description on customer statement
- * @returns {Promise<Object>}
- */
+
+
 export async function chargeToken({
   token,
   txRef,
@@ -189,14 +142,9 @@ export async function chargeToken({
   }
 }
 
-// ── Refunds ──────────────────────────────────────────────────────
 
-/**
- * Refund a transaction fully or partially.
- * @param {number|string} transactionId - FW transaction ID
- * @param {number}        amount        - USD amount to refund (optional = full)
- * @returns {Promise<Object>}
- */
+
+
 export async function refundTransaction(transactionId, amount) {
   const client = flwClient();
   try {
@@ -212,7 +160,7 @@ export async function refundTransaction(transactionId, amount) {
   }
 }
 
-// ── Webhook signature verification ──────────────────────────────
+
 
 let _loggedMissingFlwHash = false;
 
@@ -223,18 +171,7 @@ function isConfiguredWebhookHash(value) {
   return true;
 }
 
-/**
- * Verify that a Flutterwave webhook came from FW and not a spoofed request.
- *
- * FW sends a custom header `verif-hash` that matches the static hash
- * you configure in the FW dashboard (FLW_WEBHOOK_HASH env var).
- *
- * Missing, empty, or placeholder hashes fail closed : the request is
- * rejected. Never skip verification because the env var is unset.
- *
- * @param {string} headerHash - Value of the `verif-hash` request header
- * @returns {boolean}
- */
+
 export function verifyWebhookSignature(headerHash) {
   const expected = process.env.FLW_WEBHOOK_HASH;
   if (!isConfiguredWebhookHash(expected)) {
@@ -255,35 +192,26 @@ export function verifyWebhookSignature(headerHash) {
   return crypto.timingSafeEqual(a, b);
 }
 
-// ── Utility ──────────────────────────────────────────────────────
 
-/** Convert cents (integer) to USD float for API calls. */
+
+
 export function centsToUsd(cents) {
   return parseFloat((cents / 100).toFixed(2));
 }
 
-/** Build a unique transaction reference. */
+
 export function buildTxRef(prefix = "sub") {
   const ts = Date.now();
   const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `${prefix}_${ts}_${rand}`;
 }
 
-/**
- * Extract a reusable charge token from a completed FW transaction.
- * FW attaches a `card.token` or `account_token` field on the tx object.
- * @param {Object} fwTransaction  - The raw FW transaction data
- * @returns {string|null}
- */
+
 export function extractChargeToken(fwTransaction) {
   return fwTransaction?.card?.token || fwTransaction?.account_token || null;
 }
 
-/**
- * Build a display label for a payment method from a FW transaction.
- * @param {Object} fwTransaction
- * @returns {string}
- */
+
 export function buildPaymentMethodSnapshot(fwTransaction) {
   const card = fwTransaction?.card;
   if (card?.last_4digits) {

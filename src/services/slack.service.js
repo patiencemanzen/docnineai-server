@@ -1,7 +1,3 @@
-// ===================================================================
-// Slack Service
-// Handles all Slack API communication, message formatting, and alerts
-// ===================================================================
 
 import axios from "axios";
 import crypto from "crypto";
@@ -9,10 +5,7 @@ import { SlackIntegration } from "../models/SlackIntegration.js";
 
 const SLACK_API_BASE = "https://slack.com/api";
 
-/**
- * Initialize Slack client with bot token.
- * Token is decrypted on-demand for security.
- */
+
 class SlackClient {
   constructor(botToken) {
     this.token = botToken;
@@ -26,12 +19,7 @@ class SlackClient {
     });
   }
 
-  /**
-   * Call any Slack API method.
-   * @param {string} method - Slack API method (e.g., chat.postMessage)
-   * @param {object} payload - Request payload
-   * @returns {Promise<object>} Slack API response
-   */
+  
   async call(method, payload = {}) {
     try {
       const response = await this.client.post(`/${method}`, payload);
@@ -45,21 +33,17 @@ class SlackClient {
     }
   }
 
-  /**
-   * Post a message to a channel.
-   */
+  
   async postMessage(channelId, { text, blocks, threadTs = null }) {
     return this.call("chat.postMessage", {
       channel: channelId,
-      text, // fallback
+      text,
       blocks,
       thread_ts: threadTs,
     });
   }
 
-  /**
-   * Update an existing message.
-   */
+  
   async updateMessage(channelId, ts, { text, blocks }) {
     return this.call("chat.update", {
       channel: channelId,
@@ -69,9 +53,7 @@ class SlackClient {
     });
   }
 
-  /**
-   * Open a modal (rarely used, but available).
-   */
+  
   async openModal(triggerId, { title, blocks, submit }) {
     return this.call("views.open", {
       trigger_id: triggerId,
@@ -85,29 +67,20 @@ class SlackClient {
     });
   }
 
-  /**
-   * Get user info.
-   */
+  
   async getUserInfo(userId) {
     return this.call("users.info", { user: userId });
   }
 
-  /**
-   * Get channel info.
-   */
+  
   async getChannelInfo(channelId) {
     return this.call("conversations.info", { channel: channelId });
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Message Builders
-// ─────────────────────────────────────────────────────────────────
 
-/**
- * Build Slack blocks for a documentation answer.
- * Called by /docnine ask slash command.
- */
+
+
 export function buildAnswerBlocks(answer, fileReferences = []) {
   const blocks = [
     {
@@ -149,9 +122,7 @@ export function buildAnswerBlocks(answer, fileReferences = []) {
   return blocks;
 }
 
-/**
- * Build Slack blocks for security audit summary.
- */
+
 export function buildSecurityAuditBlocks(audit) {
   const { score, grade, counts, findings } = audit;
 
@@ -194,7 +165,7 @@ export function buildSecurityAuditBlocks(audit) {
     },
   ];
 
-  // Top 5 findings
+
   if (findings.length > 0) {
     const topFindings = findings.slice(0, 5);
     blocks.push({
@@ -223,9 +194,7 @@ export function buildSecurityAuditBlocks(audit) {
   return blocks;
 }
 
-/**
- * Build alert blocks for critical/high findings.
- */
+
 export function buildSecurityAlertBlocks(alerts, grade, score) {
   const iconMap = {
     CRITICAL: "🔴",
@@ -265,9 +234,7 @@ export function buildSecurityAlertBlocks(alerts, grade, score) {
   return blocks;
 }
 
-/**
- * Build diff blocks showing documentation changes.
- */
+
 export function buildDiffBlocks(changes) {
   const blocks = [
     {
@@ -312,13 +279,9 @@ export function buildDiffBlocks(changes) {
   return blocks;
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Slack Service Functions
-// ─────────────────────────────────────────────────────────────────
 
-/**
- * Get active Slack integration for a project.
- */
+
+
 export async function getSlackIntegration(projectId, userId) {
   const integration = await SlackIntegration.findOne({
     projectId,
@@ -333,19 +296,14 @@ export async function getSlackIntegration(projectId, userId) {
   return integration;
 }
 
-/**
- * Get Slack client for a project.
- */
+
 export async function getSlackClient(projectId, userId) {
   const integration = await getSlackIntegration(projectId, userId);
   const botToken = await integration.getDecryptedToken();
   return new SlackClient(botToken);
 }
 
-/**
- * Send a security alert to Slack.
- * Called by webhook when new CRITICAL/HIGH findings are detected.
- */
+
 export async function sendSecurityAlert(projectId, userId, auditData) {
   try {
     const integration = await getSlackIntegration(projectId, userId);
@@ -359,7 +317,7 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
 
     const client = await getSlackClient(projectId, userId);
 
-    // Extract critical/high findings
+
     const critical = auditData.findings.filter(
       (f) => f.severity === "CRITICAL",
     );
@@ -368,7 +326,7 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
     const allAlerts = [...critical, ...high];
 
     if (allAlerts.length === 0) {
-      return; // No alerts to send
+      return;
     }
 
     const blocks = buildSecurityAlertBlocks(
@@ -379,7 +337,7 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
 
     const text = `Security Alert: ${critical.length} CRITICAL, ${high.length} HIGH findings detected`;
 
-    // Send with @channel ping if there are CRITICAL items and enabled
+
     const payload = {
       text,
       blocks,
@@ -397,7 +355,7 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
 
     await client.postMessage(integration.alertChannelId, payload);
 
-    // Record the alert
+
     await integration.recordEvent(
       "alert_sent",
       `Alert sent: ${critical.length} CRITICAL, ${high.length} HIGH`,
@@ -414,9 +372,7 @@ export async function sendSecurityAlert(projectId, userId, auditData) {
   }
 }
 
-/**
- * Send a Slack message for a slash command response.
- */
+
 export async function sendSlashCommandResponse(
   projectId,
   userId,
@@ -434,10 +390,7 @@ export async function sendSlashCommandResponse(
   }
 }
 
-/**
- * Verify Slack request signature.
- * Slack sends X-Slack-Request-Timestamp and X-Slack-Signature headers.
- */
+
 export function verifySlackSignature(req, signingSecret) {
   const timestamp = req.headers["x-slack-request-timestamp"];
   const signature = req.headers["x-slack-signature"];
@@ -446,13 +399,13 @@ export function verifySlackSignature(req, signingSecret) {
     return false;
   }
 
-  // Ignore requests older than 5 minutes
+
   const requestTime = Math.floor(Date.now() / 1000);
   if (Math.abs(requestTime - parseInt(timestamp)) > 300) {
     return false;
   }
 
-  // Get raw body as string
+
   const rawBody = req.rawBody || JSON.stringify(req.body || {});
   const baseString = `v0:${timestamp}:${rawBody}`;
 

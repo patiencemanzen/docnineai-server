@@ -1,16 +1,10 @@
-// ===================================================================
-// Nodemailer transporter : configure via SMTP env vars.
-// Falls back gracefully so the server starts even without email config.
-//
-// Without SMTP config: emails are logged to console (dev mode).
-// ===================================================================
 
 import nodemailer from "nodemailer";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "";
 const FROM = process.env.EMAIL_FROM || "Docnine <noreply@docnineai.com>";
 
-// Lazy singleton : created on first use
+
 let _transporter = null;
 
 function getTransporter() {
@@ -18,7 +12,7 @@ function getTransporter() {
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
 
-  // Dev fallback: log emails instead of sending
+
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
     _transporter = {
       sendMail: async (opts) => {
@@ -42,12 +36,9 @@ function getTransporter() {
   return _transporter;
 }
 
-// ── Email senders ─────────────────────────────────────────────
 
-/**
- * Send an email verification link.
- * @param {{ to: string, token: string, name: string }} opts
- */
+
+
 export async function sendVerificationEmail({ to, token, name }) {
   const link = `${FRONTEND_URL}/verify?token=${token}`;
   await getTransporter().sendMail({
@@ -66,10 +57,7 @@ export async function sendVerificationEmail({ to, token, name }) {
   });
 }
 
-/**
- * Send a password reset link.
- * @param {{ to: string, token: string, name: string }} opts
- */
+
 export async function sendPasswordResetEmail({ to, token, name }) {
   const link = `${FRONTEND_URL}/reset-password?token=${token}`;
   await getTransporter().sendMail({
@@ -88,10 +76,7 @@ export async function sendPasswordResetEmail({ to, token, name }) {
   });
 }
 
-/**
- * Send a project share invitation.
- * @param {{ to: string, inviterName: string, projectName: string, role: string, token: string }} opts
- */
+
 export async function sendProjectInviteEmail({
   to,
   inviterName,
@@ -116,7 +101,7 @@ export async function sendProjectInviteEmail({
   });
 }
 
-// ── Billing email senders ─────────────────────────────────────
+
 
 export async function sendTrialStartedEmail({
   to,
@@ -427,7 +412,7 @@ export async function sendCardExpiryWarningEmail({
   });
 }
 
-// ── Minimal branded HTML template ─────────────────────────────
+
 function emailTemplate({ title, body, ctaText, ctaUrl, footer }) {
   return `<!DOCTYPE html>
 <html>

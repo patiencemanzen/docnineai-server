@@ -1,9 +1,3 @@
-// =============================================================
-// ZIP Upload Controller
-//
-// Handles project creation from uploaded ZIP files.
-// Files are extracted and processed through the standard pipeline.
-// =============================================================
 
 import { randomUUID } from "crypto";
 import { Project } from "../../../models/Project.js";
@@ -13,8 +7,7 @@ import * as projectService from "../../services/projects/project.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 import { registerJob } from "../../../services/job-registry.service.js";
 
-// ── POST /projects/zip/upload ─────────────────────────────────
-// Accept file upload, extract, validate, and create project
+
 export async function uploadZipProject(req, res) {
   try {
     if (!req.file) {
@@ -23,17 +16,17 @@ export async function uploadZipProject(req, res) {
 
     const { buffer, originalname } = req.file;
 
-    // Validate and extract ZIP
+
     const { files, meta } = zipService.extractZipFiles(buffer, originalname);
 
     if (files.length === 0) {
       return fail(res, "EMPTY_ZIP", "No source files found in ZIP", 400);
     }
 
-    // Infer project metadata
+
     const projectMeta = zipService.inferProjectMetadata(files);
 
-    // Create project document
+
     const project = new Project({
       userId: req.user.userId,
       sourceType: "zip",
@@ -55,10 +48,10 @@ export async function uploadZipProject(req, res) {
         checksum: meta.checksum,
         uploadedAt: meta.uploadedAt,
         fileCount: files.length,
-        extractedFiles: files, // Store files for pipeline processing
+        extractedFiles: files,
         totalSize: meta.totalSize,
       },
-      status: "queued", // Queue for pipeline processing
+      status: "queued",
       output: {
         readme: "",
         internalDocs: "",
@@ -75,23 +68,23 @@ export async function uploadZipProject(req, res) {
       },
     });
 
-    // Save project to get ID
+
     await project.save();
 
-    // checkProjectLimit already reserved the slot atomically : only increment for unlimited plans.
+
     if (!req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: 1 }).catch(() => {});
     }
 
-    // Register job and start pipeline
+
     const jobId = randomUUID();
     project.jobId = jobId;
-    project.status = "running"; // Move to running immediately
+    project.status = "running";
     await project.save();
 
     registerJob(jobId);
 
-    // Fire-and-forget pipeline execution
+
     projectService
       .runZipPipeline({ project, jobId })
       .catch((err) =>
@@ -120,7 +113,7 @@ export async function uploadZipProject(req, res) {
       202,
     );
   } catch (err) {
-    // Release the reserved slot so the user isn't penalised for a failed upload.
+
     if (req._projectSlotReserved) {
       await PlanUsage.increment(req.user.userId, { projectCount: -1 }).catch(() => {});
     }
@@ -131,8 +124,7 @@ export async function uploadZipProject(req, res) {
   }
 }
 
-// ── GET /projects/zip/validate ────────────────────────────────
-// Validate a ZIP file without creating a project (useful for preview)
+
 export async function validateZipUpload(req, res) {
   try {
     if (!req.file) {
@@ -141,7 +133,7 @@ export async function validateZipUpload(req, res) {
 
     const { buffer, originalname } = req.file;
 
-    // Validate and extract ZIP
+
     const { files, meta } = zipService.extractZipFiles(buffer, originalname);
     const projectMeta = zipService.inferProjectMetadata(files);
 

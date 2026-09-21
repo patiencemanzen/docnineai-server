@@ -1,10 +1,4 @@
-// ===================================================================
-// Agent 3: Schema Analyser (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
-
-// ─── System Prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a principal database architect and ORM specialist with deep expertise in extracting and documenting data models across all major database frameworks and ORMs (Prisma, TypeORM, Sequelize, Mongoose, SQLAlchemy, Django ORM, ActiveRecord, Eloquent, GORM, Hibernate, and raw SQL schemas).
 
@@ -123,8 +117,6 @@ If nothing is found, return exactly: { "models": [], "relationships": [] }
 - Must be parseable by JSON.parse() with zero preprocessing
 - Start with { and end with }`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const SCHEMA_ROLES = new Set([
   "model",
   "schema",
@@ -133,60 +125,59 @@ const SCHEMA_ROLES = new Set([
   "seed",
 ]);
 
-// Comprehensive ORM/schema detection regex
 const SCHEMA_REGEX = new RegExp(
   [
-    // Prisma
+
     /model\s+\w+\s*\{/,
     /@@relation|@relation|@default|@@index|@@unique/,
-    // TypeORM (TypeScript/Node.js)
+
     /@Entity\s*\(|@Table\s*\(|@Column\s*\(|@PrimaryGeneratedColumn/,
     /@OneToMany|@ManyToOne|@OneToOne|@ManyToMany|@JoinTable|@JoinColumn/,
-    // Sequelize (Node.js)
+
     /sequelize\.define\s*\(|DataTypes\.|belongsTo\s*\(|hasMany\s*\(|hasOne\s*\(|belongsToMany\s*\(/,
-    // Mongoose (Node.js/MongoDB)
+
     /new\s+Schema\s*\(|mongoose\.Schema|mongoose\.model\s*\(/,
     /SchemaTypes\.|ref\s*:\s*['"]\w+['"]/,
-    // SQLAlchemy (Python)
+
     /class\s+\w+\s*\(\s*Base\s*\)|Column\s*\(|relationship\s*\(|ForeignKey\s*\(/,
     /declarative_base\s*\(\)|db\.Model/,
-    // Django ORM (Python)
+
     /models\.Model\s*\)|models\.CharField|models\.ForeignKey|models\.ManyToManyField/,
     /models\.DateTimeField|models\.IntegerField|models\.TextField/,
-    // Pydantic (Python)
+
     /BaseModel\s*[\s\n]|Field\s*\(|validator\s+\(/,
-    // Marshmallow (Python)
+
     /Schema\)|fields\.\w+\(\)|post_load|pre_load/,
-    // ActiveRecord (Ruby/Rails)
+
     /belongs_to\s+:|has_many\s+:|has_one\s+:|has_and_belongs_to_many/,
     /ActiveRecord::Base|validates\s+:/,
-    // Eloquent (Laravel)
+
     /extends\s+Model|protected\s+\$fillable|protected\s+\$casts/,
     /belongsTo\s*\(|hasMany\s*\(|hasOne\s*\(|belongsToMany\s*\(/,
-    // GORM (Go)
+
     /gorm:"[^"]*"|gorm\.Model|belongs_to|has_many|many_to_many/,
-    // Hibernate (Java)
+
     /@Entity|@Table|@Column|@OneToMany|@ManyToOne|@ManyToMany|@JoinColumn/,
     /@GeneratedValue|@Id/,
-    // JPA (Java)
+
     /javax\.persistence\.|jakarta\.persistence\./,
-    // Spring Data (Java)
+
     /CrudRepository|JpaRepository|@Repository/,
-    // MyBatis (Java)
+
     /@Mapper|@Select|@Insert|@Update|@Delete|@Results|@Result/,
-    // Doctrine (PHP)
+
     /#\[ORM\\Entity\]|#\[ORM\\Column\]|#\[ORM\\/,
-    // Entity Framework (.NET/C#)
+
     /DbSet<|DbContext|OnModelCreating|HasKey|HasMany|WithMany/,
-    // Kotlin Data Classes
+
     /data\s+class\s+\w+/,
-    // Swift Codable
+
     /Codable|@Model|@Relationship/,
-    // TypeORM C# Attributes
+
     /\[Column\]|\[Table\]|\[Key\]|\[ForeignKey\]/,
-    // Zod / Joi / Yup (Validation schemas)
+
     /z\.object\s*\(|Joi\.object\s*\(|yup\.object\s*\(|object\s*\(\s*\{/,
-    // Generic SQL
+
     /CREATE\s+TABLE|ALTER\s+TABLE|PRIMARY\s+KEY|FOREIGN\s+KEY|REFERENCES\s+\w+/i,
   ]
     .map((r) => r.source)
@@ -200,7 +191,7 @@ const PATH_REGEX =
 const EXCLUDE_REGEX = /\.test\.|\.spec\.|__mock|fixture|\.d\.ts$/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 8000; // was 280 : completely inadequate for real schema files
+const CHARS_PER_FILE = 8000;
 const MAX_FILES = 50;
 const MAX_RETRIES = 2;
 
@@ -255,11 +246,6 @@ const VALID_REL_TYPES = new Set([
   "many-to-many",
 ]);
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Safe JSON parser with markdown fence stripping fallback.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
@@ -276,9 +262,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single model object.
- */
 function validateModel(model, fallbackFile) {
   if (!model || typeof model !== "object") return null;
 
@@ -355,9 +338,6 @@ function normalizeConstraint(c) {
   };
 }
 
-/**
- * Validate and normalise a single relationship object.
- */
 function validateRelationship(rel) {
   if (!rel || typeof rel !== "object") return null;
 
@@ -378,9 +358,6 @@ function validateRelationship(rel) {
   };
 }
 
-/**
- * Detect if a model has timestamps by checking its fields array.
- */
 function detectTimestamps(fields) {
   if (!Array.isArray(fields)) return false;
   const names = fields.map((f) => String(f.name ?? "").toLowerCase());
@@ -389,13 +366,9 @@ function detectTimestamps(fields) {
   );
 }
 
-/**
- * Infer domain tags from model name and file path.
- */
 function inferModelTags(name, file) {
   const tags = new Set();
 
-  // From camelCase/PascalCase name breakdown
   const words = name
     .replace(/([A-Z])/g, " $1")
     .trim()
@@ -404,8 +377,7 @@ function inferModelTags(name, file) {
     .filter((w) => w.length > 2);
   words.forEach((w) => tags.add(w));
 
-  // From file path
-  const segments = file.split("/").filter(Boolean).slice(0, -1); // exclude filename
+  const segments = file.split("/").filter(Boolean).slice(0, -1);
   segments.forEach((s) => {
     const clean = s.replace(/[-_]/g, " ").toLowerCase();
     if (!["src", "app", "models", "schemas", "entities"].includes(clean)) {
@@ -416,10 +388,6 @@ function inferModelTags(name, file) {
   return Array.from(tags).slice(0, 4);
 }
 
-/**
- * Infer ORM from file content heuristics.
- * Used as fallback when LLM doesn't return the orm field.
- */
 function inferOrm(content) {
   if (!content) return "other";
   if (/model\s+\w+\s*\{|@default\(|@@index/i.test(content)) return "prisma";
@@ -441,9 +409,6 @@ function inferOrm(content) {
   return "other";
 }
 
-/**
- * Infer target database from ORM and content.
- */
 function inferDatabase(orm, content) {
   if (!content) return "unknown";
   if (/mongodb|mongoose/i.test(content)) return "mongodb";
@@ -452,13 +417,10 @@ function inferDatabase(orm, content) {
   if (/sqlite/i.test(content)) return "sqlite";
   if (/mssql|sqlserver/i.test(content)) return "mssql";
   if (orm === "mongoose") return "mongodb";
-  if (orm === "activerecord") return "unknown"; // depends on config
+  if (orm === "activerecord") return "unknown";
   return "unknown";
 }
 
-/**
- * Score completeness of a model for deduplication merge.
- */
 function scoreModel(model) {
   let score = 0;
   if (model.description) score += 2;
@@ -474,9 +436,6 @@ function scoreModel(model) {
   return score;
 }
 
-/**
- * Score completeness of a relationship for dedup merge.
- */
 function scoreRelationship(rel) {
   let score = 0;
   if (rel.through) score += 2;
@@ -487,9 +446,6 @@ function scoreRelationship(rel) {
   return score;
 }
 
-/**
- * LLM call with exponential back-off retry.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -505,10 +461,6 @@ async function llmCallWithRetry({
   }
 }
 
-/**
- * Attempt to extract relationships from model fields statically.
- * Catches relationships the LLM may miss when snippets are truncated.
- */
 function extractStaticRelationships(models) {
   const rels = [];
   const modelNames = new Set(models.map((m) => m.name));
@@ -519,7 +471,6 @@ function extractStaticRelationships(models) {
       const target = field.relation;
       if (!modelNames.has(target)) continue;
 
-      // Determine type from field name conventions
       const isMany =
         field.name.endsWith("s") ||
         field.name.includes("List") ||
@@ -536,7 +487,7 @@ function extractStaticRelationships(models) {
         cascade: "",
         optional: !field.required,
         description: `${model.name} ${isMany ? "has many" : "belongs to"} ${target}`,
-        _static: true, // internal marker
+        _static: true,
       });
     }
   }
@@ -544,9 +495,6 @@ function extractStaticRelationships(models) {
   return rels;
 }
 
-/**
- * Build a summary report from extracted models and relationships.
- */
 function buildSummary(models, relationships) {
   const ormDist = {};
   const dbDist = {};
@@ -588,19 +536,12 @@ function buildSummary(models, relationships) {
   };
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
-// ─── Heuristic Model Extraction ──────────────────────────────────
-// Used in fastMode : extracts model names and basic field shapes via
-// regex pattern matching, zero LLM cost.
-
 function heuristicExtractModels(files, projectMap) {
   const rawModels = [];
 
   for (const file of files) {
     const content = file.content;
 
-    // Prisma: model ModelName { ... }
     const prismaModels = [...content.matchAll(/^model\s+(\w+)\s*\{([^}]*)\}/gm)];
     for (const m of prismaModels) {
       const name = m[1];
@@ -614,19 +555,16 @@ function heuristicExtractModels(files, projectMap) {
       rawModels.push(validateModel({ name, file: file.path, line: null, orm: "prisma", database: "unknown", table: "", description: `${name} Prisma model`, fields, indexes: [], constraints: [], hooks: [], soft_delete: body.includes("deletedAt"), timestamps: body.includes("createdAt"), tags: [] }, file.path));
     }
 
-    // Mongoose: mongoose.model('ModelName', ...) or new Schema({ })
     const mongooseModels = [...content.matchAll(/mongoose\.model\s*\(\s*['"`](\w+)['"`]/gi)];
     for (const m of mongooseModels) {
       rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "mongoose", database: "mongodb", table: m[1].toLowerCase() + "s", description: `${m[1]} Mongoose model`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: /timestamps\s*:\s*true/.test(content), tags: [] }, file.path));
     }
 
-    // TypeORM: @Entity() class ModelName
     const typeormModels = [...content.matchAll(/@Entity\s*\([^)]*\)\s*(?:export\s+)?class\s+(\w+)/gi)];
     for (const m of typeormModels) {
       rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: "typeorm", database: "unknown", table: "", description: `${m[1]} TypeORM entity`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: content.includes("DeleteDateColumn"), timestamps: content.includes("CreateDateColumn"), tags: [] }, file.path));
     }
 
-    // Zod/Yup/Joi: const schemaName = z.object({ or Yup.object({
     const zodSchemas = [...content.matchAll(/(?:const|let)\s+(\w+Schema|\w+Dto)\s*=\s*(?:z|Yup|yup|Joi|joi)\.object\s*\(/gi)];
     for (const m of zodSchemas) {
       rawModels.push(validateModel({ name: m[1], file: file.path, line: null, orm: /Yup|yup/.test(content) ? "yup" : /Joi|joi/.test(content) ? "joi" : "zod", database: "unknown", table: "", description: `${m[1]} validation schema`, fields: [], indexes: [], constraints: [], hooks: [], soft_delete: false, timestamps: false, tags: ["validation"] }, file.path));
@@ -639,7 +577,6 @@ function heuristicExtractModels(files, projectMap) {
 export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
-  // ── 1. Filter to schema-relevant files ────────────────────────
   const schemaFiles = files
     .filter((f) => {
       if (!f?.path || !f?.content) return false;
@@ -652,7 +589,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
         PATH_REGEX.test(f.path)
       );
     })
-    // Prioritise files flagged as has_db or critical by Agent 1
+
     .sort((a, b) => {
       const metaA = projectMap?.find((m) => m.path === a.path);
       const metaB = projectMap?.find((m) => m.path === b.path);
@@ -675,7 +612,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     };
   }
 
-  // ── fastMode: heuristic regex extraction (zero LLM cost) ──────
   if (fastMode) {
     notify(`Extracting models via heuristics…`, `${schemaFiles.length} schema files (fast mode)`);
     const rawModels = heuristicExtractModels(schemaFiles, projectMap);
@@ -697,7 +633,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     `Processing in ${totalBatches} batch${totalBatches > 1 ? "es" : ""}`,
   );
 
-  // ── 2. Extract models and relationships batch by batch ─────────
   const rawModels = [];
   const rawRelationships = [];
   const batchErrors = [];
@@ -738,10 +673,9 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
         continue;
       }
 
-      // Process models
       if (Array.isArray(parsed.models)) {
         for (const model of parsed.models) {
-          // Match file back to correct batch file
+
           const matchedFile = batch.find((f) =>
             model.file
               ? f.path.endsWith(model.file) || model.file.endsWith(f.path)
@@ -752,7 +686,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
               ? batch[0].path
               : matchedFile?.path || model.file || batch[0].path;
 
-          // Enrich with static inference if LLM missed orm/database
           const enriched = {
             ...model,
             orm:
@@ -773,7 +706,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
         }
       }
 
-      // Process relationships
       if (Array.isArray(parsed.relationships)) {
         for (const rel of parsed.relationships) {
           const validated = validateRelationship(rel);
@@ -785,7 +717,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     }
   }
 
-  // ── 3. Deduplicate models : keep the most complete version ────
   const modelMap = new Map();
 
   for (const model of rawModels) {
@@ -793,7 +724,7 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     if (!existing) {
       modelMap.set(model.name, model);
     } else {
-      // Merge fields from both versions
+
       const mergedFields = mergeFields(existing.fields, model.fields);
       const winner =
         scoreModel(model) >= scoreModel(existing) ? model : existing;
@@ -805,15 +736,13 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     a.name.localeCompare(b.name),
   );
 
-  // ── 4. Extract static relationships from model fields ─────────
   const staticRels = extractStaticRelationships(models);
 
-  // ── 5. Deduplicate relationships : keep the richer version ────
   const relMap = new Map();
 
   const allRels = [...rawRelationships, ...staticRels];
   for (const rel of allRels) {
-    // Key includes direction : User→Post (one-to-many) and Post→User (many-to-one) are different
+
     const key = `${rel.from}→${rel.to}:${rel.type}`;
     const existing = relMap.get(key);
 
@@ -826,19 +755,16 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
     }
   }
 
-  // Strip internal _static marker before returning
   const relationships = Array.from(relMap.values())
     .map(({ _static, ...rel }) => rel)
     .sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to));
 
-  // ── 6. Post-process: infer missing timestamps on all models ───
   for (const model of models) {
     if (!model.timestamps) {
       model.timestamps = detectTimestamps(model.fields);
     }
   }
 
-  // ── 7. Build summary ──────────────────────────────────────────
   const summary = buildSummary(models, relationships);
 
   if (batchErrors.length > 0) {
@@ -869,12 +795,6 @@ export async function schemaAnalyserAgent({ files, projectMap, emit, fastMode = 
   };
 }
 
-// ─── Field Merge Helper ───────────────────────────────────────────
-
-/**
- * Merge two field arrays from duplicate model extractions.
- * Union by field name : keeps the more complete version of each field.
- */
 function mergeFields(fieldsA, fieldsB) {
   const fieldMap = new Map();
 
@@ -883,7 +803,7 @@ function mergeFields(fieldsA, fieldsB) {
     if (!existing) {
       fieldMap.set(f.name, f);
     } else {
-      // Keep the version with more data
+
       const scoreF =
         (f.description ? 2 : 0) +
         (f.db_type ? 1 : 0) +

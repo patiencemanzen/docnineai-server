@@ -1,10 +1,4 @@
-// ===================================================================
-// Agent 5: Doc Writer (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
-
-// ─── System Prompts ───────────────────────────────────────────────
 
 const README_SYSTEM_PROMPT = `You are a senior technical writer who specializes in open-source and professional software documentation.
 
@@ -103,8 +97,6 @@ Write a structured Markdown component reference document based on the provided c
 - Keep each component entry tight : no padding
 - If deprecated, add a ⚠️ DEPRECATED badge after the name`;
 
-// ─── Context Builders ─────────────────────────────────────────────
-
 function buildReadmeContext({
   meta,
   techStack,
@@ -118,7 +110,7 @@ function buildReadmeContext({
   securitySummary,
   keyFiles,
 }) {
-  // Ensure all inputs are safe
+
   meta = meta || {};
   techStack = techStack || [];
   endpoints = endpoints || [];
@@ -126,7 +118,6 @@ function buildReadmeContext({
   components = components || [];
   structure = structure || {};
 
-  // Build a richer endpoint summary using the new schema from Agent 2
   const endpointSummary = endpoints.slice(0, 15).map((e) => ({
     method: e.method || "UNKNOWN",
     path: e.path || "/",
@@ -135,7 +126,6 @@ function buildReadmeContext({
     tags: e.tags || [],
   }));
 
-  // Build richer model summary
   const modelSummary = models.slice(0, 15).map((m) => ({
     name: m.name || "Unknown",
     description: m.description || "",
@@ -146,7 +136,6 @@ function buildReadmeContext({
     })),
   }));
 
-  // Summarise structure as folder → count map
   const structureSummary = Object.fromEntries(
     Object.entries(structure || {}).map(([role, files]) => [
       role,
@@ -154,7 +143,6 @@ function buildReadmeContext({
     ]),
   );
 
-  // Infer key features from components and endpoints
   const inferredFeatures = [
     ...new Set([
       ...(components || [])
@@ -203,7 +191,7 @@ function buildInternalContext({
   keyFiles,
   testFrameworks,
 }) {
-  // Group components by type for richer context
+
   const componentsByType = {};
   for (const c of components || []) {
     if (!componentsByType[c.type]) componentsByType[c.type] = [];
@@ -222,7 +210,6 @@ function buildInternalContext({
     });
   }
 
-  // Top relationships (highest value : most connected nodes first)
   const relSummary = (relationships || []).slice(0, 30).map((r) => ({
     from: r.from,
     type: r.type,
@@ -230,7 +217,6 @@ function buildInternalContext({
     through: r.through || null,
   }));
 
-  // Structure as folder → file count
   const structureSummary = Object.fromEntries(
     Object.entries(structure || {}).map(([role, files]) => [
       role,
@@ -238,7 +224,6 @@ function buildInternalContext({
     ]),
   );
 
-  // Auth-required endpoints give architectural hints
   const authEndpoints = (endpoints || [])
     .filter((e) => e.auth?.required || e.auth)
     .slice(0, 5)
@@ -266,7 +251,7 @@ function buildInternalContext({
 }
 
 function buildComponentRefContext(components) {
-  // Pass full component data : the LLM needs all fields for a proper reference
+
   const grouped = {};
   const typeOrder = [
     "service",
@@ -308,7 +293,6 @@ function buildComponentRefContext(components) {
     });
   }
 
-  // Sort each group alphabetically
   for (const type of Object.keys(grouped)) {
     grouped[type].sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -316,19 +300,12 @@ function buildComponentRefContext(components) {
   return JSON.stringify({ grouped, typeOrder }, null, 2);
 }
 
-// ─── Static Builders ──────────────────────────────────────────────
-
-/**
- * Build a rich API reference from the improved Agent 2 schema.
- * Fully static : no LLM cost.
- */
 export function buildApiReference(endpoints) {
   if (!endpoints?.length)
     return "# API Reference\n\nNo API endpoints detected.\n";
 
   let md = "# API Reference\n\n";
 
-  // Summary stats
   const authCount = endpoints.filter((e) => e.auth?.required || e.auth).length;
   const methodCount = endpoints.reduce((acc, e) => {
     acc[e.method] = (acc[e.method] ?? 0) + 1;
@@ -344,7 +321,6 @@ export function buildApiReference(endpoints) {
   if (deprecatedCount) md += ` · ⚠️ ${deprecatedCount} deprecated`;
   md += "\n\n";
 
-  // Group by tag then by path prefix as fallback
   const grouped = {};
   for (const ep of endpoints) {
     const tag =
@@ -372,7 +348,6 @@ export function buildApiReference(endpoints) {
         md += "\n\n";
       }
 
-      // Auth block
       const authRequired = ep.auth?.required ?? ep.auth ?? false;
       const authType = ep.auth?.type || (authRequired ? "required" : "none");
       const authRoles = ep.auth?.roles || [];
@@ -381,17 +356,14 @@ export function buildApiReference(endpoints) {
         md += ` · Roles: ${authRoles.map((r) => `\`${r}\``).join(", ")}`;
       md += "\n\n";
 
-      // Middleware
       if (ep.middleware?.length) {
         md += `**Middleware:** ${ep.middleware.map((m) => `\`${m}\``).join(", ")}\n\n`;
       }
 
-      // Rate limit
       if (ep.rate_limit) {
         md += `**Rate Limit:** \`${ep.rate_limit}\`\n\n`;
       }
 
-      // Request headers
       if (ep.request?.headers?.length) {
         md += `**Headers:**\n\n| Name | Type | Required | Description |\n|------|------|----------|-------------|\n`;
         ep.request.headers.forEach((h) => {
@@ -400,7 +372,6 @@ export function buildApiReference(endpoints) {
         md += "\n";
       }
 
-      // Request parameters
       if (ep.request?.params?.length) {
         md += `**Parameters:**\n\n| Name | In | Type | Required | Description | Validation |\n|------|-----|------|----------|-------------|------------|\n`;
         ep.request.params.forEach((p) => {
@@ -409,12 +380,10 @@ export function buildApiReference(endpoints) {
         md += "\n";
       }
 
-      // Body schema
       if (ep.request?.body_schema) {
         md += `**Request Body:** \`${ep.request.body_schema}\`\n\n`;
       }
 
-      // Responses
       const success = ep.response?.success;
       if (success) {
         md += `**Response \`${success.status}\`:** ${success.description || "Success"}`;
@@ -439,22 +408,16 @@ export function buildApiReference(endpoints) {
   return md;
 }
 
-/**
- * Build schema documentation from model and relationship data.
- * Fully static : no LLM cost.
- */
 export function buildSchemaDocs(models, relationships) {
   if (!models?.length) return "# Data Models\n\nNo data models detected.\n";
 
   let md = "# Data Models\n\n";
 
-  // Summary
   md += `> **${models.length} models detected**`;
   if (relationships?.length)
     md += ` · **${relationships.length} relationships**`;
   md += "\n\n";
 
-  // Table of contents
   md += "## Models\n\n";
   md += models.map((m) => `- [${m.name}](#${m.name.toLowerCase()})`).join("\n");
   md += "\n\n";
@@ -463,11 +426,9 @@ export function buildSchemaDocs(models, relationships) {
     md += `## ${model.name}\n\n`;
     if (model.description) md += `${model.description}\n\n`;
 
-    // Source file / table name hints
     if (model.file) md += `**File:** \`${model.file}\`\n\n`;
     if (model.table) md += `**Table:** \`${model.table}\`\n\n`;
 
-    // Fields
     if (model.fields?.length) {
       md += `### Fields\n\n| Field | Type | Required | Unique | Default | Description |\n`;
       md += `|-------|------|----------|--------|---------|-------------|\n`;
@@ -477,7 +438,6 @@ export function buildSchemaDocs(models, relationships) {
       md += "\n";
     }
 
-    // Indexes
     if (model.indexes?.length) {
       md += `### Indexes\n\n| Name | Fields | Unique |\n|------|--------|--------|\n`;
       model.indexes.forEach((idx) => {
@@ -489,7 +449,6 @@ export function buildSchemaDocs(models, relationships) {
       md += "\n";
     }
 
-    // Inline relationships for this model
     const modelRels = (relationships || []).filter(
       (r) => r.from === model.name || r.to === model.name,
     );
@@ -506,7 +465,6 @@ export function buildSchemaDocs(models, relationships) {
     md += "---\n\n";
   }
 
-  // Global relationship overview
   if (relationships?.length) {
     md += `## Relationship Overview\n\n`;
     md += `| From | Type | To | Via |\n|------|------|----|-----|\n`;
@@ -519,10 +477,6 @@ export function buildSchemaDocs(models, relationships) {
   return md;
 }
 
-/**
- * Build a component reference index statically.
- * Used as a fallback or supplement to the LLM-written version.
- */
 export function buildComponentIndex(components) {
   if (!components?.length)
     return "# Component Index\n\nNo components documented.\n";
@@ -582,11 +536,6 @@ export function buildComponentIndex(components) {
   return md;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Validate that LLM output looks like Markdown and not JSON or an error.
- */
 function validateMarkdown(raw, docName) {
   console.log(
     `[validateMarkdown] Validating ${docName}: raw length=${raw?.length || 0}`,
@@ -620,9 +569,6 @@ function validateMarkdown(raw, docName) {
   return trimmed;
 }
 
-/**
- * LLM call with retry and back-off.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -658,8 +604,6 @@ async function llmCallWithRetry({
   }
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function docWriterAgent({
   meta,
   techStack,
@@ -671,14 +615,14 @@ export async function docWriterAgent({
   entryPoints,
   owner,
   repo,
-  // Enhanced context from improved agents (used in prompts)
+
   layerMap,
   flagsSummary,
   architectureHint,
   keyFiles,
   testFrameworks,
   securitySummary,
-  // Vercel fast mode: only generate README (1 LLM call), skip internal docs + component ref
+
   fastMode = false,
   emit,
 }) {
@@ -698,9 +642,6 @@ export async function docWriterAgent({
     repo,
   });
 
-  // ── 1. Static docs FIRST (zero LLM cost, instant) ────────────
-  // Build these before any LLM calls so they're available even if
-  // we timeout later during LLM generation.
   notify(
     "Building static documentation…",
     `${endpoints?.length || 0} endpoints · ${models?.length || 0} models · ${components?.length || 0} components`,
@@ -709,9 +650,6 @@ export async function docWriterAgent({
   docs.schemaDocs = buildSchemaDocs(models || [], relationships || []);
   docs.componentIndex = buildComponentIndex(components || []);
 
-  // ── 2a. fastMode: sequential README-only (1 LLM call, fits in Vercel budget) ──
-  // On Vercel (60s limit, 5000 TPM), we skip internal docs and component ref LLM
-  // calls to ensure the README : the most user-visible output : is always generated.
   if (fastMode) {
     notify("Writing README.md…", "fast mode : 1 LLM call within Vercel budget");
     try {
@@ -732,9 +670,9 @@ export async function docWriterAgent({
     }
     docs.internalDocs = "# Internal Developer Docs\n\n> ⚠️ Skipped in fast mode : regenerate without Vercel timeout constraints.\n";
     docs.componentRef = buildComponentIndex(components || []);
-    // Fall through to summary
+
   } else {
-    // ── 2b. Full mode: README + Internal Docs in parallel ─────────
+
     notify("Writing README.md and internal docs…", "parallel LLM generation");
 
     const readmePromise = (async () => {
@@ -791,7 +729,6 @@ export async function docWriterAgent({
       notify("⚠ Internal docs generation failed", internalResult.error.message);
     }
 
-    // ── 3. Component Reference (LLM-written, rich) ────────────────
     if (components?.length > 0) {
       const chunkSize = 30;
       const chunks = [];
@@ -826,7 +763,6 @@ export async function docWriterAgent({
     }
   }
 
-  // ── 4. Summary ────────────────────────────────────────────────
   const lineCount = (s) => (s || "").split("\n").length;
   const summary = {
     readme: lineCount(docs.readme),
@@ -860,12 +796,6 @@ export async function docWriterAgent({
   };
 }
 
-// ─── Fallback README Builder ──────────────────────────────────────
-
-/**
- * Minimal static README used when LLM generation fails entirely.
- * Better than returning nothing.
- */
 function buildFallbackReadme({ meta, owner, repo, techStack, endpoints }) {
   const name = meta?.name || repo || "Project";
   const desc = meta?.description || "No description available.";

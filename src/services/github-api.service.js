@@ -1,6 +1,3 @@
-// =============================================================
-// GitHub API client.
-// =============================================================
 
 import axios from "axios";
 import dotenv from "dotenv";
@@ -14,15 +11,10 @@ const MAX_KB = parseInt(process.env.MAX_FILE_SIZE_KB || "50");
 const SKIP_EXT =
   /\.(png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|pdf|zip|tar|gz|mp4|mp3|bin|exe|dll|so|dylib|lock)$/i;
 
-// ── File relevance scoring for large-repo selection ───────────
-// When a repo has more files than MAX_FILES we need to pick the most
-// important ones. Score 3 = manifest/entry, 2 = source code, 1 = other,
-// 0 = low-value (tests, dist, generated). Sorting by score descending
-// before .slice(MAX_FILES) ensures controllers, models and routes are
-// always included even in repos with thousands of files.
+
 
 const HIGH_PRIORITY = [
-  /^(?:src\/)?(?:main|app|server|index)\.[jt]sx?$/i, // root entry points
+  /^(?:src\/)?(?:main|app|server|index)\.[jt]sx?$/i,
   /^(?:main|app|server|index)\.[jt]sx?$/i,
   /package\.json$/i,
   /requirements\.txt$/i,
@@ -80,24 +72,17 @@ function scoreFilePath(path) {
   return 1;
 }
 
-/**
- * Select the most relevant files from a candidate list.
- * Files are sorted by relevance score descending so the cap always
- * keeps manifests, controllers, models and routes over low-value files.
- */
+
 function selectRelevantFiles(files, cap) {
   return files
     .map((f) => ({ ...f, _score: scoreFilePath(f.path) }))
-    .filter((f) => f._score > 0) // drop low-priority (tests, dist, generated)
+    .filter((f) => f._score > 0)
     .sort((a, b) => b._score - a._score)
     .slice(0, cap)
-    .map(({ _score, ...f }) => f); // strip internal score field
+    .map(({ _score, ...f }) => f);
 }
 
-// ── Download concurrency semaphore ────────────────────────────
-// 10 concurrent requests eliminates the ~30s sequential download
-// penalty for 100-file repos while staying well within GitHub API
-// rate limits (5,000 authenticated requests per hour).
+
 const DOWNLOAD_CONCURRENCY = 10;
 let _dlActive = 0;
 const _dlQueue = [];
@@ -128,14 +113,14 @@ function ghHeaders(token = null) {
   };
 }
 
-// ── URL parsing ───────────────────────────────────────────────
+
 export function parseRepoUrl(url) {
   const match = url.match(/github\.com\/([^/]+)\/([^/?.]+)/);
   if (!match) throw new Error(`Invalid GitHub URL: ${url}`);
   return { owner: match[1], repo: match[2] };
 }
 
-// ── Repo metadata ─────────────────────────────────────────────
+
 export async function getRepoMeta(owner, repo, token = null) {
   const { data } = await axios.get(`${GH_API}/repos/${owner}/${repo}`, {
     headers: ghHeaders(token),
@@ -152,9 +137,7 @@ export async function getRepoMeta(owner, repo, token = null) {
   };
 }
 
-// ── Commit SHA resolution ─────────────────────────────────────
-// Returns the git commit SHA for the HEAD of a branch.
-// This is the canonical identifier we store as lastDocumentedCommit.
+
 export async function getCommitSha(owner, repo, branch, token = null) {
   const { data } = await axios.get(
     `${GH_API}/repos/${owner}/${repo}/commits/${branch}`,
@@ -163,7 +146,7 @@ export async function getCommitSha(owner, repo, branch, token = null) {
   return data.sha;
 }
 
-// ── File tree (original : path + size only) ───────────────────
+
 
 export async function getFileTree(owner, repo, branch, token = null) {
   const { data } = await axios.get(
@@ -180,11 +163,7 @@ export async function getFileTree(owner, repo, branch, token = null) {
     .map((item) => ({ path: item.path, size: item.size }));
 }
 
-// ── File tree with blob SHAs ──────────────────────────────────
-// Returns the full tree including per-file git blob SHAs.
-// These SHAs are stable : they only change when file content changes.
-// This is how we detect what changed between two pipeline runs
-// without needing the GitHub compare API.
+
 export async function getFileTreeWithSha(owner, repo, branch, token = null) {
   const { data } = await axios.get(
     `${GH_API}/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
@@ -198,17 +177,7 @@ export async function getFileTreeWithSha(owner, repo, branch, token = null) {
     .map((item) => ({ path: item.path, sha: item.sha, size: item.size }));
 }
 
-// ── Compute file diff from stored manifest ────────────────────
-// Compares the current GitHub tree (with SHAs) against the project's
-// stored fileManifest to find what changed since last documentation run.
-//
-// Returns:
-//   added    : new files not in manifest
-//   modified : files whose blob SHA changed
-//   removed  : files in manifest but no longer in tree
-//   unchanged : files with matching SHAs (safe to skip)
-//
-// SKIP_EXT files are filtered out : agents don't process them anyway.
+
 export async function computeFileDiff(
   owner,
   repo,
@@ -221,7 +190,7 @@ export async function computeFileDiff(
     (f) => !SKIP_EXT.test(f.path) && f.size < MAX_KB * 1024,
   );
 
-  // Build lookup maps
+
   const manifestMap = new Map(storedManifest.map((f) => [f.path, f]));
   const currentMap = new Map(eligible.map((f) => [f.path, f]));
 
@@ -230,7 +199,7 @@ export async function computeFileDiff(
   const removed = [];
   const unchanged = [];
 
-  // Check current tree against stored manifest
+
   for (const [path, cur] of currentMap) {
     const stored = manifestMap.get(path);
     if (!stored) {
@@ -242,7 +211,7 @@ export async function computeFileDiff(
     }
   }
 
-  // Files in manifest that are no longer in the tree
+
   for (const [path] of manifestMap) {
     if (!currentMap.has(path)) {
       removed.push({ path, status: "removed" });
@@ -252,7 +221,7 @@ export async function computeFileDiff(
   return { added, modified, removed, unchanged, currentTree: eligible };
 }
 
-// ── Individual file content ───────────────────────────────────
+
 
 export async function getFileContent(owner, repo, filePath, token = null) {
   try {
@@ -265,13 +234,12 @@ export async function getFileContent(owner, repo, filePath, token = null) {
     }
     return data.content || "";
   } catch (err) {
-    if (err.response?.status === 403) return ""; // binary / too large
+    if (err.response?.status === 403) return "";
     throw err;
   }
 }
 
-// ── Batch-fetch file contents from a list of paths ────────────
-// Used by incremental sync to fetch only changed files.
+
 export async function fetchFileContents(
   owner,
   repo,
@@ -294,7 +262,7 @@ export async function fetchFileContents(
   return files;
 }
 
-// ── Full repo fetch (original : used for full pipeline runs) ──
+
 export async function fetchRepoFiles(repoUrl, token = null) {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const meta = await getRepoMeta(owner, repo, token);
@@ -323,7 +291,7 @@ export async function fetchRepoFiles(repoUrl, token = null) {
   return { meta, files, owner, repo };
 }
 
-// ── Full repo fetch with progress events ─────────────────────
+
 export async function fetchRepoFilesWithProgress(
   repoUrl,
   onProgress,

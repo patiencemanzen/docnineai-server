@@ -1,11 +1,3 @@
-/**
- * Human-readable activity copy. Used when writing ActivityLog.summary
- * and as a fallback for older rows that have no summary.
- *
- * Sentences are actor-prefixed except pipeline/system outcomes, which
- * read as project events ("Documentation finished for Acme/api").
- */
-
 const SECTION_LABELS = {
   readme: "README",
   apiReference: "API reference",
@@ -37,10 +29,6 @@ function projectPhrase(projectName, { asObject = false } = {}) {
   return asObject ? name : ` for ${name}`;
 }
 
-/**
- * @param {{ action: string, actorName?: string, actorEmail?: string, projectName?: string, metadata?: object, isSelf?: boolean }} log
- * @returns {string}
- */
 export function formatActivitySummary(log) {
   const isSelf = !!log.isSelf;
   const actor =

@@ -1,20 +1,9 @@
-/**
- * ProjectChangeLog Service
- *
- * Handles logging all project changes and exports for audit trail
- * and user-visible version history.
- */
+
 
 import ProjectChangeLog from "../models/ProjectChangeLog.js";
 import crypto from "crypto";
 
-/**
- * Log a project change
- * @param {string} projectId - Project ID
- * @param {string} userId - User ID
- * @param {string} changeType - Type of change (see ProjectChangeLog schema)
- * @param {object} options - Additional options
- */
+
 export async function logProjectChange(
   projectId,
   userId,
@@ -48,14 +37,7 @@ export async function logProjectChange(
   }
 }
 
-/**
- * Log an export activity
- * @param {string} projectId - Project ID
- * @param {string} userId - User ID
- * @param {string} exportType - Type of export (pdf, yaml, notion, google_docs)
- * @param {object} exportData - Export data with tab info
- * @param {object} result - Result from export service
- */
+
 export async function logExport(
   projectId,
   userId,
@@ -89,18 +71,11 @@ export async function logExport(
     });
   } catch (err) {
     console.error("Error logging export:", err);
-    // Don't throw
+
   }
 }
 
-/**
- * Log a section edit
- * @param {string} projectId - Project ID
- * @param {string} userId - User ID
- * @param {string} section - Section name
- * @param {string} previousContent - Previous content
- * @param {string} newContent - New content
- */
+
 export async function logSectionEdit(
   projectId,
   userId,
@@ -126,12 +101,7 @@ export async function logSectionEdit(
   }
 }
 
-/**
- * Log a section acceptance (AI content)
- * @param {string} projectId - Project ID
- * @param {string} userId - User ID
- * @param {string} section - Section name
- */
+
 export async function logSectionAccept(projectId, userId, section) {
   try {
     await logProjectChange(projectId, userId, "section_accepted", {
@@ -143,12 +113,7 @@ export async function logSectionAccept(projectId, userId, section) {
   }
 }
 
-/**
- * Get project change history
- * @param {string} projectId - Project ID
- * @param {number} limit - Max records to return (default: 50)
- * @param {number} skip - Skip N records (for pagination)
- */
+
 export async function getProjectHistory(projectId, limit = 50, skip = 0) {
   try {
     const logs = await ProjectChangeLog.find({ projectId })
@@ -166,10 +131,7 @@ export async function getProjectHistory(projectId, limit = 50, skip = 0) {
   }
 }
 
-/**
- * Clear old logs (admin/maintenance)
- * @param {Date} beforeDate - Delete logs before this date
- */
+
 export async function clearOldLogs(beforeDate) {
   try {
     const result = await ProjectChangeLog.deleteMany({

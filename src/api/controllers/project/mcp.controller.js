@@ -4,37 +4,14 @@ import { DocumentVersion } from '../../../models/DocumentVersion.js';
 import { Portal } from '../../../models/Portal.js';
 import * as projectService from '../../services/projects/project.service.js';
 
-/**
- * MCP Server Controller (Fully Functional)
- * Implements all 12 MCP tools that expose Docnine project data to AI assistants.
- * Uses direct database queries and business logic instead of circular HTTP calls.
- * 
- * SECURITY: All tool invocations verify user has project access (owner or shared member).
- * 
- * Tools:
- *  1. get_project_docs - Full documentation
- *  2. get_api_reference - API endpoints
- *  3. get_schema_docs - Data models
- *  4. get_component_docs - Components & services
- *  5. ask_codebase - Q&A (via Docnine agents)
- *  6. search_docs - Semantic search
- *  7. get_security_audit - OWASP findings
- *  8. get_critical_findings - Critical/High severity only
- *  9. get_security_score - A-F grade
- * 10. list_projects - All projects
- * 11. get_project_summary - Tech stack & architecture
- * 12. get_diff - Recent changes
- */
+
 
 export class MCPController {
   static projectIdFrom(req) {
     return req.params.id || req.params.projectId;
   }
 
-  /**
-   * Verify user has access to project (owner or shared member)
-   * @throws {Error} If user cannot access project
-   */
+  
   static async verifyProjectAccess(projectId, userId) {
     const project = await Project.findById(projectId);
     if (!project) {
@@ -43,7 +20,7 @@ export class MCPController {
       throw err;
     }
 
-    // Check if owner
+
     const userIdStr = userId.toString();
     const projectOwnerStr = project.userId?.toString();
     
@@ -51,7 +28,7 @@ export class MCPController {
       return project;
     }
 
-    // Check if shared member
+
     const share = await ProjectShare.findOne({
       projectId,
       inviteeUserId: userId,
@@ -62,16 +39,14 @@ export class MCPController {
       return project;
     }
 
-    // Access denied
+
     const err = new Error(
       'Access denied. You are not authorized to access this project.'
     );
     err.statusCode = 403;
     throw err;
   }
-  /**
-   * Get MCP server info for a project
-   */
+  
   static async getMCPInfo(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
@@ -81,7 +56,7 @@ export class MCPController {
         return res.status(404).json({ error: 'Project not found' });
       }
 
-      // Verify access (owner or shared member)
+
       const userId = (req.user?.userId || req.user?._id)?.toString();
       const isOwner = project.userId?.toString() === userId;
 
@@ -127,10 +102,7 @@ export class MCPController {
     }
   }
 
-  /**
-   * Call MCP tool for a project
-   * Routes to the appropriate tool handler based on tool name
-   */
+  
   static async callTool(req, res) {
     try {
       const { tool: toolParam } = req.params;
@@ -140,8 +112,7 @@ export class MCPController {
         tool: toolBody,
         input: inputBody,
         projectId: bodyProjectId,
-        // Compatibility: older clients may send these fields at the top-level
-        // instead of under `input`.
+
         question,
         query,
       } = body;
@@ -153,13 +124,13 @@ export class MCPController {
         return res.status(400).json({ error: 'Tool name required' });
       }
 
-      // Access control - check if authenticated user has access
+
       const userId = req.user?.userId || req.user?._id || req.tokenAuth?.userId;
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      // Verify user can access this specific project
+
       let project;
       try {
         project = await MCPController.verifyProjectAccess(
@@ -183,7 +154,7 @@ export class MCPController {
         if (query !== undefined) input.query = query;
       }
 
-      // Tool invocation
+
       const result = await MCPController.invokeTool(
         toolName,
         input,
@@ -200,9 +171,7 @@ export class MCPController {
     }
   }
 
-  /**
-   * Implement all 12 MCP tools
-   */
+  
   static async invokeTool(toolName, input, project, userId) {
     switch (toolName) {
       case 'get_project_docs':
@@ -255,7 +224,7 @@ export class MCPController {
     }
   }
 
-  // ── Tool Implementations ──────────────────────────────────────
+
 
   static async getProjectDocs(project) {
     return {
@@ -339,7 +308,7 @@ export class MCPController {
       return { error: 'Question is required' };
     }
 
-    // Build context from generated docs; truncate each section to stay within token budget.
+
     const SECTION_LIMIT = 2000;
     const trim = (s) => (s ? s.slice(0, SECTION_LIMIT) + (s.length > SECTION_LIMIT ? '…' : '') : null);
 
@@ -386,7 +355,7 @@ export class MCPController {
       };
     }
 
-    // Simple keyword search across all documentation
+
     const allDocs = {
       readme: project.output?.readme || '',
       api: project.output?.apiReference || '',
@@ -476,13 +445,13 @@ export class MCPController {
   }
 
   static async listProjects(userId) {
-    // Owned projects
+
     const ownedProjects = await Project.find({ userId })
       .select('_id name repoName status techStack provider')
       .sort({ updatedAt: -1 })
       .limit(50);
 
-    // Shared projects (accepted invitations)
+
     const sharedEntries = await ProjectShare.find({
       inviteeUserId: userId,
       status: 'accepted',
@@ -552,7 +521,7 @@ export class MCPController {
   }
 
   static async getDiff(project) {
-    // Get recent versions to show what changed
+
     const versions = await DocumentVersion.find({
       projectId: project._id,
     })
@@ -672,15 +641,13 @@ export class MCPController {
     };
   }
 
-  /**
-   * List all available MCP tools for a project
-   */
+  
   static async listTools(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
       const userId = req.user?.userId;
 
-      // Verify the caller actually owns or is a member of this project
+
       await MCPController.verifyProjectAccess(projectId, userId);
 
       const project = await Project.findById(projectId);
@@ -771,14 +738,12 @@ export class MCPController {
     }
   }
 
-  /**
-   * Health check for MCP server
-   */
+  
   static async healthCheck(req, res) {
     try {
       const projectId = MCPController.projectIdFrom(req);
 
-      // Only confirm the project exists : do not leak project name to unauthenticated callers.
+
       const exists = await Project.exists({ _id: projectId });
       if (!exists) {
         return res.status(404).json({ status: 'unhealthy', error: 'Project not found' });

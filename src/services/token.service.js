@@ -1,14 +1,9 @@
-/**
- * API Token Service
- * Handles token generation, validation, and lifecycle management
- */
+
 
 import { APIToken } from "../models/APIToken.js";
 import { hashToken } from "../utils/crypto.util.js";
 
-/**
- * Create a new API token for a user
- */
+
 export async function createToken(
   userId,
   { name, description, scope, projectIds, expiresAt },
@@ -35,7 +30,7 @@ export async function createToken(
 
   return {
     id: token._id,
-    plainToken, // ⚠️  CRITICAL: Show only once to user
+    plainToken,
     name: token.name,
     lastChars: token.lastChars,
     scope: token.scope,
@@ -44,9 +39,7 @@ export async function createToken(
   };
 }
 
-/**
- * Get all tokens for a user (without plain tokens)
- */
+
 export async function getTokens(userId, { includeRevoked = false } = {}) {
   const query = { userId };
   if (!includeRevoked) query.isRevoked = false;
@@ -58,9 +51,7 @@ export async function getTokens(userId, { includeRevoked = false } = {}) {
   return tokens.map((t) => t.toSafeJSON());
 }
 
-/**
- * Get a single token by ID (admin/self only)
- */
+
 export async function getToken(userId, tokenId) {
   const token = await APIToken.findOne({
     _id: tokenId,
@@ -77,9 +68,7 @@ export async function getToken(userId, tokenId) {
   return token.toSafeJSON();
 }
 
-/**
- * Revoke a token (soft delete)
- */
+
 export async function revokeToken(userId, tokenId) {
   const token = await APIToken.findOne({
     _id: tokenId,
@@ -107,9 +96,7 @@ export async function revokeToken(userId, tokenId) {
   return token.toSafeJSON();
 }
 
-/**
- * Delete a token permanently
- */
+
 export async function deleteToken(userId, tokenId) {
   const result = await APIToken.deleteOne({
     _id: tokenId,
@@ -126,10 +113,7 @@ export async function deleteToken(userId, tokenId) {
   return { deleted: true };
 }
 
-/**
- * Validate a plain token and return user/scopes if valid
- * Used by middleware to authenticate API requests
- */
+
 export async function validateToken(plainToken, options = {}) {
   if (!plainToken) {
     const err = new Error("Token is required");
@@ -138,7 +122,7 @@ export async function validateToken(plainToken, options = {}) {
     throw err;
   }
 
-  // Ensure it has correct format
+
   if (!plainToken.startsWith("docnine_")) {
     const err = new Error("Invalid token format");
     err.code = "INVALID_TOKEN";
@@ -163,7 +147,7 @@ export async function validateToken(plainToken, options = {}) {
     throw err;
   }
 
-  // Check IP whitelist if configured
+
   if (options.ipAddress && token.ipWhitelist?.length > 0) {
     if (!token.ipWhitelist.includes(options.ipAddress)) {
       const err = new Error("IP address not whitelisted");
@@ -173,7 +157,7 @@ export async function validateToken(plainToken, options = {}) {
     }
   }
 
-  // Record usage
+
   await token.recordUsage(options.ipAddress);
 
   return {
@@ -185,9 +169,7 @@ export async function validateToken(plainToken, options = {}) {
   };
 }
 
-/**
- * Check if token has access to a project
- */
+
 export async function checkProjectAccess(tokenId, projectId) {
   const token = await APIToken.findById(tokenId);
 
@@ -198,9 +180,7 @@ export async function checkProjectAccess(tokenId, projectId) {
   return token.hasProjectAccess(projectId);
 }
 
-/**
- * Clean up expired tokens (cron job)
- */
+
 export async function cleanupExpiredTokens() {
   const result = await APIToken.deleteMany({
     expiresAt: { $lt: new Date() },
@@ -211,9 +191,7 @@ export async function cleanupExpiredTokens() {
   };
 }
 
-/**
- * Get token statistics for a user
- */
+
 export async function getTokenStats(userId) {
   const [total, active, revoked, expiringSoon] = await Promise.all([
     APIToken.countDocuments({ userId }),
@@ -224,7 +202,7 @@ export async function getTokenStats(userId) {
       isRevoked: false,
       expiresAt: {
         $gt: new Date(),
-        $lt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        $lt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     }),
   ]);

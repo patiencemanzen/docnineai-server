@@ -1,10 +1,4 @@
-// ===================================================================
-// Agent 2: API Extractor (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
-
-// ─── System Prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a senior API documentation engineer specializing in extracting and documenting HTTP endpoints from source code across all major frameworks (Express, Fastify, NestJS, Django, FastAPI, Laravel, Rails, etc.).
 
@@ -102,48 +96,46 @@ If no endpoints are found, return exactly: []
 - Swift (Vapor): get("/path"), post("/path"), routes(app)
 - Ruby (Rails): get '/path', post '/path', resources :resource`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const ROUTE_ROLES = new Set(["route", "controller", "entry", "handler", "api"]);
 
 const ROUTE_REGEX = new RegExp(
   [
-    // Express / Fastify / NodeJS
+
     /router\.(get|post|put|delete|patch|head|options)\s*\(/,
     /app\.(get|post|put|delete|patch|head|options)\s*\(/,
     /fastify\.(get|post|put|delete|patch|head|options)\s*\(/,
-    // NestJS decorators
+
     /@(Get|Post|Put|Delete|Patch|Head|Options|All)\s*\(/,
     /@Controller\s*\(/,
-    // FastAPI / Python
+
     /@(app|router)\.(get|post|put|delete|patch|head|options)\s*\(/,
     /@app\.(get|post|put|delete|patch)\s*\(/,
-    // Flask / Python
+
     /@(?:app|api|api_blueprint|blueprint)\.route\s*\(/,
     /@(?:require_http_method|require_GET|require_POST|require_safe)\s*\(/,
-    // Django / Python
+
     /urlpatterns\s*=|path\s*\(|re_path\s*\(/,
     /def\s+\w+\s*\(\s*request/,
-    // Laravel / PHP
+
     /Route::(get|post|put|delete|patch|resource|apiResource)\s*\(/,
     /\$router->(get|post|put|delete|patch)\s*\(/,
-    // Rails / Ruby
+
     /resources?\s+:/,
     /(get|post|put|delete|patch|destroy)\s+['"]\/[^'"]*['"]\s*,\s*to:/,
-    // Spring Boot / Java
+
     /@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*\(/,
     /@(RestController|Controller)\s*\(/,
-    // Go (Gin) / Go
+
     /router\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(/,
     /r\.(GET|POST|PUT|DELETE|PATCH)\s*\(/,
-    // Go (Echo) / Go
+
     /e\.(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(/,
     /(GET|POST|PUT|DELETE|PATCH)\s+['"]\/[^'"]*['"]/,
-    // Kotlin (Ktor) / Kotlin
+
     /routing\s*\{|get\s*\(|post\s*\(|put\s*\(|delete\s*\(|patch\s*\(/,
-    // Swift (Vapor) / Swift
+
     /routes\s*\(|app\.(get|post|put|delete|patch)\s*\(/,
-    // Generic patterns
+
     /createRouter|useRouter|mountRouter|HandleFunc/,
   ]
     .map((r) => r.source)
@@ -154,21 +146,15 @@ const ROUTE_REGEX = new RegExp(
 const PATH_REGEX = /route|controller|handler|endpoint|api/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 6000; // was 400 : far too small for real route files
+const CHARS_PER_FILE = 6000;
 const MAX_ROUTE_FILES = 40;
 const MAX_RETRIES = 2;
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Attempt JSON.parse with one retry after stripping
- * accidental markdown fences the model may emit.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    // Strip ```json ... ``` wrapper if the model added it despite instructions
+
     const stripped = raw
       .replace(/^```(?:json)?\s*/i, "")
       .replace(/\s*```$/i, "")
@@ -181,10 +167,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single extracted endpoint object.
- * Returns null if the object is too malformed to be useful.
- */
 function validateEndpoint(ep, fallbackFile) {
   if (!ep || typeof ep !== "object") return null;
 
@@ -203,7 +185,6 @@ function validateEndpoint(ep, fallbackFile) {
   const path = String(ep.path ?? "").trim();
   if (!path || !path.startsWith("/")) return null;
 
-  // Normalise nested/missing fields with safe defaults
   return {
     method,
     path,
@@ -237,10 +218,6 @@ function validateEndpoint(ep, fallbackFile) {
   };
 }
 
-/**
- * Infer tags from path segments or file name when
- * the model didn't provide them.
- */
 function inferTags(path, file) {
   const fromPath = path
     .split("/")
@@ -254,9 +231,6 @@ function inferTags(path, file) {
   return fromFile ? [fromFile] : [];
 }
 
-/**
- * LLM call with retry on failure.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -267,34 +241,29 @@ async function llmCallWithRetry({
       return await llmCall({ systemPrompt, userContent });
     } catch (err) {
       if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 500 * attempt)); // back-off
+      await new Promise((r) => setTimeout(r, 500 * attempt));
     }
   }
 }
 
-// ─── Heuristic Endpoint Extraction ───────────────────────────────
-// Used in fastMode (Vercel) : no LLM needed. Extracts method + path
-// from route definition patterns using regex matching.
-
 const HEURISTIC_ROUTE_MATCHERS = [
-  // Express: router.get('/path', ...) or app.post('/path', ...)
+
   { re: /(?:router|app)\.(get|post|put|patch|delete|head|options)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
-  // NestJS decorators: @Get('/path') or @Post()
+
   { re: /@(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*['"`]?([^'"`),]*)['"`]?\s*\)/gi, mIdx: 1, pIdx: 2 },
-  // FastAPI: @app.get('/path') or @router.post('/path')
+
   { re: /@(?:app|router)\.(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
-  // Flask: @app.route('/path', methods=['GET'])
+
   { re: /@(?:app|blueprint|api)\.route\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: null, pIdx: 1 },
-  // Laravel: Route::get('/path') or Route::post('/path')
+
   { re: /Route::(get|post|put|patch|delete)\s*\(\s*['"`]([^'"`]+)['"`]/gi, mIdx: 1, pIdx: 2 },
-  // Next.js API routes : infer from file path pattern (handled below)
+
 ];
 
 function heuristicExtractEndpoints(file, projectMap) {
   const endpoints = [];
   const meta = projectMap?.find((m) => m.path === file.path);
 
-  // Next.js: infer REST method from file name / content export
   const isNextApiRoute = /(?:pages|app)\/api\//.test(file.path) || /(?:route|page)\.[jt]sx?$/.test(file.path);
 
   if (isNextApiRoute) {
@@ -304,7 +273,7 @@ function heuristicExtractEndpoints(file, projectMap) {
     if (/export\s+(?:async\s+)?function\s+PUT\b/i.test(file.content)) methods.push("PUT");
     if (/export\s+(?:async\s+)?function\s+DELETE\b/i.test(file.content)) methods.push("DELETE");
     if (/export\s+(?:async\s+)?function\s+PATCH\b/i.test(file.content)) methods.push("PATCH");
-    // Generic handler = GET + POST
+
     if (!methods.length && /export\s+(?:default|async)\s+function\s+handler/i.test(file.content)) {
       methods.push("GET", "POST");
     }
@@ -337,7 +306,6 @@ function heuristicExtractEndpoints(file, projectMap) {
     return endpoints.filter(Boolean);
   }
 
-  // Traditional frameworks : scan with regex matchers
   for (const { re, mIdx, pIdx } of HEURISTIC_ROUTE_MATCHERS) {
     const regex = new RegExp(re.source, re.flags);
     let match;
@@ -367,12 +335,9 @@ function heuristicExtractEndpoints(file, projectMap) {
   return endpoints.filter(Boolean);
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function apiExtractorAgent({ files, projectMap, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
-  // ── 1. Filter to route-related files ──────────────────────────
   const routeFiles = files
     .filter((f) => {
       if (!f?.path || !f?.content) return false;
@@ -390,7 +355,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
     return { endpoints: [] };
   }
 
-  // ── fastMode: heuristic regex extraction (zero LLM cost) ──────
   if (fastMode) {
     notify(`Extracting endpoints via heuristics…`, `${routeFiles.length} route files (fast mode)`);
     const rawEndpoints = routeFiles.flatMap((f) => heuristicExtractEndpoints(f, projectMap));
@@ -413,7 +377,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
     `Processing in ${totalBatches} batch${totalBatches > 1 ? "es" : ""}`,
   );
 
-  // ── 2. Extract endpoints batch by batch ───────────────────────
   const rawEndpoints = [];
   const batchErrors = [];
 
@@ -423,7 +386,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
 
     notify(`Extracting endpoints…`, `Batch ${batchNum} of ${totalBatches}`);
 
-    // Build user content with full file context
     const userContent = batch
       .map((f) => {
         const truncated = f.content.length > CHARS_PER_FILE;
@@ -453,11 +415,8 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
         continue;
       }
 
-      // ── BUG FIX: was always assigning batch[0].path to ALL endpoints.
-      // Now each endpoint keeps its own file field from the LLM response,
-      // falling back to the correct file based on path matching.
       for (const ep of parsed) {
-        // Try to match the endpoint's file to one of the batch files
+
         const matchedFile = batch.find((f) =>
           ep.file
             ? f.path.endsWith(ep.file) || ep.file.endsWith(f.path)
@@ -476,8 +435,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
     }
   }
 
-  // ── 3. Deduplicate ────────────────────────────────────────────
-  // Prefer the richer object when duplicates exist (more fields filled)
   const endpointMap = new Map();
 
   for (const ep of rawEndpoints) {
@@ -487,7 +444,7 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
     if (!existing) {
       endpointMap.set(key, ep);
     } else {
-      // Merge: keep the version with more complete data
+
       const existingScore = scoreCompleteness(existing);
       const newScore = scoreCompleteness(ep);
       if (newScore > existingScore) endpointMap.set(key, ep);
@@ -495,14 +452,13 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
   }
 
   const endpoints = Array.from(endpointMap.values())
-    // Sort by tag then path for readable output
+
     .sort((a, b) => {
       const tagA = a.tags[0] ?? "";
       const tagB = b.tags[0] ?? "";
       return tagA.localeCompare(tagB) || a.path.localeCompare(b.path);
     });
 
-  // ── 4. Build summary ──────────────────────────────────────────
   const summary = buildSummary(endpoints);
 
   if (batchErrors.length > 0) {
@@ -524,12 +480,6 @@ export async function apiExtractorAgent({ files, projectMap, emit, fastMode = fa
   };
 }
 
-// ─── Utilities ────────────────────────────────────────────────────
-
-/**
- * Score how complete an endpoint object is.
- * Used to pick the richer duplicate when merging.
- */
 function scoreCompleteness(ep) {
   let score = 0;
   if (ep.description) score += 2;
@@ -546,10 +496,6 @@ function scoreCompleteness(ep) {
   return score;
 }
 
-/**
- * Build a high-level summary of all extracted endpoints.
- * Useful for the top-level report and UI dashboard.
- */
 function buildSummary(endpoints) {
   const byMethod = {};
   const tagSet = new Set();

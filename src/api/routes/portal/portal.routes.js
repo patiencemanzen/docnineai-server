@@ -1,9 +1,3 @@
-// =============================================================
-// Public portal routes : no authentication required.
-//
-//   GET  /portal/:slug        : fetch portal + content
-//   POST /portal/:slug/auth   : verify portal password
-// =============================================================
 
 import { Router } from "express";
 import { wrap } from "../../../utils/response.util.js";

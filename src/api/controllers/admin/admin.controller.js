@@ -1,7 +1,3 @@
-// ===================================================================
-// Admin controller : super-admin only endpoints.
-// All routes protected by protect + requireRole('super-admin').
-// ===================================================================
 
 import mongoose from "mongoose";
 import { User } from "../../../models/User.js";
@@ -92,7 +88,7 @@ async function cascadeDeleteProjects(projectIds) {
   ]);
 }
 
-// ── GET /admin/stats ──────────────────────────────────────────
+
 export async function getStats(req, res) {
   try {
     const [
@@ -120,13 +116,13 @@ export async function getStats(req, res) {
       }),
     ]);
 
-    // Build plan breakdown map
+
     const planBreakdown = { free: 0, starter: 0, pro: 0, team: 0 };
     for (const { _id, count } of usersByPlan) {
       if (_id in planBreakdown) planBreakdown[_id] = count;
     }
 
-    // Estimate MRR: count active/trialing paid subscriptions * monthly price
+
     const paidSubs = await Subscription.find({
       plan: { $in: ["starter", "pro", "team"] },
       status: { $in: ["active", "trialing"] },
@@ -141,7 +137,7 @@ export async function getStats(req, res) {
           sub.seats || 1,
         );
       } catch {
-        /* unknown plan */
+        
       }
     }
 
@@ -159,8 +155,7 @@ export async function getStats(req, res) {
   }
 }
 
-// ── GET /admin/users ──────────────────────────────────────────
-// Query params: page (default 1), limit (default 20), search (name/email)
+
 export async function listUsers(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -187,7 +182,7 @@ export async function listUsers(req, res) {
       User.countDocuments(filter),
     ]);
 
-    // Attach subscription info
+
     const userIds = users.map((u) => u._id);
     const subs = await Subscription.find({ userId: { $in: userIds } })
       .select("userId plan status billingCycle seats currentPeriodEnd trialEndsAt")
@@ -211,12 +206,12 @@ export async function listUsers(req, res) {
   }
 }
 
-// ── DELETE /admin/users/:id ───────────────────────────────────
+
 export async function deleteUser(req, res) {
   try {
     const { id } = req.params;
 
-    // Super-admin cannot delete themselves
+
     if (id === req.user.userId) {
       return fail(
         res,
@@ -258,8 +253,7 @@ export async function deleteUser(req, res) {
   }
 }
 
-// ── GET /admin/projects ───────────────────────────────────────
-// Query params: page, limit, search (name), userId (filter by owner)
+
 export async function listProjects(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -291,7 +285,7 @@ export async function listProjects(req, res) {
   }
 }
 
-// ── DELETE /admin/projects/:id ────────────────────────────────
+
 export async function deleteProject(req, res) {
   try {
     const { id } = req.params;
@@ -304,8 +298,7 @@ export async function deleteProject(req, res) {
   }
 }
 
-// ── GET /admin/subscriptions ──────────────────────────────────
-// Overview of all paid subscriptions
+
 export async function listSubscriptions(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
@@ -337,8 +330,7 @@ export async function listSubscriptions(req, res) {
   }
 }
 
-// ── PATCH /admin/users/:id ────────────────────────────────────
-// Body: { role?, isEmailVerified?, revokeSessions? }
+
 export async function updateUser(req, res) {
   try {
     const { id } = req.params;
@@ -428,9 +420,7 @@ export async function updateUser(req, res) {
   }
 }
 
-// ── PATCH /admin/users/:id/subscription ───────────────────────
-// Comping a plan: writes Subscription directly, no Flutterwave checkout.
-// Body: { plan, status?, billingCycle?, seats?, note? }
+
 export async function updateUserSubscription(req, res) {
   try {
     const { id } = req.params;
@@ -579,7 +569,7 @@ export async function updateUserSubscription(req, res) {
   }
 }
 
-// ── GET /admin/activity ───────────────────────────────────────
+
 export async function listActivity(req, res) {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);

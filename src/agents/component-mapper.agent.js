@@ -1,10 +1,4 @@
-// ===================================================================
-// Agent 4: Component Mapper (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
-
-// ─── System Prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a senior software engineer and technical documentation specialist with deep expertise in reading and analyzing codebases across multiple languages and frameworks (Node.js, TypeScript, React, Vue, Python, Java, Go, PHP, Ruby, etc.).
 
@@ -90,7 +84,7 @@ If no components are found, return exactly: []
 - Zustand/Pinia/Redux: store files = store type with state.manages = true
 - React Context: createContext/Provider pattern = context type
 - Express: function(req, res, next) signature = middleware type
-- Flask: @app.route(), @blueprint.route() = route/middleware  
+- Flask: @app.route(), @blueprint.route() = route/middleware
 - Django: View classes, ViewSets, @require_http_method = handler/middleware
 - Laravel (PHP): Controller classes, service providers, jobs
 - Rails (Ruby): controllers, services, ActiveRecord scopes
@@ -167,8 +161,6 @@ If no components are found, return exactly: []
   }
 ]`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
 const TARGET_ROLES = new Set([
   "service",
   "middleware",
@@ -192,15 +184,10 @@ const EXCLUDE_REGEX =
   /route|controller|handler|model|schema|entity|migration|spec|test|\.d\.ts$|__mocks__|fixture/i;
 
 const FILES_PER_BATCH = 3;
-const CHARS_PER_FILE = 6000; // was 200 : completely insufficient for real files
+const CHARS_PER_FILE = 6000;
 const MAX_FILES = 40;
 const MAX_RETRIES = 2;
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Safe JSON parser with markdown fence stripping fallback.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
@@ -217,10 +204,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single component object.
- * Returns null if too malformed to be useful.
- */
 function validateComponent(comp, fallbackFile) {
   if (!comp || typeof comp !== "object") return null;
 
@@ -314,13 +297,9 @@ function normalizeParam(p) {
   };
 }
 
-/**
- * Infer tags from component name and file path.
- */
 function inferTags(name, file) {
   const tags = new Set();
 
-  // From file path segments
   const segments = file.split("/").filter(Boolean);
   segments.forEach((seg) => {
     const clean = seg
@@ -330,7 +309,6 @@ function inferTags(name, file) {
     if (clean && clean !== "src" && clean !== "index") tags.add(clean);
   });
 
-  // From camelCase/PascalCase name breakdown
   const words = name
     .replace(/([A-Z])/g, " $1")
     .toLowerCase()
@@ -341,9 +319,6 @@ function inferTags(name, file) {
   return Array.from(tags).slice(0, 4);
 }
 
-/**
- * Score completeness of a component for deduplication merge.
- */
 function scoreCompleteness(comp) {
   let score = 0;
   if (comp.description) score += 2;
@@ -362,17 +337,13 @@ function scoreCompleteness(comp) {
   return score;
 }
 
-/**
- * Create a minimal stub component when LLM fails for a file.
- * Better than losing the file entirely from the output.
- */
 function createFallbackComponent(file, projectMap) {
   const meta = projectMap?.find((m) => m.path === file.path);
   const name = file.path
     .split("/")
     .pop()
     .replace(/\.[^.]+$/, "")
-    .replace(/[-_.](.)/g, (_, c) => c.toUpperCase()); // basic camelCase
+    .replace(/[-_.](.)/g, (_, c) => c.toUpperCase());
 
   return {
     name,
@@ -399,9 +370,6 @@ function createFallbackComponent(file, projectMap) {
   };
 }
 
-/**
- * LLM call with exponential back-off retry.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -417,9 +385,6 @@ async function llmCallWithRetry({
   }
 }
 
-/**
- * Build a summary report from all extracted components.
- */
 function buildSummary(components) {
   const byType = {};
   const byLayer = {};
@@ -444,8 +409,6 @@ function buildSummary(components) {
   };
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function componentMapperAgent({
   files,
   projectMap,
@@ -455,7 +418,6 @@ export async function componentMapperAgent({
 }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
-  // ── 1. Filter to component-relevant files ─────────────────────
   const targetFiles = files
     .filter((f) => {
       if (!f?.path || !f?.content) return false;
@@ -472,17 +434,13 @@ export async function componentMapperAgent({
     return { components: [], summary: buildSummary([]) };
   }
 
-  // ── fastMode: build components from projectMap metadata ───────
-  // createFallbackComponent already uses projectMap role + summary,
-  // so this gives us structured component stubs with zero LLM cost.
-  // Enriched by heuristic scan data (exports, flags, layer).
   if (fastMode) {
     notify(`Mapping components via heuristics…`, `${targetFiles.length} files (fast mode)`);
     const components = targetFiles
       .map((f) => {
         const meta = projectMap?.find((m) => m.path === f.path);
         const stub = createFallbackComponent(f, projectMap);
-        // Enrich stub with heuristic scan metadata from projectMap
+
         return {
           ...stub,
           layer: meta?.layer || stub.layer,
@@ -517,7 +475,6 @@ export async function componentMapperAgent({
     `Processing in ${totalBatches} batch${totalBatches > 1 ? "es" : ""}`,
   );
 
-  // ── 2. Process batches ────────────────────────────────────────
   const rawComponents = [];
   const batchErrors = [];
 
@@ -554,7 +511,7 @@ export async function componentMapperAgent({
           batch: batchNum,
           error: "Response was not a JSON array",
         });
-        // Fall back to stubs for this batch
+
         batch.forEach((f) =>
           rawComponents.push(createFallbackComponent(f, projectMap)),
         );
@@ -562,7 +519,7 @@ export async function componentMapperAgent({
       }
 
       for (const comp of parsed) {
-        // Match reported file back to the correct batch file
+
         const matchedFile = batch.find((f) =>
           comp.file
             ? f.path.endsWith(comp.file) || comp.file.endsWith(f.path)
@@ -578,14 +535,13 @@ export async function componentMapperAgent({
       }
     } catch (err) {
       batchErrors.push({ batch: batchNum, error: err.message });
-      // Produce stubs so no file is silently lost
+
       batch.forEach((f) =>
         rawComponents.push(createFallbackComponent(f, projectMap)),
       );
     }
   }
 
-  // ── 3. Deduplicate : keep the richer of any two duplicates ────
   const componentMap = new Map();
 
   for (const comp of rawComponents) {
@@ -601,7 +557,6 @@ export async function componentMapperAgent({
     }
   }
 
-  // ── 4. Sort by layer, then type, then name ────────────────────
   const components = Array.from(componentMap.values()).sort((a, b) => {
     const layerOrder = [
       "backend",
@@ -636,7 +591,6 @@ export async function componentMapperAgent({
     return a.name.localeCompare(b.name);
   });
 
-  // ── 5. Build summary ──────────────────────────────────────────
   const summary = buildSummary(components);
 
   if (batchErrors.length > 0) {

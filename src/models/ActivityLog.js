@@ -1,10 +1,8 @@
 import mongoose from "mongoose";
 
-// ---------------------------------------------------------------------------
-// Action constants
-// ---------------------------------------------------------------------------
+
 export const ACTIVITY_ACTIONS = {
-  // Auth
+
   AUTH_LOGIN:                 "AUTH_LOGIN",
   AUTH_LOGOUT:                "AUTH_LOGOUT",
   AUTH_SIGNUP:                "AUTH_SIGNUP",
@@ -12,7 +10,7 @@ export const ACTIVITY_ACTIONS = {
   AUTH_EMAIL_VERIFIED:        "AUTH_EMAIL_VERIFIED",
   AUTH_PASSWORD_RESET:        "AUTH_PASSWORD_RESET",
 
-  // Project lifecycle
+
   PROJECT_CREATED:            "PROJECT_CREATED",
   PROJECT_DELETED:            "PROJECT_DELETED",
   PROJECT_UPDATED:            "PROJECT_UPDATED",
@@ -20,55 +18,55 @@ export const ACTIVITY_ACTIONS = {
   PROJECT_RESTORED:           "PROJECT_RESTORED",
   PROJECT_RETRIED:            "PROJECT_RETRIED",
 
-  // Pipeline
+
   PIPELINE_STARTED:           "PIPELINE_STARTED",
   PIPELINE_COMPLETED:         "PIPELINE_COMPLETED",
   PIPELINE_FAILED:            "PIPELINE_FAILED",
   PIPELINE_TIMEOUT:           "PIPELINE_TIMEOUT",
 
-  // Agents (batch-buffered)
+
   AGENT_STARTED:              "AGENT_STARTED",
   AGENT_COMPLETED:            "AGENT_COMPLETED",
   AGENT_FAILED:               "AGENT_FAILED",
   AGENT_SKIPPED:              "AGENT_SKIPPED",
 
-  // Documentation
+
   DOC_SECTION_EDITED:         "DOC_SECTION_EDITED",
   DOC_SECTION_RESTORED:       "DOC_SECTION_RESTORED",
   DOC_VERSION_CREATED:        "DOC_VERSION_CREATED",
   DOC_VERSION_RESTORED:       "DOC_VERSION_RESTORED",
 
-  // Security
+
   SECURITY_SCAN_COMPLETED:    "SECURITY_SCAN_COMPLETED",
   SECURITY_FINDING_CRITICAL:  "SECURITY_FINDING_CRITICAL",
   SECURITY_FINDING_HIGH:      "SECURITY_FINDING_HIGH",
 
-  // API spec
+
   APISPEC_GENERATED:          "APISPEC_GENERATED",
   APISPEC_UPDATED:            "APISPEC_UPDATED",
 
-  // Custom tabs / attachments
+
   ATTACHMENT_UPLOADED:        "ATTACHMENT_UPLOADED",
   ATTACHMENT_DELETED:         "ATTACHMENT_DELETED",
 
-  // Sharing
+
   SHARE_INVITE_SENT:          "SHARE_INVITE_SENT",
   SHARE_INVITE_ACCEPTED:      "SHARE_INVITE_ACCEPTED",
   SHARE_MEMBER_REMOVED:       "SHARE_MEMBER_REMOVED",
   SHARE_ROLE_CHANGED:         "SHARE_ROLE_CHANGED",
 
-  // Portal
+
   PORTAL_PUBLISHED:           "PORTAL_PUBLISHED",
   PORTAL_UNPUBLISHED:         "PORTAL_UNPUBLISHED",
   PORTAL_SETTINGS_UPDATED:    "PORTAL_SETTINGS_UPDATED",
 
-  // Exports
+
   EXPORT_PDF:                 "EXPORT_PDF",
   EXPORT_YAML:                "EXPORT_YAML",
   EXPORT_NOTION:              "EXPORT_NOTION",
   EXPORT_GOOGLE_DOCS:         "EXPORT_GOOGLE_DOCS",
 
-  // Integrations
+
   INTEGRATION_GITHUB_CONNECTED:       "INTEGRATION_GITHUB_CONNECTED",
   INTEGRATION_GITHUB_DISCONNECTED:    "INTEGRATION_GITHUB_DISCONNECTED",
   INTEGRATION_GITLAB_CONNECTED:       "INTEGRATION_GITLAB_CONNECTED",
@@ -84,26 +82,24 @@ export const ACTIVITY_ACTIONS = {
   INTEGRATION_SLACK_CONNECTED:        "INTEGRATION_SLACK_CONNECTED",
   INTEGRATION_SLACK_DISCONNECTED:     "INTEGRATION_SLACK_DISCONNECTED",
 
-  // Subscription & billing
+
   SUBSCRIPTION_UPGRADED:      "SUBSCRIPTION_UPGRADED",
   SUBSCRIPTION_DOWNGRADED:    "SUBSCRIPTION_DOWNGRADED",
   SUBSCRIPTION_CANCELLED:     "SUBSCRIPTION_CANCELLED",
   SUBSCRIPTION_PAYMENT_FAILED: "SUBSCRIPTION_PAYMENT_FAILED",
 
-  // API tokens
+
   API_TOKEN_CREATED:          "API_TOKEN_CREATED",
   API_TOKEN_REVOKED:          "API_TOKEN_REVOKED",
 
-  // Super-admin
+
   ADMIN_USER_UPDATED:         "ADMIN_USER_UPDATED",
 
-  // System / internal
+
   SYSTEM_ERROR:               "SYSTEM_ERROR",
 };
 
-// ---------------------------------------------------------------------------
-// Category map
-// ---------------------------------------------------------------------------
+
 export const CATEGORY_MAP = {
   AUTH_LOGIN:                   "auth",
   AUTH_LOGOUT:                  "auth",
@@ -185,9 +181,7 @@ export const CATEGORY_MAP = {
   SYSTEM_ERROR:                 "system",
 };
 
-// ---------------------------------------------------------------------------
-// Severity map (defaults to "info" for everything not listed)
-// ---------------------------------------------------------------------------
+
 export const SEVERITY_MAP = {
   AUTH_SIGNUP:                "success",
   PIPELINE_COMPLETED:         "success",
@@ -211,9 +205,7 @@ const ALL_ACTIONS  = Object.values(ACTIVITY_ACTIONS);
 const ALL_CATEGORIES = ["auth","project","pipeline","doc","security","apispec","attachment","sharing","portal","export","integration","subscription","system"];
 const ALL_SEVERITIES = ["info","success","warning","error","critical"];
 
-// ---------------------------------------------------------------------------
-// Schema
-// ---------------------------------------------------------------------------
+
 const activityLogSchema = new mongoose.Schema(
   {
     userId:       { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -226,8 +218,8 @@ const activityLogSchema = new mongoose.Schema(
 
     projectId:    { type: mongoose.Schema.Types.ObjectId, ref: "Project", index: true, sparse: true },
     projectName:  { type: String, default: "" },
-    resourceId:   { type: String, default: "" },   // generic secondary resource id (shareId, versionId, etc.)
-    resourceType: { type: String, default: "" },   // "share" | "version" | "attachment" | ...
+    resourceId:   { type: String, default: "" },
+    resourceType: { type: String, default: "" },
 
     metadata:     { type: mongoose.Schema.Types.Mixed, default: {} },
     summary:      { type: String, default: "" },
@@ -241,7 +233,7 @@ const activityLogSchema = new mongoose.Schema(
   },
 );
 
-// TTL : auto-delete after 90 days
+
 activityLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 const ActivityLog = mongoose.model("ActivityLog", activityLogSchema);

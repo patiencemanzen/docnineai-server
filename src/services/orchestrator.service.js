@@ -1,20 +1,3 @@
-// ===================================================================
-// Orchestrator : Full Pipeline (Improved)
-// ===================================================================
-//
-// Coordinates all 6 agents with:
-//   - Intelligent routing based on Agent 1 outputs
-//   - Parallel execution where safe, sequential where dependent
-//   - Per-agent timeout and graceful degradation
-//   - Rich progress events with timing
-//   - Partial success : one agent failure never kills the pipeline
-//   - Full incremental sync baseline in return payload
-//
-// Progress event schema:
-//   { step, status: "running"|"done"|"error"|"skipped"|"waiting",
-//     msg, detail, ts, duration? }
-// ===================================================================
-
 import { getAdapter, detectProvider, createRepoAdapter } from "../adapters/provider.adapter.js";
 
 import { repoScannerAgent } from "../agents/repo-scanner.agent.js";
@@ -31,75 +14,47 @@ import { securityAuditorAgent } from "../agents/security-auditor.agent.js";
 import { createChatSession, getSuggestedQuestions } from "./chat.service.js";
 import { updateFileManifest } from "./diff.service.js";
 
-// ─── Timeouts (ms) ────────────────────────────────────────────────
-// Each agent has an independent timeout so one slow agent can't
-// stall the entire pipeline indefinitely.
-//
-// IMPORTANT: On Vercel (serverless), requests timeout at 60s (Pro) / 900s (Enterprise).
-// We detect environment and use conservative timeouts to avoid function termination.
-// Users can retry if a large project is interrupted.
-
 const isVercel = !!process.env.VERCEL;
 const isProduction = process.env.NODE_ENV === "production";
 
-// fastMode: on Vercel all agents use heuristic/static paths (zero LLM cost).
-// This reserves the entire LLM TPM budget (5000/62s) for the doc writer,
-// which is the only place LLM generation actually runs on Vercel.
-// Result: pipeline completes in ~10-20s instead of timing out at 60s.
 const fastMode = isVercel && isProduction;
 
-// On Vercel (60s limit) with fastMode:
-//   - scan/security/api/schema/components: heuristic-only → each < 1s
-//   - doc writer: 1 LLM call for README → ~5-10s
-//   - total headroom: ~45s buffer before Vercel cuts the function
-//
-// On local/traditional servers: full LLM analysis with generous timeouts
 const TIMEOUTS =
   fastMode
     ? {
-        fetch: 15_000,  // 15s - GitHub API
-        scan: 5_000,    // 5s - heuristics only, should be < 200ms
-        api: 5_000,     // 5s - heuristics only
-        schema: 5_000,  // 5s - heuristics only
-        components: 5_000, // 5s - heuristics only
-        security: 5_000,   // 5s - static scan only
-        write: 30_000,  // 30s - 1 LLM call for README (critical)
-        chat: 10_000,   // 10s - chat setup
+        fetch: 15_000,
+        scan: 5_000,
+        api: 5_000,
+        schema: 5_000,
+        components: 5_000,
+        security: 5_000,
+        write: 30_000,
+        chat: 10_000,
       }
     : {
-        fetch: 120_000,    // GitHub API fetch
-        scan: 240_000,     // Repo Scanner : LLM batches over all files
-        api: 180_000,      // API Extractor
-        schema: 180_000,   // Schema Analyser
-        components: 180_000, // Component Mapper
-        security: 240_000, // Security Auditor : static + LLM
-        write: 300_000,    // Doc Writer : multiple LLM calls
-        chat: 30_000,      // Chat session setup
+        fetch: 120_000,
+        scan: 240_000,
+        api: 180_000,
+        schema: 180_000,
+        components: 180_000,
+        security: 240_000,
+        write: 300_000,
+        chat: 30_000,
       };
 
-// ─── Routing Thresholds ───────────────────────────────────────────
-// Agent 1 outputs drive intelligent routing decisions.
-// Agents are skipped when there's nothing for them to do.
-
 const ROUTING = {
-  // Skip API extractor if fewer than this many route/controller files
+
   minRouteFiles: 1,
-  // Skip schema analyser if fewer than this many model/schema/migration files
+
   minSchemaFiles: 1,
-  // Skip component mapper if fewer than this many service/middleware/hook/component files
+
   minComponentFiles: 1,
-  // Skip security auditor if total code files below this (tiny repos)
+
   minCodeFiles: 3,
-  // Skip LLM doc sections if we have essentially nothing to document
+
   minDocumentableItems: 1,
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Wrap any async function with a hard timeout.
- * Returns { result } on success, { error, timedOut: true } on timeout.
- */
 async function withTimeout(fn, ms, label) {
   let timeoutHandle;
   const timeoutPromise = new Promise((_, reject) => {
@@ -118,10 +73,6 @@ async function withTimeout(fn, ms, label) {
   }
 }
 
-/**
- * Run an agent with timeout, error isolation, and duration tracking.
- * Never throws : always returns a result object so the pipeline continues.
- */
 async function runAgent({ label, step, fn, timeout, emit, fallback }) {
   const start = Date.now();
   emit(step, "running", `Starting ${label}…`);
@@ -137,7 +88,6 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
 
     emit(step, "error", `${label} failed : using fallback`, reason);
 
-    // Log full stack trace for debugging
     if (!timedOut) {
       console.error(`[${step}:error] ${label} full details:`, {
         message: error.message,
@@ -154,12 +104,6 @@ async function runAgent({ label, step, fn, timeout, emit, fallback }) {
   return { ...result, _duration: duration };
 }
 
-/**
- * Determine which agents to run based on Agent 1 outputs.
- * Returns a routing decision object with reasons for each skip.
- */
-// Path-pattern regexes for the routing safety net : used when scanner
-// returned zero classifications (e.g. because it timed out even in fastMode).
 const ROUTING_PATH_PATTERNS = {
   route: /route[s]?\/|controller[s]?\/|handler[s]?\/|endpoint[s]?\/|\.route\.[jt]sx?$|\.controller\.[jt]sx?$|pages\/api\/|app\/api\//i,
   schema: /model[s]?\/|schema[s]?\/|entit(?:y|ies)\/|migration[s]?\/|database\/|db\/|orm\/|\.model\.[jt]sx?$|\.schema\.[jt]sx?$|\.entity\.[jt]sx?$/i,
@@ -193,9 +137,6 @@ function computeRouting(projectMap, structure, files) {
     (f) => !/\.(md|yaml|yml|txt|svg|png|jpg|json|lock)$/i.test(f.path),
   ).length;
 
-  // ── Safety net: path-based detection when scanner returned nothing ──────────
-  // If projectMap is empty (scanner completely failed), directly scan file paths
-  // so downstream agents are not wrongly skipped on every analysis run.
   let pathRouteCount = 0;
   let pathSchemaCount = 0;
   let pathComponentCount = 0;
@@ -250,10 +191,6 @@ function computeRouting(projectMap, structure, files) {
   };
 }
 
-/**
- * Build empty fallback outputs for each agent.
- * Used when an agent is skipped or fails.
- */
 const FALLBACKS = {
   scan: {
     projectMap: [],
@@ -300,8 +237,7 @@ const FALLBACKS = {
   write: {
     readme: "# README\n\nDocumentation could not be generated.\n",
     internalDocs: "# Internal Docs\n\nDocumentation could not be generated.\n",
-    // Static sections are intentionally empty here so the orchestrator's
-    // pre-built static docs (from Phase 4.5) take precedence via ||.
+
     apiReference: "",
     schemaDocs: "",
     componentRef: "# Component Reference\n\nNo data available.\n",
@@ -310,10 +246,6 @@ const FALLBACKS = {
   },
 };
 
-/**
- * Build a structured pipeline report summarising what ran,
- * what was skipped, timings, and any errors.
- */
 function buildPipelineReport(steps) {
   const totalDuration = steps.reduce((s, step) => s + (step.duration ?? 0), 0);
   const failed = steps.filter((s) => s.status === "error");
@@ -347,15 +279,11 @@ function buildPipelineReport(steps) {
   return { md, failed, skipped, succeeded, totalDuration };
 }
 
-// ─── Orchestrator ─────────────────────────────────────────────────
-
 export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   const pipelineStart = Date.now();
-  const pipelineSteps = []; // tracks each step for the pipeline report
-  const agentErrors = []; // collects non-fatal errors across all agents
+  const pipelineSteps = [];
+  const agentErrors = [];
 
-  // ── Emit helper ───────────────────────────────────────────────
-  // Wraps onProgress with console logging and step tracking.
   const emit = (step, status, msg, detail = null, duration = null) => {
     const event = { step, status, msg, detail, ts: Date.now(), duration };
     console.log(
@@ -368,15 +296,13 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     pipelineSteps.push({ label, status, detail, duration });
   };
 
-  // ── PHASE 1: Fetch Repository ─────────────────────────────────
-  // Support both: URL strings (fetch from provider) or pre-fetched objects (ZIP uploads)
   let meta, files, owner, repo;
 
   const isPrefetched =
     typeof repoUrl === "object" && repoUrl !== null && repoUrl.files;
 
   if (isPrefetched) {
-    // ZIP project or other pre-fetched sources : files already extracted
+
     emit("fetch", "running", "Using pre-extracted files…");
     const fetchStart = Date.now();
     ({ meta, files, owner, repo } = repoUrl);
@@ -395,7 +321,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       fetchDuration,
     );
   } else {
-    // Git-based projects : fetch from provider
+
     const provider = authContext.provider || detectProvider(repoUrl);
     const adapter = getAdapter(provider);
     emit("fetch", "running", `Connecting to ${provider}…`);
@@ -415,7 +341,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       ]);
       ({ meta, files, owner, repo } = fetched);
     } catch (err) {
-      // Fetch failure is fatal : nothing else can run without files
+
       emit("fetch", "error", "Failed to fetch repository", err.message);
       return { success: false, error: err.message, phase: "fetch" };
     }
@@ -431,13 +357,11 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     trackStep("Fetch Repo", "done", `${files.length} files`, fetchDuration);
   }
 
-  // Fetch commit SHA and file tree in parallel : lightweight, non-blocking
-  // (Skip for pre-fetched ZIP projects : already have this data)
   let currentCommitSha = repoUrl.lastCommitSha || null;
   let treeWithSha = repoUrl.fileTree || [];
 
   if (!isPrefetched) {
-    // Use createRepoAdapter so Azure's extra `project` arg is handled transparently.
+
     const provider = authContext.provider || detectProvider(repoUrl);
     const ra = createRepoAdapter(provider, repoUrl);
     [currentCommitSha, treeWithSha] = await Promise.all([
@@ -445,10 +369,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       ra.getFileTreeWithSha(meta.defaultBranch, authContext.token).catch(() => []),
     ]);
   }
-
-  // ── PHASE 2: Agent 1 : Repo Scanner (Sequential, blocks all others) ──
-  // Must run first : its projectMap, structure, and techStack drive
-  // intelligent routing decisions for all downstream agents.
 
   emit(
     "scan",
@@ -472,9 +392,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   );
 
   if (scanErr) {
-    // Agent 1 failed or timed out : re-run in fastMode (pure heuristics, < 200ms)
-    // instead of falling back to an empty projectMap. An empty projectMap causes
-    // computeRouting to see 0 route/schema/component files and skip every agent.
+
     emit(
       "scan",
       "error",
@@ -534,9 +452,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     scanDuration,
   );
 
-  // ── PHASE 3: Intelligent Routing ─────────────────────────────
-  // Decide which agents to run based on what Agent 1 found.
-
   const routing = computeRouting(projectMap, structure, files);
 
   emit(
@@ -559,7 +474,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     ].join(" | "),
   );
 
-  // Announce skipped agents
   for (const [key, reason] of Object.entries(routing.reasons)) {
     if (reason) {
       emit(key, "skipped", `Skipped : ${reason}`);
@@ -576,13 +490,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     }
   }
 
-  // ── PHASE 4: Parallel Agents 2–4 + 6 ─────────────────────────
-  // All four run in parallel since they share only read-only inputs
-  // (files, projectMap, structure) : none depends on the others' output.
-  //
-  // Security auditor also benefits from projectMap flags (has_auth etc.)
-  // to prioritise which files to deep-scan with the LLM.
-
   emit(
     "parallel",
     "running",
@@ -594,7 +501,7 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
 
   const [apiResult, schemaResult, componentResult, securityResult] =
     await Promise.all([
-      // Agent 2: API Extractor
+
       routing.runApi
         ? runAgent({
             label: "API Extractor",
@@ -612,7 +519,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
           })
         : Promise.resolve({ ...FALLBACKS.api, _skipped: true }),
 
-      // Agent 3: Schema Analyser
       routing.runSchema
         ? runAgent({
             label: "Schema Analyser",
@@ -630,7 +536,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
           })
         : Promise.resolve({ ...FALLBACKS.schema, _skipped: true }),
 
-      // Agent 4: Component Mapper
       routing.runComponents
         ? runAgent({
             label: "Component Mapper",
@@ -650,7 +555,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
           })
         : Promise.resolve({ ...FALLBACKS.components, _skipped: true }),
 
-      // Agent 6: Security Auditor
       routing.runSecurity
         ? runAgent({
             label: "Security Auditor",
@@ -671,7 +575,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
 
   const parallelDuration = Date.now() - parallelStart;
 
-  // ── Unpack and track parallel results ─────────────────────────
   const {
     endpoints,
     summary: apiSummary,
@@ -712,7 +615,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     _duration: securityDuration,
   } = securityResult;
 
-  // Collect agent errors
   if (apiFailed) agentErrors.push({ agent: "api", error: apiResult._error });
   if (schemaFailed)
     agentErrors.push({ agent: "schema", error: schemaResult._error });
@@ -721,7 +623,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
   if (securityFailed)
     agentErrors.push({ agent: "security", error: securityResult._error });
 
-  // Track steps
   if (!apiSkipped)
     trackStep(
       "API Extractor",
@@ -751,7 +652,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       securityDuration,
     );
 
-  // Emit parallel summary
   emit(
     "parallel",
     "done",
@@ -766,19 +666,9 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     ].join(" · "),
   );
 
-  // ── PHASE 4.5: Pre-build static docs (zero LLM cost, instant) ──
-  // Build these BEFORE the doc writer runs so they survive even if
-  // the doc writer times out or throws.  Static docs only need the
-  // data that's already available from the parallel agents.
   const staticApiReference = buildApiReference(endpoints ?? []);
   const staticSchemaDocs = buildSchemaDocs(models ?? [], relationships ?? []);
   const staticComponentIndex = buildComponentIndex(components ?? []);
-
-  // ── PHASE 5: Agent 5 : Doc Writer (Sequential, needs all outputs) ──
-  // Runs after all parallel agents because it consumes all their outputs.
-  // Passes the richer data from improved agents: components (with responsibilities,
-  // complexity, state), endpoints (with auth.roles, request/response schema),
-  // models (with indexes, hooks, soft_delete), security findings.
 
   emit("write", "running", "Generating documentation…", "Agent 5 : Doc Writer");
   const writeStart = Date.now();
@@ -841,22 +731,19 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     writeDuration,
   );
 
-  // ── PHASE 6: Chat Session ─────────────────────────────────────
-
   emit("chat", "running", "Setting up chat session…");
   const chatStart = Date.now();
 
   const docOutput = {
-    // LLM-generated sections: use doc writer output, fall back to FALLBACKS
+
     readme,
     internalDocs,
     componentRef,
-    // Static sections: prefer doc writer output (identical content), but if the
-    // doc writer timed out we still have the pre-built static versions.
+
     apiReference: apiReference || staticApiReference,
     schemaDocs: schemaDocs || staticSchemaDocs,
     componentIndex: componentIndex || staticComponentIndex,
-    // From security auditor (Phase 4)
+
     securityReport,
     remediationReport,
   };
@@ -908,16 +795,12 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     chatDuration,
   );
 
-  // ── PHASE 7: File Manifest for Incremental Sync ───────────────
-
   let fileManifest = [];
   try {
     fileManifest = updateFileManifest([], treeWithSha, projectMap);
   } catch (err) {
     agentErrors.push({ agent: "manifest", error: err.message });
   }
-
-  // ── PHASE 8: Build Final Stats and Pipeline Report ────────────
 
   const totalDuration = Date.now() - pipelineStart;
 
@@ -956,7 +839,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     totalDuration,
   );
 
-  // ── Return Payload ────────────────────────────────────────────
   return {
     success: true,
     repoUrl,
@@ -964,7 +846,6 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     repo,
     meta,
 
-    // ── Core analysis outputs ─────────────────────────────────
     techStack,
     testFrameworks,
     architectureHint,
@@ -973,40 +854,31 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
     layerMap,
     flagsSummary,
 
-    // ── Structured doc output ─────────────────────────────────
     output: docOutput,
 
-    // ── Security summary ──────────────────────────────────────
     security: {
       score: securityScore,
       grade: securityGrade,
       counts: securityCounts,
       categoryCounts,
       affectedFiles,
-      findings: (findings ?? []).slice(0, 50), // top 50 for display
+      findings: (findings ?? []).slice(0, 50),
     },
 
-    // ── Chat ──────────────────────────────────────────────────
     chat: { sessionId, suggestedQuestions },
 
-    // ── Stats ─────────────────────────────────────────────────
     stats,
 
-    // ── Pipeline execution report ─────────────────────────────
     pipelineReport: {
       markdown: pipelineReportMd,
       steps: pipelineSteps,
       ...pipelineReportStats,
     },
 
-    // ── Agent errors (non-fatal) ──────────────────────────────
     agentErrors: agentErrors.length > 0 ? agentErrors : undefined,
 
-    // ── Routing decisions (for debugging and UI display) ──────
     routing,
 
-    // ── v3.2: Incremental sync baseline ──────────────────────
-    // Stored in Project so future syncs only re-run changed files.
     lastDocumentedCommit: currentCommitSha,
     fileManifest,
     agentOutputs: {
@@ -1015,8 +887,8 @@ export async function orchestrate(repoUrl, onProgress, authContext = {}) {
       models: models ?? [],
       relationships: relationships ?? [],
       components: components ?? [],
-      findings: (findings ?? []).slice(0, 200), // keep more for merge accuracy
-      // Per-agent summaries for the UI dashboard
+      findings: (findings ?? []).slice(0, 200),
+
       summaries: {
         scan: scanSummary,
         api: apiSummary,

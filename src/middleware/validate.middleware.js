@@ -1,25 +1,7 @@
-// ===================================================================
-// Thin validation layer using express-validator.
-// Returns a consistent 422 response with field-level error detail.
-//
-// Usage:
-//   import { validate, rules } from "../middleware/validate.middleware.js";
-//   router.post("/signup", rules.signup, validate, controller.signup);
-//
-// IMPORTANT : PATCH route composition rule:
-//   rules.updateProject validates the REQUEST BODY only.
-//   The :id param is validated separately by the validateMongoId array
-//   defined in project.routes.js.
-//   Never include a param("id") rule inside a rules.* body rule set :
-//   it will conflict with the id validation done at the router level.
-// ===================================================================
 
 import { body, query, param, validationResult } from "express-validator";
 
-/**
- * Run after rule chains : short-circuits with 422 if any rule failed.
- * Place this as the last item before the controller in a middleware array.
- */
+
 export function validate(req, res, next) {
   const errors = validationResult(req);
   if (errors.isEmpty()) return next();
@@ -39,7 +21,7 @@ export function validate(req, res, next) {
   });
 }
 
-// ── Reusable field builders ───────────────────────────────────
+
 
 const nameField = () =>
   body("name")
@@ -82,21 +64,21 @@ const repoUrlField = () =>
       return true;
     });
 
-// ── Rule sets : one per endpoint ──────────────────────────────
+
 export const rules = {
-  /** POST /auth/signup */
+  
   signup: [nameField(), emailField(), passwordField()],
 
-  /** POST /auth/login */
+  
   login: [
     emailField(),
     body("password").notEmpty().withMessage("Password is required"),
   ],
 
-  /** POST /auth/forgot-password */
+  
   forgotPassword: [emailField()],
 
-  /** POST /auth/reset-password */
+  
   resetPassword: [
     body("token").notEmpty().withMessage("Reset token is required"),
     passwordField("password"),
@@ -107,15 +89,15 @@ export const rules = {
       .withMessage("Passwords do not match"),
   ],
 
-  /** POST /auth/verify-email */
+  
   verifyEmail: [
     body("token").notEmpty().withMessage("Verification token is required"),
   ],
 
-  /** POST /projects */
+  
   createProject: [repoUrlField()],
 
-  /** GET /projects : query params */
+  
   listProjects: [
     query("page")
       .optional()
@@ -145,11 +127,7 @@ export const rules = {
     query("search").optional().isString().trim(),
   ],
 
-  /**
-   * PATCH /projects/:id : REQUEST BODY ONLY.
-   * The :id param is validated at the router level by validateMongoId.
-   * Do NOT add a param("id") rule here.
-   */
+  
   updateProject: [
     body("name")
       .optional()
@@ -170,7 +148,7 @@ export const rules = {
       .withMessage("Only 'archived' status can be set via PATCH"),
   ],
 
-  /** PATCH /auth/profile */
+  
   updateProfile: [
     body("name")
       .optional()
@@ -187,7 +165,7 @@ export const rules = {
       .normalizeEmail(),
   ],
 
-  /** POST /auth/change-password */
+  
   changePassword: [
     body("currentPassword")
       .notEmpty()

@@ -1,14 +1,3 @@
-// =============================================================
-// Portal service : business logic for the public docs portal.
-//
-// Functions:
-//   getOrCreate(projectId, userId)      : load/init portal record
-//   getPortalForOwner(projectId, userId): gate-checked read for owner
-//   updatePortal(projectId, userId, body) : gate-checked mutation
-//   togglePublish(projectId, userId)    : flip isPublished
-//   getPublicPortal(slug, password?)    : public read, content included
-//   verifyPortalPassword(slug, attempt) : check portal password
-// =============================================================
 
 import bcrypt from "bcryptjs";
 import { Portal } from "../../../models/Portal.js";
@@ -18,7 +7,7 @@ import { getPlan, effectivePlanId } from "../../../config/plans.js";
 import ActivityLogService from "../../../services/activity-log.service.js";
 import { NotificationService } from "../../../services/notification.service.js";
 
-// ── Section keys and their display labels ─────────────────────
+
 export const SECTION_KEYS = [
   "readme",
   "internalDocs",
@@ -35,7 +24,7 @@ export const SECTION_LABELS = {
   securityReport: "Security Report",
 };
 
-// ── Slug helpers ──────────────────────────────────────────────
+
 
 function slugify(str) {
   return str
@@ -47,7 +36,7 @@ function slugify(str) {
 
 async function generateUniqueSlug(repoOwner, repoName) {
   const base = slugify(`${repoOwner}-${repoName}`);
-  // First try the clean slug
+
   let candidate = base;
   let attempt = 0;
   while (await Portal.exists({ slug: candidate })) {
@@ -57,7 +46,7 @@ async function generateUniqueSlug(repoOwner, repoName) {
   return candidate;
 }
 
-// ── Ownership check ───────────────────────────────────────────
+
 
 async function requireOwner(projectId, userId) {
   const project = await Project.findById(projectId)
@@ -76,8 +65,7 @@ async function requireOwner(projectId, userId) {
   return project;
 }
 
-// ── Merge effective section output ────────────────────────────
-// Returns the same merged content as the project 'effectiveOutput' virtual.
+
 
 function mergeOutput(project) {
   const merged = {};
@@ -87,12 +75,9 @@ function mergeOutput(project) {
   return merged;
 }
 
-// ── Public exports ────────────────────────────────────────────
 
-/**
- * Get the portal record for a project, creating it (unpublished) if it
- * doesn't exist yet.  Returns the plain portal object (no passwordHash).
- */
+
+
 export async function getOrCreate(projectId, userId) {
   const project = await requireOwner(projectId, userId);
   let portal = await Portal.findOne({ projectId });
@@ -103,27 +88,21 @@ export async function getOrCreate(projectId, userId) {
   return portal.toObject();
 }
 
-/**
- * Get portal settings for the project owner (includes full config).
- */
+
 export async function getPortalForOwner(projectId, userId) {
   await requireOwner(projectId, userId);
   let portal = await Portal.findOne({ projectId });
-  if (!portal) return null; // not yet initialised
+  if (!portal) return null;
   return portal.toObject();
 }
 
-/**
- * Update portal settings.  Body fields accepted:
- *   branding, sections, seoTitle, seoDescription, customDomain,
- *   accessMode, password (raw : will be hashed)
- */
+
 export async function updatePortal(projectId, userId, body) {
   await requireOwner(projectId, userId);
 
   let portal = await Portal.findOne({ projectId });
   if (!portal) {
-    // Lazy-create on first save so owners don't need a separate init step
+
     const proj = await Project.findById(projectId)
       .select("repoOwner repoName")
       .lean();
@@ -166,10 +145,10 @@ export async function updatePortal(projectId, userId, body) {
     });
   }
 
-  // Handle password update
+
   if (body.password !== undefined) {
     if (body.password === null || body.password === "") {
-      // Clear password
+
       portal.passwordHash = undefined;
       portal.accessMode = "public";
     } else {
@@ -188,10 +167,7 @@ export async function updatePortal(projectId, userId, body) {
   return portal.toObject();
 }
 
-/**
- * Toggle isPublished for a project's portal.
- * Creates the portal record if it doesn't exist.
- */
+
 export async function togglePublish(projectId, userId) {
   const project = await requireOwner(projectId, userId);
   let portal = await Portal.findOne({ projectId });
@@ -233,11 +209,7 @@ export async function togglePublish(projectId, userId) {
   return portal.toObject();
 }
 
-/**
- * Public read : returns portal metadata + published section content.
- * Throws if the portal is not found or not published.
- * Does NOT check the password here : password checking is separate.
- */
+
 export async function getPublicPortal(slug) {
   const portal = await Portal.findOne({ slug });
   if (!portal)
@@ -251,7 +223,7 @@ export async function getPublicPortal(slug) {
       code: "NOT_FOUND",
     });
 
-  // Load project (need to compute effectiveOutput)
+
   const project = await Project.findById(portal.projectId)
     .select("repoOwner repoName meta techStack output editedOutput")
     .lean();
@@ -261,16 +233,16 @@ export async function getPublicPortal(slug) {
       code: "NOT_FOUND",
     });
 
-  // Build per-section visibility map from portal.sections array
+
   const sectionVisMap = {};
-  for (const s of SECTION_KEYS) sectionVisMap[s] = "public"; // default
+  for (const s of SECTION_KEYS) sectionVisMap[s] = "public";
   for (const entry of portal.sections)
     sectionVisMap[entry.sectionKey] = entry.visibility;
 
-  // Merge effective content
+
   const effectiveOutput = mergeOutput(project);
 
-  // Build content object : only non-internal sections
+
   const content = {};
   for (const key of SECTION_KEYS) {
     if (sectionVisMap[key] === "internal") continue;
@@ -301,9 +273,7 @@ export async function getPublicPortal(slug) {
   };
 }
 
-/**
- * Verify a portal password.  Returns true/false.
- */
+
 export async function verifyPortalPassword(slug, attempt) {
   const portal = await Portal.findOne({ slug }).select("+passwordHash");
   if (!portal || !portal.isPublished) return false;

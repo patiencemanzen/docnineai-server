@@ -2,26 +2,7 @@ import mongoose from "mongoose";
 
 const { Schema, model } = mongoose;
 
-/**
- * ProjectChangeLog
- *
- * Records every significant change to a project for audit/version tracking.
- * Users can view this to understand what has been modified and exported.
- *
- * Change types:
- * - "section_edited": User manually edited a documentation section
- * - "section_accepted": User accepted AI-generated content for a stale section
- * - "export_pdf": PDF export was generated
- * - "export_yaml": YAML/GitHub Actions export was generated
- * - "export_notion": Notion export was pushed
- * - "export_google_docs": Google Docs export was created
- * - "pipeline_started": Documentation generation pipeline started
- * - "pipeline_completed": Documentation generation pipeline finished
- * - "pipeline_failed": Documentation generation pipeline failed
- * - "custom_tab_created": New custom tab was created
- * - "custom_tab_updated": Custom tab content was updated
- * - "custom_tab_deleted": Custom tab was deleted
- */
+
 
 const ProjectChangeLogSchema = new Schema(
   {
@@ -56,35 +37,35 @@ const ProjectChangeLogSchema = new Schema(
       required: true,
       index: true,
     },
-    // For section-related changes
+
     section: {
       type: String,
       enum: ["readme", "api", "schema", "internal", "security", "other_docs"],
     },
-    // For custom tab changes
+
     tabId: String,
     tabName: String,
-    // What changed
+
     details: {
-      type: String, // Short description of what changed
+      type: String,
     },
-    // How many sections/tabs were affected (for exports)
+
     affectedCount: Number,
     customTabCount: Number,
-    // For exports, store metadata
+
     exportMetadata: {
-      documentUrl: String, // For Google Docs exports
-      notionPageUrl: String, // For Notion exports
-      fileName: String, // For PDF/YAML exports
+      documentUrl: String,
+      notionPageUrl: String,
+      fileName: String,
       sectionCount: Number,
     },
-    // Content hash for diffing/comparison
+
     contentHash: String,
-    // Previous value (for comparison)
+
     previousValue: String,
-    // New value (truncated, first 500 chars for display)
+
     newValuePreview: String,
-    // Timestamp
+
     createdAt: {
       type: Date,
       default: Date.now,

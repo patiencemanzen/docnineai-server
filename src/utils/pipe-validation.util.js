@@ -1,12 +1,5 @@
-// ===================================================================
-// Pipeline Validation & Error Recovery Utility
-// ===================================================================
-// Provides enhanced validation and error handling for agents that work with
-// multiple programming languages and frameworks (PHP, Java, Python, C++, C, Go, Kotlin, Swift)
 
-/**
- * Validates agent output structure and provides detailed error messages
- */
+
 export function validateAgentOutput(output, agentType, schema = null) {
   if (!output) {
     return {
@@ -24,7 +17,7 @@ export function validateAgentOutput(output, agentType, schema = null) {
     };
   }
 
-  // Type-specific validation
+
   switch (agentType) {
     case "repo-scanner":
       return validateRepoScannerOutput(output);
@@ -223,20 +216,18 @@ function validateSecurityAuditorOutput(output) {
   return { valid: true, error: null };
 }
 
-/**
- * Safely parse JSON with comprehensive error recovery
- */
+
 export function safeParseJSON(raw, context = "") {
   if (!raw) return null;
 
-  // First attempt: direct parse
+
   try {
     return JSON.parse(raw);
   } catch {
-    // No action
+
   }
 
-  // Second attempt: strip markdown fences
+
   try {
     const stripped = raw
       .replace(/^```(?:json)?\s*/i, "")
@@ -244,10 +235,10 @@ export function safeParseJSON(raw, context = "") {
       .trim();
     return JSON.parse(stripped);
   } catch {
-    // No action
+
   }
 
-  // Third attempt: find first valid JSON object/array
+
   try {
     const start = raw.search(/[\[\{]/);
     const end = Math.max(raw.lastIndexOf("]"), raw.lastIndexOf("}"));
@@ -256,15 +247,13 @@ export function safeParseJSON(raw, context = "") {
       return JSON.parse(chunk);
     }
   } catch {
-    // No action
+
   }
 
   return null;
 }
 
-/**
- * Enhanced error handler for agent pipeline
- */
+
 export function handlePipelineError(error, agentType, context = {}) {
   const errorObj = {
     timestamp: new Date().toISOString(),
@@ -292,9 +281,7 @@ export function handlePipelineError(error, agentType, context = {}) {
   return errorObj;
 }
 
-/**
- * Filter and sanitize agent output for downstream processing
- */
+
 export function sanitizeAgentOutput(output, agentType) {
   if (!output)
     return agentType === "schema-analyser"
@@ -305,7 +292,7 @@ export function sanitizeAgentOutput(output, agentType) {
     ? output.filter(Boolean)
     : output || {};
 
-  // Remove internal fields
+
   if (Array.isArray(sanitized)) {
     return sanitized.map((item) => {
       const clean = { ...item };
@@ -318,24 +305,20 @@ export function sanitizeAgentOutput(output, agentType) {
   return sanitized;
 }
 
-/**
- * Check if output requires retry
- */
+
 export function shouldRetry(output, agentType, maxRetries = 2) {
   if (!output) return true;
 
   const validation = validateAgentOutput(output, agentType);
   if (!validation.valid) return true;
 
-  // Empty results don't necessarily need retry
+
   if (Array.isArray(output) && output.length === 0) return false;
 
   return false;
 }
 
-/**
- * Language-aware context builder for agents
- */
+
 export function buildLanguageContext(detectedLanguage, detectedFramework) {
   const contexts = {
     "JavaScript/TypeScript": {

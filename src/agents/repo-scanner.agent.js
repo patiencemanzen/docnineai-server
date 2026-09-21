@@ -1,11 +1,5 @@
-// ===================================================================
-// Agent 1: Repo Scanner (Improved)
-// ===================================================================
-
 import { llmCall } from "../config/llm.js";
 import { sortAndFilterFiles } from "../utils/token-manager.util.js";
-
-// ─── System Prompt ────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a senior software architect performing a deep codebase audit across any language or framework.
 
@@ -92,11 +86,9 @@ Your entire response must start with [ and end with ].
 - Kotlin: classes, objects, extensions → service/model/utility
 - C/C++: structs, classes, function definitions → model/service/utility`;
 
-// ─── Constants ────────────────────────────────────────────────────
-
-const BATCH_SIZE = 10; // files per LLM call
-const SNIPPET_SIZE = 1200; // chars per file : richer context since fewer ambiguous files go to LLM
-const MAX_FILES = 200; // hard cap before filtering
+const BATCH_SIZE = 10;
+const SNIPPET_SIZE = 1200;
+const MAX_FILES = 200;
 const MAX_RETRIES = 2;
 
 const VALID_ROLES = new Set([
@@ -173,11 +165,6 @@ const VALID_FLAGS = new Set([
   "has_hardcoded_values",
 ]);
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Safe JSON parser with markdown fence stripping fallback.
- */
 function safeParseJSON(raw) {
   try {
     return JSON.parse(raw);
@@ -194,10 +181,6 @@ function safeParseJSON(raw) {
   }
 }
 
-/**
- * Validate and normalise a single classified file object.
- * Returns null if too malformed to use.
- */
 function validateClassification(item, originalPath) {
   if (!item || typeof item !== "object") return null;
 
@@ -224,10 +207,6 @@ function validateClassification(item, originalPath) {
   };
 }
 
-/**
- * Fallback classification when LLM fails for a file.
- * Uses heuristics so no file is silently lost.
- */
 function heuristicClassify(file) {
   const p = file.path.toLowerCase();
   const ext = p.split(".").pop();
@@ -237,7 +216,6 @@ function heuristicClassify(file) {
   let layer = "other";
   let importance = "medium";
 
-  // Role heuristics
   if (/\.(test|spec)\.[jt]sx?$/.test(p) || /__(tests?|specs?)__/.test(p)) {
     role = "test";
     importance = "low";
@@ -294,7 +272,6 @@ function heuristicClassify(file) {
     importance = "medium";
   }
 
-  // Layer heuristics
   if (/src\/client|src\/frontend|src\/ui|pages\/|components\/|hooks\//i.test(p))
     layer = "frontend";
   else if (/src\/server|src\/api|src\/backend/i.test(p)) layer = "backend";
@@ -304,7 +281,6 @@ function heuristicClassify(file) {
   else if (/migration|seed|schema|prisma|entity/i.test(p)) layer = "database";
   else if (/test|spec|__mock/i.test(p)) layer = "test";
 
-  // Static flags from content
   const content = file.content || "";
   const flags = [];
   if (/process\.env\.|dotenv|os\.environ/i.test(content))
@@ -325,20 +301,17 @@ function heuristicClassify(file) {
     layer,
     language: inferLanguage(file.path),
     importance,
-    summary: "", // heuristic can't write a meaningful summary
+    summary: "",
     exports: [],
     flags,
-    _heuristic: true, // internal marker : stripped before returning
+    _heuristic: true,
   };
 }
 
-/**
- * Infer language from file extension.
- */
 function inferLanguage(filePath) {
   const ext = filePath.split(".").pop()?.toLowerCase();
   const map = {
-    // JavaScript/TypeScript
+
     ts: "typescript",
     tsx: "typescript",
     mts: "typescript",
@@ -347,26 +320,26 @@ function inferLanguage(filePath) {
     jsx: "javascript",
     mjs: "javascript",
     cjs: "javascript",
-    // Python
+
     py: "python",
     pyw: "python",
-    // Go
+
     go: "go",
-    // Rust
+
     rs: "rust",
-    // Java & Kotlin
+
     java: "java",
     kt: "kotlin",
     kts: "kotlin",
-    // Ruby
+
     rb: "ruby",
-    // PHP
+
     php: "php",
     php5: "php",
     php7: "php",
     php8: "php",
     phtml: "php",
-    // C/C++
+
     c: "c",
     h: "c",
     cc: "cpp",
@@ -375,22 +348,22 @@ function inferLanguage(filePath) {
     "c++": "cpp",
     hpp: "cpp",
     hxx: "cpp",
-    // C#/.NET
+
     cs: "csharp",
     csproj: "csharp",
-    // Swift
+
     swift: "swift",
-    // SQL
+
     sql: "sql",
-    // Styling
+
     css: "css",
     scss: "css",
     sass: "css",
     less: "css",
-    // Markup
+
     html: "html",
     htm: "html",
-    // Data formats
+
     json: "json",
     yml: "yaml",
     yaml: "yaml",
@@ -398,9 +371,6 @@ function inferLanguage(filePath) {
   return map[ext] || "other";
 }
 
-/**
- * LLM call with exponential back-off retry.
- */
 async function llmCallWithRetry({
   systemPrompt,
   userContent,
@@ -416,9 +386,6 @@ async function llmCallWithRetry({
   }
 }
 
-/**
- * Build role distribution string for logging.
- */
 function buildDistributionString(classified) {
   const dist = {};
   for (const f of classified) {
@@ -430,9 +397,6 @@ function buildDistributionString(classified) {
     .join(" · ");
 }
 
-/**
- * Build a detailed tech stack with version hints from manifest files.
- */
 function detectTechStack(files) {
   const paths = files.map((f) => f.path).join("\n");
   const manifests = files
@@ -450,11 +414,9 @@ function detectTechStack(files) {
   const combined = manifests + "\n" + allContent;
   const stack = [];
 
-  // ── JavaScript / Node.js ──────────────────────────────────────
   if (/package\.json/i.test(paths)) {
     stack.push("Node.js");
 
-    // Frameworks
     if (/"next"/i.test(combined)) stack.push("Next.js");
     else if (/"react"/i.test(combined)) stack.push("React");
     if (/"vue"/i.test(combined)) stack.push("Vue");
@@ -466,11 +428,9 @@ function detectTechStack(files) {
     if (/"hono"/i.test(combined)) stack.push("Hono");
     if (/"@nestjs\/core"/i.test(combined)) stack.push("NestJS");
 
-    // Language
     if (/"typescript"|"ts-node"|tsconfig/i.test(combined))
       stack.push("TypeScript");
 
-    // ORMs & Databases
     if (/"prisma"/i.test(combined)) stack.push("Prisma");
     if (/"typeorm"/i.test(combined)) stack.push("TypeORM");
     if (/"sequelize"/i.test(combined)) stack.push("Sequelize");
@@ -480,28 +440,23 @@ function detectTechStack(files) {
     if (/"redis"|"ioredis"/i.test(combined)) stack.push("Redis");
     if (/"sqlite"|"better-sqlite"/i.test(combined)) stack.push("SQLite");
 
-    // Auth & Security
     if (/"jsonwebtoken"/i.test(combined)) stack.push("JWT");
     if (/"passport"/i.test(combined)) stack.push("Passport.js");
     if (/"bcrypt"/i.test(combined)) stack.push("bcrypt");
 
-    // Communication
     if (/"socket\.io"/i.test(combined)) stack.push("Socket.io");
     if (/"graphql"|"@apollo"/i.test(combined)) stack.push("GraphQL");
     if (/"grpc"/i.test(combined)) stack.push("gRPC");
 
-    // Queues
     if (/"bull"|"bullmq"/i.test(combined)) stack.push("BullMQ");
     if (/"kafka"/i.test(combined)) stack.push("Kafka");
     if (/"amqplib"|"rabbitmq"/i.test(combined)) stack.push("RabbitMQ");
 
-    // Testing
     if (/"jest"/i.test(combined)) stack.push("Jest");
     if (/"vitest"/i.test(combined)) stack.push("Vitest");
     if (/"cypress"/i.test(combined)) stack.push("Cypress");
   }
 
-  // ── Python ────────────────────────────────────────────────────
   if (/requirements\.txt|setup\.py|pyproject\.toml/i.test(paths)) {
     stack.push("Python");
     if (/django/i.test(combined)) stack.push("Django");
@@ -515,7 +470,6 @@ function detectTechStack(files) {
     if (/pytest/i.test(combined)) stack.push("pytest");
   }
 
-  // ── Go ────────────────────────────────────────────────────────
   if (/go\.mod/i.test(paths)) {
     stack.push("Go");
     if (/gin-gonic\/gin/i.test(combined)) stack.push("Gin");
@@ -525,7 +479,6 @@ function detectTechStack(files) {
     if (/grpc/i.test(combined)) stack.push("gRPC");
   }
 
-  // ── Rust ──────────────────────────────────────────────────────
   if (/Cargo\.toml/i.test(paths)) {
     stack.push("Rust");
     if (/actix-web/i.test(combined)) stack.push("Actix Web");
@@ -535,7 +488,6 @@ function detectTechStack(files) {
     if (/sqlx/i.test(combined)) stack.push("SQLx");
   }
 
-  // ── Java / Kotlin ─────────────────────────────────────────────
   if (/pom\.xml|build\.gradle/i.test(paths)) {
     stack.push(/\.kt$/m.test(paths) ? "Kotlin" : "Java");
     if (/spring-boot/i.test(combined)) stack.push("Spring Boot");
@@ -544,7 +496,6 @@ function detectTechStack(files) {
     if (/gradle/i.test(combined)) stack.push("Gradle");
   }
 
-  // ── PHP ───────────────────────────────────────────────────────
   if (/composer\.json/i.test(paths)) {
     stack.push("PHP");
     if (/laravel/i.test(combined)) stack.push("Laravel");
@@ -552,7 +503,6 @@ function detectTechStack(files) {
     if (/eloquent/i.test(combined)) stack.push("Eloquent");
   }
 
-  // ── Ruby ──────────────────────────────────────────────────────
   if (/Gemfile/i.test(paths)) {
     stack.push("Ruby");
     if (/rails/i.test(combined)) stack.push("Rails");
@@ -560,7 +510,6 @@ function detectTechStack(files) {
     if (/activerecord/i.test(combined)) stack.push("ActiveRecord");
   }
 
-  // ── C / C++ ───────────────────────────────────────────────────
   if (/CMakeLists\.txt|Makefile|conanfile/i.test(paths)) {
     if (/\.cpp$|\.cc$|\.cxx$/m.test(paths)) stack.push("C++");
     else if (/\.c$/m.test(paths)) stack.push("C");
@@ -569,7 +518,6 @@ function detectTechStack(files) {
     if (/Makefile/i.test(paths)) stack.push("Make");
   }
 
-  // ── C# / .NET ─────────────────────────────────────────────────
   if (/\.csproj$|appsettings\.json/i.test(paths)) {
     stack.push("C#");
     if (/"DotNet"|"net6"|"net7"|"net8"/i.test(combined)) stack.push(".NET");
@@ -579,7 +527,6 @@ function detectTechStack(files) {
     if (/"ASP.NET"/i.test(combined)) stack.push("ASP.NET");
   }
 
-  // ── Swift ─────────────────────────────────────────────────────
   if (/Package\.swift|\.swift$/m.test(paths)) {
     stack.push("Swift");
     if (/vapor/i.test(combined)) stack.push("Vapor");
@@ -588,13 +535,11 @@ function detectTechStack(files) {
     if (/xcode|xcodeproj/i.test(paths)) stack.push("Xcode");
   }
 
-  // ── Kotlin ─────────────────────────────────────────────────────
   if (/\.kts$/m.test(paths) || /kotlin/i.test(combined)) {
     stack.push("Kotlin");
     if (/ktor/i.test(combined)) stack.push("Ktor");
   }
 
-  // ── Infrastructure ────────────────────────────────────────────
   if (/Dockerfile/i.test(paths)) stack.push("Docker");
   if (/docker-compose/i.test(paths)) stack.push("Docker Compose");
   if (/kubernetes|k8s|\.yaml$/m.test(paths) && /apiVersion/i.test(combined))
@@ -603,7 +548,6 @@ function detectTechStack(files) {
   if (/nginx/i.test(paths)) stack.push("Nginx");
   if (/\.github\/workflows/i.test(paths)) stack.push("GitHub Actions");
 
-  // ── Extension fallback (no manifest found) ────────────────────
   if (!stack.length) {
     if (/\.py$/m.test(paths)) stack.push("Python");
     if (/\.go$/m.test(paths)) stack.push("Go");
@@ -623,9 +567,6 @@ function detectTechStack(files) {
   return [...new Set(stack)];
 }
 
-/**
- * Detect testing frameworks separately : useful for the report.
- */
 function detectTestFrameworks(files) {
   const combined = files
     .filter((f) =>
@@ -647,9 +588,6 @@ function detectTestFrameworks(files) {
   return frameworks;
 }
 
-/**
- * Group classified files by role → array of paths.
- */
 function groupByRole(classified) {
   const map = {};
   for (const f of classified) {
@@ -659,9 +597,6 @@ function groupByRole(classified) {
   return map;
 }
 
-/**
- * Group classified files by layer.
- */
 function groupByLayer(classified) {
   const map = {};
   for (const f of classified) {
@@ -672,9 +607,6 @@ function groupByLayer(classified) {
   return map;
 }
 
-/**
- * Build a cross-file flags summary (e.g. how many files have auth, db usage etc.)
- */
 function buildFlagsSummary(classified) {
   const summary = {};
   for (const f of classified) {
@@ -685,10 +617,6 @@ function buildFlagsSummary(classified) {
   return summary;
 }
 
-/**
- * Identify the most critical files for downstream agents.
- * Entry points + critical/high importance non-test files.
- */
 function identifyKeyFiles(classified) {
   return classified
     .filter(
@@ -705,10 +633,6 @@ function identifyKeyFiles(classified) {
     .slice(0, 20);
 }
 
-/**
- * Produce a brief architecture hint string from the classified files.
- * Passed to downstream agents for context.
- */
 function inferArchitecturePattern(classified, techStack) {
   const roles = new Set(classified.map((f) => f.role));
   const stack = techStack.join(" ").toLowerCase();
@@ -737,14 +661,11 @@ function inferArchitecturePattern(classified, techStack) {
   return "Mixed / undetermined architecture pattern";
 }
 
-// ─── Agent ────────────────────────────────────────────────────────
-
 export async function repoScannerAgent({ files, meta, emit, fastMode = false }) {
   const notify = (msg, detail) => emit?.(msg, detail);
 
   notify("Starting codebase scan…", "Repository Scanning");
 
-  // ── 1. Pre-filter and prioritise files ────────────────────────
   const relevant = sortAndFilterFiles(files).slice(0, MAX_FILES);
 
   if (relevant.length === 0) {
@@ -765,14 +686,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
 
   notify(`Classifying ${relevant.length} files…`, "Running heuristic pre-filter…");
 
-  // ── 2. Classification ─────────────────────────────────────────
-  // fastMode (Vercel): use pure heuristics : zero LLM calls, completes in < 100ms.
-  // The heuristic engine is comprehensive enough to correctly route all downstream
-  // agents for any standard project layout.
-  //
-  // fullMode (local/traditional servers): LLM batch classification with heuristic
-  // fallback per file if a batch fails or times out.
-  const classifiedMap = new Map(); // path → classified object
+  const classifiedMap = new Map();
   const batchErrors = [];
 
   if (fastMode) {
@@ -785,10 +699,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
       classifiedMap.set(r.path, r);
     }
   } else {
-    // ── Step 1: Pre-classify ALL files with heuristics (instant, zero LLM cost) ──
-    // Heuristics correctly handle ~70-80% of files in any well-structured project
-    // (controllers, models, routes, services, tests all have clear path patterns).
-    // Only files returning "other" are truly ambiguous and need LLM.
+
     for (const f of relevant) {
       classifiedMap.set(f.path, heuristicClassify(f));
     }
@@ -806,11 +717,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
         "Heuristic pre-filter reduced LLM batch count",
       );
 
-      // ── Step 2: LLM-classify only ambiguous files, SEQUENTIALLY ──────────────
-      // Sequential processing prevents TPM storms: with parallel batches all
-      // competing for the 5000-TPM window at once, each batch waits 30-62s for
-      // the window to clear, easily exceeding the 240s scanner timeout.
-      // Sequential batches spread token usage naturally over time.
       const llmBatches = [];
       for (let i = 0; i < ambiguous.length; i += BATCH_SIZE) {
         llmBatches.push({
@@ -844,7 +750,7 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
 
           if (!Array.isArray(parsed)) {
             batchErrors.push({ batch: batchNum, error: "Response was not a JSON array" });
-            // Heuristic classification already in classifiedMap : nothing to do
+
             continue;
           }
 
@@ -857,20 +763,19 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
             );
             const fallbackPath = matchedFile?.path || item.path;
             const validated = validateClassification(item, fallbackPath);
-            // Only upgrade the classification if LLM resolved the ambiguity
+
             if (validated && validated.role !== "other") {
               classifiedMap.set(validated.path, validated);
             }
           }
         } catch (err) {
           batchErrors.push({ batch: batchNum, error: err.message });
-          // Heuristic classification already in classifiedMap : graceful degradation
+
         }
       }
     }
   }
 
-  // ── 3. Strip internal markers and finalise ────────────────────
   const classified = Array.from(classifiedMap.values()).map((c) => {
     const { _heuristic, ...clean } = c;
     return clean;
@@ -880,7 +785,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
     (c) => c._heuristic,
   ).length;
 
-  // ── 4. Derive outputs ─────────────────────────────────────────
   const techStack = detectTechStack(files);
   const testFrameworks = detectTestFrameworks(files);
   const structure = groupByRole(classified);
@@ -892,7 +796,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
   const keyFiles = identifyKeyFiles(classified);
   const architectureHint = inferArchitecturePattern(classified, techStack);
 
-  // ── 5. Importance-sorted projectMap for downstream agents ─────
   const importanceOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   classified.sort(
     (a, b) =>
@@ -900,7 +803,6 @@ export async function repoScannerAgent({ files, meta, emit, fastMode = false }) 
       (importanceOrder[b.importance] ?? 3),
   );
 
-  // ── 6. Summary ────────────────────────────────────────────────
   const dist = {};
   const layerDist = {};
   for (const f of classified) {

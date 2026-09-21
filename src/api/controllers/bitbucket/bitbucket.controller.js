@@ -1,6 +1,3 @@
-// =============================================================
-// Bitbucket OAuth Controller
-// =============================================================
 
 import * as bitbucketOAuthService from "../../services/bitbucket/bitbucket-oauth.service.js";
 import * as bitbucketService from "../../../services/bitbucket.service.js";
@@ -64,7 +61,7 @@ export async function oauthCallback(req, res) {
 
 export async function listRepos(req, res) {
   try {
-    // Query User to get the encrypted token (auth middleware only sets userId/email)
+
     const user = await User.findById(req.user.userId).select("+ bitbucketTokenEncrypted");
     if (!user || !user.bitbucketTokenEncrypted) {
       console.log("[bitbucket.controller] No Bitbucket token found for user", {

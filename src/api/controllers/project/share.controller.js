@@ -1,13 +1,8 @@
-// =============================================================
-// Share Controller : HTTP handlers for project sharing endpoints.
-// All routes require the `protect` middleware (req.user.userId set).
-// =============================================================
 
 import * as shareService from "../../services/projects/share.service.js";
 import { ok, fail, serverError } from "../../../utils/response.util.js";
 
-// ── POST /projects/:id/share ──────────────────────────────────
-// Body: { invites: [{ email, role }] }   role = "viewer" | "editor"
+
 export async function inviteUsers(req, res) {
   try {
     const { invites } = req.body;
@@ -19,7 +14,7 @@ export async function inviteUsers(req, res) {
         400,
       );
     }
-    // Basic per-invite validation
+
     for (const inv of invites) {
       if (!inv.email || typeof inv.email !== "string") {
         return fail(
@@ -50,7 +45,7 @@ export async function inviteUsers(req, res) {
   }
 }
 
-// ── GET /projects/:id/share ───────────────────────────────────
+
 export async function listAccess(req, res) {
   try {
     const shares = await shareService.listAccess(
@@ -64,8 +59,7 @@ export async function listAccess(req, res) {
   }
 }
 
-// ── PATCH /projects/:id/share/:shareId ───────────────────────
-// Body: { role: "viewer" | "editor" }
+
 export async function changeRole(req, res) {
   try {
     const { role } = req.body;
@@ -85,7 +79,7 @@ export async function changeRole(req, res) {
   }
 }
 
-// ── DELETE /projects/:id/share/:shareId ──────────────────────
+
 export async function revokeAccess(req, res) {
   try {
     await shareService.revokeAccess(
@@ -100,7 +94,7 @@ export async function revokeAccess(req, res) {
   }
 }
 
-// ── POST /projects/:id/share/:shareId/resend ─────────────────
+
 export async function resendInvite(req, res) {
   try {
     const share = await shareService.resendInvite(
@@ -115,7 +109,7 @@ export async function resendInvite(req, res) {
   }
 }
 
-// ── DELETE /projects/:id/share/:shareId/cancel ───────────────
+
 export async function cancelInvite(req, res) {
   try {
     await shareService.cancelInvite(
@@ -130,8 +124,7 @@ export async function cancelInvite(req, res) {
   }
 }
 
-// ── GET /share/accept/:token ──────────────────────────────────
-// Public (no auth required) : but we attach userId if logged in.
+
 export async function acceptInvite(req, res) {
   try {
     const result = await shareService.acceptInvite(
@@ -145,8 +138,7 @@ export async function acceptInvite(req, res) {
   }
 }
 
-// ── GET /projects/shared ─────────────────────────────────────
-// Returns projects that others have shared with the current user.
+
 export async function getSharedProjects(req, res) {
   try {
     const projects = await shareService.getSharedProjects(req.user.userId);
